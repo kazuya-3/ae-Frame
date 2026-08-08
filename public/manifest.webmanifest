@@ -1,0 +1,17 @@
+{
+  "name": "アイコンフレーム メーカー",
+  "short_name": "フレーム",
+  "description": "フレーム画像の背景を自動でとうめいにして、そのままアイコン写真に重ねられるツール。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbfaf6",
+  "theme_color": "#fbfaf6",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "ae-frame",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "アイコンフレームの背景透過と、アイコンへの重ね合わせを1つにまとめたブラウザツール",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}

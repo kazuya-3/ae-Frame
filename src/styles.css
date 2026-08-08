@@ -1,0 +1,1095 @@
+/* =========================================================
+   線画のデザイン言語
+
+   - 面で塗らず、1.6px の線でかたちを作る
+   - 影は「ぼかし影」ではなく実線のオフセット影（紙・シールの手触り）
+   - 押すと影の分だけ本当に沈む（音と触覚に視覚を合わせる）
+   - 色は基本モノクロ。強調色は「いま押すところ」1か所にしか出さない（視線誘導）
+   ========================================================= */
+
+:root {
+  --paper: #fbfaf6;
+  --paper-2: #ffffff;
+  --paper-3: #f2f0e9;
+  --ink: #16161d;
+  --ink-soft: #5f5f6b;
+  --ink-faint: #a9a8a0;
+  --line: #16161d;
+  --accent: #ff2d55;
+  --accent-ink: #ffffff;
+  --accent-wash: #ffe9ee;
+  --ok: #0f9d76;
+  --ok-wash: #e2f6ef;
+
+  --lw: 1.6px;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 3px 3px 0 var(--line);
+  --shadow-sm: 2px 2px 0 var(--line);
+  --page: 30rem;
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14141a;
+    --paper-2: #1d1d26;
+    --paper-3: #262631;
+    --ink: #f3f1e9;
+    --ink-soft: #a5a4b0;
+    --ink-faint: #6b6a76;
+    --line: #f3f1e9;
+    --accent: #ff5c7c;
+    --accent-ink: #14141a;
+    --accent-wash: #3a1f28;
+    --ok: #3ad3a5;
+    --ok-wash: #123a30;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family:
+    'Hiragino Maru Gothic ProN',
+    'Zen Maru Gothic',
+    'M PLUS Rounded 1c',
+    ui-rounded,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Hiragino Sans',
+    'Noto Sans JP',
+    'Yu Gothic UI',
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* 方眼紙のうっすらした地。線画のデザインに座りを与える。 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ink) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.035;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+/* ---------- レイアウト ---------- */
+
+.app {
+  position: relative;
+  z-index: 1;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 16px calc(28px + env(safe-area-inset-bottom));
+}
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0 10px;
+  background: linear-gradient(var(--paper) 72%, transparent);
+}
+
+.appbar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 端末が狭いほど詰める。切り詰められて「…」になるのを避ける。 */
+  font-size: clamp(0.78rem, 3.15vw, 1.02rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.appbar__title svg {
+  flex: none;
+}
+
+.appbar__title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- ステップの導線 ---------- */
+
+.steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin: 2px 0 18px;
+}
+
+.steps__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.steps__item:disabled {
+  cursor: default;
+}
+
+.steps__dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--line);
+  background: var(--paper-2);
+  display: grid;
+  place-items: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+  transition:
+    transform 0.32s var(--ease-spring),
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.2s;
+}
+
+.steps__item[data-state='current'] .steps__dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  transform: scale(1.16);
+  box-shadow: var(--shadow-sm);
+}
+
+.steps__item[data-state='done'] .steps__dot {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.steps__item[data-state='todo'] .steps__dot {
+  color: var(--ink-faint);
+  border-color: var(--ink-faint);
+}
+
+.steps__label {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.steps__item[data-state='current'] .steps__label {
+  color: var(--ink);
+}
+
+.steps__item[data-state='todo'] .steps__label {
+  color: var(--ink-faint);
+}
+
+/* 点をつなぐ線。進んだところだけ実線になる。 */
+.steps__item::before,
+.steps__item::after {
+  content: '';
+  position: absolute;
+  top: 17px;
+  height: var(--lw);
+  background: var(--ink-faint);
+  opacity: 0.5;
+}
+.steps__item::before {
+  left: 0;
+  right: 50%;
+  margin-right: 22px;
+}
+.steps__item::after {
+  right: 0;
+  left: 50%;
+  margin-left: 22px;
+}
+.steps__item:first-child::before,
+.steps__item:last-child::after {
+  display: none;
+}
+.steps__item[data-state='done']::after,
+.steps__item[data-state='current']::before,
+.steps__item[data-state='done']::before {
+  background: var(--ink);
+  opacity: 1;
+}
+
+/* ---------- カード ---------- */
+
+.card {
+  background: var(--paper-2);
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+  margin-bottom: 16px;
+  animation: card-in 0.42s var(--ease-out) both;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.card__num {
+  flex: none;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.card__title {
+  font-size: 1.13rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.card__hint {
+  color: var(--ink-soft);
+  font-size: 0.855rem;
+  line-height: 1.65;
+  margin: 6px 0 14px;
+}
+
+/* ---------- ボタン ---------- */
+
+.btn {
+  --btn-bg: var(--paper-2);
+  --btn-fg: var(--ink);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-weight: 700;
+  font-size: 0.97rem;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition:
+    transform 0.09s var(--ease-out),
+    box-shadow 0.09s var(--ease-out),
+    background 0.18s;
+  touch-action: manipulation;
+  user-select: none;
+  /* ラベルが2行に折れると押しにくくなるので、折らずに横並びを崩す */
+  white-space: nowrap;
+}
+
+/* 押し込み。影の分だけ沈めると、指の下で物が動いた感じになる。 */
+.btn:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn--primary {
+  --btn-bg: var(--accent);
+  --btn-fg: var(--accent-ink);
+  border-color: var(--line);
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.05rem;
+  /* いちばん押してほしいボタンだけは、長い文言でも折り返して全部見せる */
+  white-space: normal;
+  padding: 8px 18px;
+  line-height: 1.4;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--ghost {
+  box-shadow: none;
+  border-color: var(--ink-faint);
+  min-height: 42px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.btn--ghost:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  background: var(--paper-3);
+}
+
+.btn--icon {
+  min-height: 44px;
+  width: 44px;
+  padding: 0;
+  border-radius: 50%;
+  flex: none;
+}
+
+.btn--sm {
+  min-height: 40px;
+  font-size: 0.86rem;
+  padding: 0 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-row > .btn {
+  flex: 1 1 auto;
+}
+
+/* ---------- トグル（音のオンオフ） ---------- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-2);
+  padding: 6px 12px 6px 10px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.09s,
+    box-shadow 0.09s;
+  min-height: 42px;
+}
+
+.toggle:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.toggle__track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  flex: none;
+  background: var(--paper-3);
+  transition: background 0.24s;
+}
+
+.toggle[aria-pressed='true'] .toggle__track {
+  background: var(--accent);
+}
+
+.toggle__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--line);
+  background: var(--paper-2);
+  transition: transform 0.3s var(--ease-spring);
+}
+
+.toggle[aria-pressed='true'] .toggle__knob {
+  transform: translateX(18px);
+}
+
+.toggle__label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- 画像を置く場所 ---------- */
+
+.drop {
+  position: relative;
+  width: 100%;
+  border: 2.4px dashed var(--ink-faint);
+  border-radius: var(--radius);
+  background: var(--paper-3);
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 22px 16px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s var(--ease-spring);
+}
+
+.drop:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.drop[data-over='true'] {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-wash);
+  color: var(--ink);
+  transform: scale(1.015);
+}
+
+.drop__title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.drop__sub {
+  font-size: 0.8rem;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.drop input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* ---------- プレビュー ---------- */
+
+/*
+   市松もようはテーマに追随させない。
+   ダークテーマで暗い市松にすると、黒い線画のフレームが背景に溶けて
+   「消えたのか残ったのか」が判断できなくなる（画像編集ソフトが明るい
+   市松で固定しているのと同じ理由）。
+   明るいフレーム用に、下じきの色は .preview[data-backdrop] で切り替える。
+*/
+.preview {
+  --checker-a: #ffffff;
+  --checker-b: #dedcd4;
+  position: relative;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-b) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-b) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+/* 白いフレームを確かめるための、暗い市松 */
+.preview[data-backdrop='dark'] {
+  --checker-a: #3a3a44;
+  --checker-b: #23232b;
+}
+
+/* 無地。フチの残りかたを見るときに使う */
+.preview[data-backdrop='white'] {
+  background-image: none;
+  background-color: #ffffff;
+}
+
+.preview[data-backdrop='black'] {
+  background-image: none;
+  background-color: #1a1a20;
+}
+
+/* 下じきを切り替える小さなボタン */
+.preview__backdrop {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+}
+
+.preview__backdrop:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.preview canvas,
+.preview img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.preview__badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  background: var(--paper-2);
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- 進捗 ---------- */
+
+.progress {
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  height: 14px;
+  overflow: hidden;
+  background: var(--paper-3);
+}
+
+.progress__bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s var(--ease-out);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.28) 0 6px,
+    transparent 6px 12px
+  );
+  animation: stripe 0.7s linear infinite;
+}
+
+@keyframes stripe {
+  to {
+    background-position: 17px 0;
+  }
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+/* ---------- スライダー ---------- */
+
+.field {
+  margin: 14px 0;
+}
+
+.field__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.field__label {
+  font-size: 0.87rem;
+  font-weight: 700;
+}
+
+.field__value {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__note {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 34px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 8px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+}
+
+input[type='range']::-moz-range-track {
+  height: 8px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -11px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--line);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.12s var(--ease-spring);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--line);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-sm);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+  background: var(--accent);
+}
+
+/* ---------- 選択肢（セグメント） ---------- */
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper-2);
+  box-shadow: var(--shadow-sm);
+}
+
+.segmented__btn {
+  border: 0;
+  background: transparent;
+  padding: 11px 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-right: var(--lw) solid var(--line);
+  transition:
+    background 0.18s,
+    color 0.18s;
+  min-height: 46px;
+}
+
+.segmented__btn:last-child {
+  border-right: 0;
+}
+
+.segmented__btn[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.segmented__btn:active {
+  background: var(--paper-3);
+}
+
+.segmented__btn[aria-pressed='true']:active {
+  background: var(--ink);
+}
+
+/* ---------- 折りたたみ（くわしい設定） ---------- */
+
+.disclosure {
+  border: var(--lw) solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.disclosure__btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: left;
+  min-height: 48px;
+}
+
+.disclosure__btn:active {
+  background: var(--paper-3);
+}
+
+.disclosure__chev {
+  margin-left: auto;
+  transition: transform 0.28s var(--ease-spring);
+}
+
+.disclosure[data-open='true'] .disclosure__chev {
+  transform: rotate(180deg);
+}
+
+.disclosure__body {
+  padding: 2px 14px 16px;
+  border-top: var(--lw) dashed var(--ink-faint);
+  animation: card-in 0.28s var(--ease-out) both;
+}
+
+/* ---------- 合成キャンバス ---------- */
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  touch-action: none;
+  background-color: var(--paper-2);
+  background-image:
+    linear-gradient(45deg, var(--paper-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--paper-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--paper-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--paper-3) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.stage:active {
+  cursor: grabbing;
+}
+
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.stage__hint {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  background: var(--paper-2);
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  animation: hint-float 2.6s ease-in-out infinite;
+}
+
+@keyframes hint-float {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-4px);
+  }
+}
+
+/* ---------- 注意書き・状態表示 ---------- */
+
+.note {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  font-size: 0.83rem;
+  line-height: 1.62;
+  background: var(--paper-3);
+}
+
+.note--warn {
+  background: var(--accent-wash);
+}
+
+.note--ok {
+  background: var(--ok-wash);
+}
+
+.note__icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spacer {
+  height: 4px;
+}
+
+.footer {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  line-height: 1.8;
+  padding: 8px 0 4px;
+}
+
+.footer a {
+  color: inherit;
+}
+
+/* ---------- スピナー ---------- */
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2.2px solid var(--ink-faint);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 落ちてくる紙吹雪ではなく、完了の一拍 ---------- */
+
+@keyframes pop-in {
+  0% {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pop {
+  animation: pop-in 0.42s var(--ease-spring) both;
+}
+
+/* ---------- 使いかたシート ---------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fade 0.2s ease both;
+  padding: 0;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheet {
+  background: var(--paper-2);
+  border: var(--lw) solid var(--line);
+  border-bottom: 0;
+  border-radius: 22px 22px 0 0;
+  width: 100%;
+  max-width: var(--page);
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  max-height: 86vh;
+  overflow-y: auto;
+  animation: sheet-up 0.34s var(--ease-out) both;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+.sheet__grip {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ink-faint);
+  margin: 0 auto 14px;
+}
+
+.howto {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.howto li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.howto__num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.howto__text b {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.howto__text span {
+  font-size: 0.83rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+/* ---------- 動きを減らす設定への配慮 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 画面が広いときは横に少し余裕を持たせる */
+@media (min-width: 600px) {
+  :root {
+    --page: 34rem;
+  }
+  .app {
+    padding-top: 4px;
+  }
+}
