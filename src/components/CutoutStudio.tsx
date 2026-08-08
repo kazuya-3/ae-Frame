@@ -7,11 +7,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   analyze,
+  applyProtectEnclosed,
   colorKeyAlpha,
   composite,
   createPaintMask,
   clearPaintMask,
   finishAlpha,
+  measureQuality,
   passthroughAlpha,
   strokeBrush,
   DEFAULT_SETTINGS,
@@ -143,14 +145,42 @@ export function CutoutStudio({
   /* --------------- ベースアルファの計算 --------------- */
 
   const computeBase = useCallback(
-    async (mode: Exclude<CutoutMode, 'auto'>, s: CutoutSettings, forceAi = false) => {
+    async (
+      requested: Exclude<CutoutMode, 'auto'>,
+      s: CutoutSettings,
+      forceAi = false,
+      /** 結果を検算して、失敗していたら AI に切り替えてよいか（初回の自動実行のみ） */
+      allowEscalate = false,
+    ) => {
       const runId = ++runIdRef.current;
+      let mode = requested;
+
+      if (mode === 'color') {
+        const alpha = colorKeyAlpha(source, s);
+
+        /*
+          出した結果を自分で検算する。
+          白いガラスを白地に描いたようなデザインは、色だけでは背景と区別できず、
+          絵がほとんど消えるか粉々の断片になる。そうなっていたら黙って AI に回す。
+          ユーザーには「AIできれいにしています」としか見えない。
+        */
+        const q = allowEscalate ? measureQuality(alpha, source.width, source.height) : null;
+        if (q?.suspicious) {
+          mode = 'ai';
+          setAiTried(true);
+          setSettings((prev) => ({ ...prev, mode: 'ai' }));
+          // AI を待つ間、暫定の結果を出しておく。画面が真っ白にならない。
+          baseAlphaRef.current = alpha;
+          finishedRef.current = finishAlpha(alpha, source.width, source.height, s);
+          scheduleDraw();
+        } else {
+          baseAlphaRef.current = alpha;
+        }
+      }
 
       if (mode === 'none') {
         baseAlphaRef.current = passthroughAlpha(source);
-      } else if (mode === 'color') {
-        baseAlphaRef.current = colorKeyAlpha(source, s);
-      } else {
+      } else if (mode === 'ai') {
         if (aiAlphaRef.current && !forceAi) {
           baseAlphaRef.current = aiAlphaRef.current;
         } else {
@@ -172,7 +202,11 @@ export function CutoutStudio({
             });
             if (runIdRef.current !== runId) return;
             aiAlphaRef.current = alpha;
-            baseAlphaRef.current = alpha;
+            // AI も、囲まれた明るい部分（提灯の紙など）を背景と誤ることがある。
+            // 色キーと同じ守りを通しておく。
+            baseAlphaRef.current = s.protectEnclosed
+              ? applyProtectEnclosed(alpha, source.width, source.height)
+              : alpha;
           } catch (e) {
             if (runIdRef.current !== runId) return;
             // AI が使えなくても手ぶらでは返さない。色キーに落として作業を続けられるようにする。
@@ -203,11 +237,12 @@ export function CutoutStudio({
     [source, scheduleDraw, quality],
   );
 
-  // 初回：判定してそのまま実行する（ユーザーに何も聞かない）
+  // 初回：判定してそのまま実行する（ユーザーに何も聞かない）。
+  // 色キーで済むと踏んだ場合も、結果を検算して駄目なら AI に自動で切り替える。
   useEffect(() => {
     const mode = analysis.recommended;
     setAiTried(mode === 'ai');
-    void computeBase(mode, initialSettings(analysis));
+    void computeBase(mode, initialSettings(analysis), false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
@@ -222,7 +257,9 @@ export function CutoutStudio({
         } else if (next.mode === 'none') {
           baseAlphaRef.current = passthroughAlpha(source);
         } else if (aiAlphaRef.current) {
-          baseAlphaRef.current = aiAlphaRef.current;
+          baseAlphaRef.current = next.protectEnclosed
+            ? applyProtectEnclosed(aiAlphaRef.current, source.width, source.height)
+            : aiAlphaRef.current;
         }
         if (baseAlphaRef.current) {
           finishedRef.current = finishAlpha(
@@ -592,20 +629,23 @@ export function CutoutStudio({
                 note="消え残りがあるときは大きく、消えすぎるときは小さくします。"
               />
               <Slider
-                label="境目のなめらかさ"
+                label="光のにじみを残す"
                 value={Math.round(settings.softness * 100)}
                 min={1}
-                max={40}
+                max={70}
                 onChange={(v) => patch({ softness: v / 100 })}
                 format={(v) => `${v}`}
+                note="ネオンの光や水彩のぼかしを、うすいまま残す幅です。大きいほどふんわり残ります。"
               />
               <Toggle
-                on={settings.keepInterior}
-                onChange={(v) => patch({ keepInterior: v })}
-                label="まん中の同じ色はのこす"
+                on={!settings.protectEnclosed}
+                onChange={(v) => patch({ protectEnclosed: !v })}
+                label="デザインの中の白もけす"
               />
               <p className="field__note">
-                フレームの内側まで透明にしたいときは「オフ」のままにしてください。
+                ふだんはオフのまま。オフだと、提灯の紙や面のような
+                <b>囲まれた白は残り</b>、外側の背景とまん中の穴だけが消えます。
+                白いフチや紙の質感まで全部消したいときだけオンにしてください。
               </p>
             </>
           )}
@@ -731,8 +771,16 @@ function initialSettings(a: Analysis): CutoutSettings {
     mode: a.recommended,
     keyColor: a.borderColor,
     tolerance: a.suggestedTolerance,
-    // AI の出す境界はもともとなめらかなので、削りとぼかしは控えめに
-    shrink: a.recommended === 'color' ? 1 : 0,
+    // グローがあるデザインだけ境目を広く取る（詳しくは analyze を参照）
+    softness: a.suggestedSoftness,
+    /*
+      フチ削りは既定で 0。
+      ネオンのグローや水彩のにじみは「うすい外周」そのものなので、
+      1px でも削ると光の出はじめを食ってしまう。
+      白フチが気になる人だけ、スライダーで足せばいい。
+    */
+    shrink: 0,
+    // AI の出す境界はもともとなめらかなので、ぼかしは控えめに
     feather: a.recommended === 'color' ? 0.8 : 0.4,
   };
 }

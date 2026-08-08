@@ -19,10 +19,13 @@ export type CutoutSettings = {
   keyColor: [number, number, number];
   /** 0..1 これ以下の色差は背景 */
   tolerance: number;
-  /** 0..1 背景と前景の境目のなめらかさ */
+  /** 0..1 背景と前景の境目のなめらかさ。広いほど、光のにじみが残る */
   softness: number;
-  /** 中央にある背景色は残す（人物写真向け。フレームでは false） */
-  keepInterior: boolean;
+  /**
+   * 外につながっていない背景色を、デザインの一部として守る。
+   * 提灯の白紙・狐面の白・泡の内側などが消えなくなるので既定は true。
+   */
+  protectEnclosed: boolean;
   /** px フチを削る量 */
   shrink: number;
   /** px 境界のぼかし */
@@ -35,8 +38,9 @@ export const DEFAULT_SETTINGS: CutoutSettings = {
   mode: 'auto',
   keyColor: [255, 255, 255],
   tolerance: 0.06,
-  softness: 0.12,
-  keepInterior: false,
+  // 広めに取る。グローや水彩のにじみを、途中で断ち切らずに階調で残すため。
+  softness: 0.3,
+  protectEnclosed: true,
   shrink: 0,
   feather: 0.6,
   decontaminate: 0.85,
@@ -53,6 +57,10 @@ export type Analysis = {
   recommended: Exclude<CutoutMode, 'auto'>;
   /** 自動で決めたしきい値 */
   suggestedTolerance: number;
+  /** 自動で決めた境目の幅（グローや水彩のにじみがあるほど広い） */
+  suggestedSoftness: number;
+  /** 背景へ溶けていく階調（ネオンの光・水彩のぼかし）を含んでいるか */
+  hasGlow: boolean;
 };
 
 /** 知覚に近い重みづけの色距離（0..1 に正規化） */
@@ -108,6 +116,8 @@ export function analyze(data: ImageData): Analysis {
       borderSpread: 1,
       recommended: hasAlpha ? 'none' : 'ai',
       suggestedTolerance: DEFAULT_SETTINGS.tolerance,
+      suggestedSoftness: DEFAULT_SETTINGS.softness,
+      hasGlow: false,
     };
   }
 
@@ -127,6 +137,38 @@ export function analyze(data: ImageData): Analysis {
   // 縁の 98% が収まる色差 + 余裕。JPEG のノイズやグラデを吸収する。
   const suggestedTolerance = Math.min(0.35, Math.max(0.03, p(0.98) + 0.035));
 
+  /*
+    グロー（背景へ溶けていく階調）があるかを、色差のヒストグラムの形で見分ける。
+
+    ネオンの光や水彩のにじみは、背景色からの距離が連続的に変化するので
+    中間の階調が「広く薄く」散らばる。
+    一方、うすい水色のベタ塗りは同じ距離に固まるので、少数の階級に集中する。
+
+    つまり "中間の階調がいくつの階級にまたがっているか" で両者を分けられる。
+    輪郭のアンチエイリアスも中間値を作るが、面積が小さいので閾値を越えない。
+  */
+  const BINS = 64;
+  const hist = new Int32Array(BINS);
+  // 全画素を見る必要はない。3画素おきで形は十分わかる。
+  for (let i = 0; i < total; i += 3) {
+    const j = i * 4;
+    if (px[j + 3] < 128) continue;
+    const d = colorDistance(px[j], px[j + 1], px[j + 2], borderColor);
+    hist[Math.min(BINS - 1, Math.floor(d * BINS))]++;
+  }
+  const sampled = Math.ceil(total / 3);
+  const loBin = Math.floor(suggestedTolerance * BINS) + 1;
+  const hiBin = Math.floor(0.4 * BINS);
+  let glowBins = 0;
+  for (let b = loBin; b < hiBin; b++) {
+    if (hist[b] > sampled * 0.001) glowBins++;
+  }
+  const hasGlow = glowBins >= 8;
+
+  // グローがあるなら境目を広く取って階調のまま残す。
+  // なければ狭くして、うすい色のベタ塗りが半透明にならないようにする。
+  const suggestedSoftness = hasGlow ? 0.3 : 0.12;
+
   let recommended: Exclude<CutoutMode, 'auto'>;
   if (hasAlpha) {
     recommended = 'none';
@@ -143,10 +185,19 @@ export function analyze(data: ImageData): Analysis {
     borderSpread,
     recommended,
     suggestedTolerance,
+    suggestedSoftness,
+    hasGlow,
   };
 }
 
-/** 単色背景キーでアルファを作る。 */
+/**
+ * 単色背景キーでアルファを作る。
+ *
+ * 素の色キーは「同じ色の画素を全部消す」なので、アイコンフレームには
+ * そのままでは使えない。提灯の白紙、狐面の白、白い泡のような
+ * "デザインの一部としての背景色" まで穴が開いてしまうため。
+ * 既定では下の `protectEnclosed` で、外につながっていない背景色を守る。
+ */
 export function colorKeyAlpha(data: ImageData, s: CutoutSettings): Uint8ClampedArray {
   const { width, height, data: px } = data;
   const n = width * height;
@@ -165,26 +216,43 @@ export function colorKeyAlpha(data: ImageData, s: CutoutSettings): Uint8ClampedA
     alpha[i] = Math.round(a * 255 * (px[j + 3] / 255));
   }
 
-  if (s.keepInterior) keepInteriorOnly(alpha, width, height);
+  if (s.protectEnclosed) protectEnclosed(alpha, width, height);
   return alpha;
 }
 
 /**
- * 「外側とつながっている背景」だけを透明にする。
- * ドーナツの穴のような内側の白は残るので、人物写真向け。
+ * 背景の塗りつぶしが通れる不透明度の上限。
+ *
+ * ここを 250 のように高くすると、うすい水色のリング（消し残しアルファ 225 など）を
+ * 塗りつぶしがすり抜けてしまい、その内側の白い泡まで背景と判定されて消える。
+ * 「明らかに背景」と言える画素だけを通し、半分でも残っている絵は壁として扱う。
  */
-function keepInteriorOnly(alpha: Uint8ClampedArray, width: number, height: number) {
+const FLOOD_TRAVEL = 128;
+
+/**
+ * 背景の塗りつぶしが届く範囲を求める。
+ *
+ * 種は2か所から蒔く。
+ *  - 画像の四辺 … 外側の背景
+ *  - 画像の中心 … リング状フレームの「まん中の穴」。ここが抜けていないと
+ *                 重ねたときにアイコン写真が隠れてしまう
+ *
+ * 中心の種は、中心付近がほんとうに背景色のときだけ蒔く。中心まで絵が
+ * 詰まっているデザインを食い破らないための歯止め。
+ */
+function floodBackground(alpha: Uint8ClampedArray, width: number, height: number): Uint8Array {
   const n = width * height;
   const reachable = new Uint8Array(n);
   const stack = new Int32Array(n);
   let top = 0;
 
   const push = (i: number) => {
-    if (alpha[i] < 250 && !reachable[i]) {
+    if (alpha[i] < FLOOD_TRAVEL && !reachable[i]) {
       reachable[i] = 1;
       stack[top++] = i;
     }
   };
+
   for (let x = 0; x < width; x++) {
     push(x);
     push((height - 1) * width + x);
@@ -193,6 +261,28 @@ function keepInteriorOnly(alpha: Uint8ClampedArray, width: number, height: numbe
     push(y * width);
     push(y * width + width - 1);
   }
+
+  // --- 中心が「穴」かどうかを確かめてから種を蒔く ---
+  const cx = width / 2;
+  const cy = height / 2;
+  const r = Math.min(width, height) * 0.07;
+  let hole = 0;
+  let total = 0;
+  for (let y = Math.max(0, Math.floor(cy - r)); y < Math.min(height, cy + r); y++) {
+    for (let x = Math.max(0, Math.floor(cx - r)); x < Math.min(width, cx + r); x++) {
+      if (Math.hypot(x - cx, y - cy) > r) continue;
+      total++;
+      if (alpha[y * width + x] < 128) hole++;
+    }
+  }
+  if (total > 0 && hole / total > 0.6) {
+    for (let y = Math.max(0, Math.floor(cy - r)); y < Math.min(height, cy + r); y++) {
+      for (let x = Math.max(0, Math.floor(cx - r)); x < Math.min(width, cx + r); x++) {
+        if (Math.hypot(x - cx, y - cy) <= r) push(y * width + x);
+      }
+    }
+  }
+
   while (top > 0) {
     const i = stack[--top];
     const x = i % width;
@@ -201,9 +291,104 @@ function keepInteriorOnly(alpha: Uint8ClampedArray, width: number, height: numbe
     if (i >= width) push(i - width);
     if (i < n - width) push(i + width);
   }
-  for (let i = 0; i < n; i++) {
-    if (!reachable[i]) alpha[i] = 255;
+  return reachable;
+}
+
+/**
+ * 外側にも中心の穴にもつながっていない背景色を、デザインの一部として復活させる。
+ *
+ * これがあるおかげで、提灯の白紙・狐面の白・泡の内側が残る。
+ * 逆に、外周のグロー（白地に溶ける光のにじみ）は外につながっているので、
+ * 色キーが付けたやわらかいアルファのまま残る＝光が死なない。
+ */
+export function applyProtectEnclosed(
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(alpha);
+  protectEnclosed(out, width, height);
+  return out;
+}
+
+function protectEnclosed(alpha: Uint8ClampedArray, width: number, height: number) {
+  const reachable = floodBackground(alpha, width, height);
+  for (let i = 0; i < alpha.length; i++) {
+    /*
+      復活させるのは「消えかけているのに、外にも中心の穴にもつながっていない」画素だけ。
+
+      半分以上残っている画素（グローの中ほどなど）にはさわらない。
+      ここで一律に 255 へ上げると、せっかく階調で残したネオンの光が
+      のっぺりした不透明の輪に潰れてしまう。
+    */
+    if (!reachable[i] && alpha[i] < FLOOD_TRAVEL) alpha[i] = 255;
   }
+}
+
+export type CutoutQuality = {
+  /** 残った絵の面積比 0..1 */
+  coverage: number;
+  /** ばらばらになった断片の数 */
+  fragments: number;
+  /** この結果は失敗している可能性が高い */
+  suspicious: boolean;
+};
+
+/**
+ * 出した結果を自分で検算する。
+ *
+ * 白いガラスを白地に描いたようなデザインは、色だけでは背景と区別できず、
+ * 絵がほとんど消えるか、粉々の断片になる。そうなっていたら AI に回す。
+ */
+export function measureQuality(
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+): CutoutQuality {
+  const n = width * height;
+  let opaque = 0;
+  for (let i = 0; i < n; i++) if (alpha[i] > 128) opaque++;
+  const coverage = opaque / n;
+
+  // 不透明部分の連結成分を数える（小さすぎる粒は無視）
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const minSize = Math.max(24, Math.round(n * 0.00004));
+  let fragments = 0;
+
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || alpha[start] <= 128) continue;
+    let top = 0;
+    let size = 0;
+    seen[start] = 1;
+    stack[top++] = start;
+    while (top > 0) {
+      const i = stack[--top];
+      size++;
+      const x = i % width;
+      if (x > 0 && !seen[i - 1] && alpha[i - 1] > 128) {
+        seen[i - 1] = 1;
+        stack[top++] = i - 1;
+      }
+      if (x < width - 1 && !seen[i + 1] && alpha[i + 1] > 128) {
+        seen[i + 1] = 1;
+        stack[top++] = i + 1;
+      }
+      if (i >= width && !seen[i - width] && alpha[i - width] > 128) {
+        seen[i - width] = 1;
+        stack[top++] = i - width;
+      }
+      if (i < n - width && !seen[i + width] && alpha[i + width] > 128) {
+        seen[i + width] = 1;
+        stack[top++] = i + width;
+      }
+    }
+    if (size >= minSize) fragments++;
+  }
+
+  // 絵がほぼ消えた / 粉々になった、のどちらかなら失敗とみなす
+  const suspicious = coverage < 0.03 || fragments > 350;
+  return { coverage, fragments, suspicious };
 }
 
 /** 半径 r の最小値フィルタ（縦横に分離して近似）。フチを内側に削る。 */
@@ -425,15 +610,27 @@ export function composite(
     let g = src[j + 1];
     let b = src[j + 2];
 
-    // 半透明の画素に残った背景色を引き算する（白フチ・黒フチ対策）
-    if (decon > 0 && a > 4 && a < 250) {
+    /*
+      半透明の画素に残った背景色を引き算する。
+      観測色 C = a·F + (1-a)·背景 を F について解く、いわゆる逆合成。
+
+      白フチが消えるだけでなく、ネオンのグローや水彩のにじみが
+      「うすい水色」ではなく「本来の色を薄く重ねたもの」になるので、
+      暗い写真の上に重ねても色がくすまない。
+
+      ただし a が小さいほど割り算で誤差が暴れる。ごく薄いところでは
+      効きを弱めて、ノイズが色として浮き上がるのを防ぐ。
+    */
+    if (decon > 0 && a > 3 && a < 250) {
       const af = a / 255;
+      const taper = Math.min(1, a / 48);
+      const k = decon * taper;
       const ur = (r - (1 - af) * kr) / af;
       const ug = (g - (1 - af) * kg) / af;
       const ub = (b - (1 - af) * kb) / af;
-      r += (ur - r) * decon;
-      g += (ug - g) * decon;
-      b += (ub - b) * decon;
+      r += (ur - r) * k;
+      g += (ug - g) * k;
+      b += (ub - b) * k;
     }
 
     dst[j] = r;
