@@ -509,9 +509,23 @@
         </p>
       </li>
       <li>
+        <b>リポジトリを public にする</b>
+        <p>
+          Settings → General → いちばん下の Danger Zone → Change repository visibility。
+          private のままだと GitHub Pages に有料プラン（Pro）が要ります。
+          このツールは画像をすべて端末の中だけで処理するので、
+          公開して困る情報（鍵・個人情報）はコードに入っていません。
+        </p>
+      </li>
+      <li>
         <b>Settings → Pages → Source を「GitHub Actions」にする</b>
         <p>
-          これを忘れると、ワークフローは走るのに公開されません。いちばん引っかかりやすいところです。
+          <strong>ここだけは、人が手でやる必要があります。</strong>
+          ワークフローに自動で有効化させる設定（<code>enablement: true</code>）も試しましたが、
+          <code>Resource not accessible by integration</code> で通りませんでした。
+          ワークフローの既定のトークンには Pages サイトを「作る」権限が無いためです
+          （deploy する権限はあります）。
+          これを忘れると、ワークフローは走るのに公開されません。
         </p>
       </li>
       <li>

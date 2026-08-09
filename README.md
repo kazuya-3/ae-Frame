@@ -147,8 +147,19 @@ Node 22 以上。ビルド成果物は静的ファイルだけなので、どこ
 
 ### 公開
 
-`main` に push すると `.github/workflows/deploy.yml` が GitHub Pages に公開します。
-リポジトリの **Settings → Pages → Source** を **GitHub Actions** にしておいてください。
+既定のブランチに push すると `.github/workflows/deploy.yml` が GitHub Pages に公開します。
+はじめの1回だけ、**人が手でやる作業が2つ**あります。
+
+1. **リポジトリを public にする。**
+   Settings → General → Danger Zone → Change repository visibility。
+   private のままだと Pages に有料プラン（Pro）が要ります。画像はすべて端末の中だけで
+   処理するので、公開して困る情報（鍵・個人情報）はコードに入っていません。
+2. **Settings → Pages → Source を「GitHub Actions」にする。**
+   ワークフローに自動で有効化させる設定（`enablement: true`）も試しましたが、
+   `Resource not accessible by integration` で通りませんでした。ワークフローの既定の
+   トークンには Pages サイトを**作る**権限が無いためです（deploy する権限はあります）。
+
+これを忘れると、ビルドも検証も通るのに `Get Pages site failed` で止まります。
 
 ベースURLは相対パス（`./`）でビルドしているので、`https://ユーザー名.github.io/ae-Frame/`
 でも独自ドメインの直下でも、同じ成果物がそのまま動きます。
