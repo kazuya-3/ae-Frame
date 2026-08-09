@@ -1,0 +1,1122 @@
+<!doctype html><html lang=ja><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>アイコンフレーム メーカー 引き継ぎ資料</title>
+<style>
+  /* ===========================================================
+     配色は製品側のトークン（src/styles.css）から引き継いでいる。
+     資料と製品が地続きに見えるように、紙の地と墨の色をそろえた。
+     意味色（good / warning）はアクセントとは別に持つ。
+     =========================================================== */
+  :root {
+    --paper: #faf9f5;
+    --surface: #ffffff;
+    --sunken: #f2f0e9;
+    --ink: #16161d;
+    --ink-2: #4c4c59;
+    --ink-3: #8a8996;
+    --line: #dcd8cc;
+    --rule: #16161d;
+    --accent: #ff2d55;
+    --accent-wash: #ffe9ee;
+    --ok: #0d7a5b;
+    --ok-wash: #e2f2eb;
+    --warn: #8f5d00;
+    --warn-wash: #faefd8;
+    --check-a: #ffffff;
+    --check-b: #e6e3da;
+
+    --measure: 46rem;
+    --step--1: 0.83rem;
+    --step-0: 1rem;
+    --step-1: 1.12rem;
+    --step-2: clamp(1.22rem, 2.4vw, 1.45rem);
+    --step-3: clamp(1.7rem, 5vw, 2.5rem);
+
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --paper: #121218;
+      --surface: #1b1b23;
+      --sunken: #23232d;
+      --ink: #f2f1ea;
+      --ink-2: #b5b4bf;
+      --ink-3: #7d7c89;
+      --line: #33333f;
+      --rule: #f2f1ea;
+      --accent: #ff5c7c;
+      --accent-wash: #3a1f28;
+      --ok: #4fd0a4;
+      --ok-wash: #10352a;
+      --warn: #e0b164;
+      --warn-wash: #392d14;
+      --check-a: #2a2a34;
+      --check-b: #1f1f28;
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --paper: #121218;
+    --surface: #1b1b23;
+    --sunken: #23232d;
+    --ink: #f2f1ea;
+    --ink-2: #b5b4bf;
+    --ink-3: #7d7c89;
+    --line: #33333f;
+    --rule: #f2f1ea;
+    --accent: #ff5c7c;
+    --accent-wash: #3a1f28;
+    --ok: #4fd0a4;
+    --ok-wash: #10352a;
+    --warn: #e0b164;
+    --warn-wash: #392d14;
+    --check-a: #2a2a34;
+    --check-b: #1f1f28;
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic UI',
+      -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: var(--step-0);
+    line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 数字・ファイル名・識別子はすべて等幅で。この資料の中身は測定値なので、
+     書体でそれを区別できるようにしている。 */
+  code,
+  kbd,
+  .mono,
+  .eyebrow,
+  th,
+  .num {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wrap {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 0 1.25rem 5rem;
+  }
+
+  /* ---------- 冒頭 ---------- */
+
+  header.masthead {
+    padding: 4rem 0 2.5rem;
+    border-bottom: 2px solid var(--rule);
+    margin-bottom: 3rem;
+  }
+
+  .kicker {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1rem;
+  }
+
+  h1 {
+    font-size: var(--step-3);
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: var(--step-1);
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 34rem;
+  }
+
+  /* ---------- セクション ---------- */
+
+  section {
+    margin-bottom: 3.5rem;
+  }
+
+  .eyebrow {
+    font-size: var(--step--1);
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin: 0 0 0.35rem;
+  }
+
+  h2 {
+    font-size: var(--step-2);
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.25rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--line);
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: var(--step-1);
+    margin: 2rem 0 0.6rem;
+    letter-spacing: -0.005em;
+  }
+
+  p {
+    margin: 0 0 1.1rem;
+  }
+
+  a {
+    color: var(--ink);
+    text-decoration-color: var(--accent);
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 2px;
+  }
+
+  a:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  code {
+    font-size: 0.88em;
+    background: var(--sunken);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    word-break: break-word;
+  }
+
+  strong {
+    font-weight: 700;
+  }
+
+  .lede {
+    color: var(--ink-2);
+  }
+
+  /* ---------- 手順（順序に意味があるものだけ番号を振る） ---------- */
+
+  ol.steps {
+    list-style: none;
+    counter-reset: s;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  ol.steps > li {
+    counter-increment: s;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 0 0.9rem;
+    align-items: start;
+  }
+
+  ol.steps > li::before {
+    content: counter(s);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--step--1);
+    font-weight: 700;
+    width: 2rem;
+    height: 2rem;
+    display: grid;
+    place-items: center;
+    border: 1.5px solid var(--rule);
+    border-radius: 50%;
+    color: var(--ink);
+  }
+
+  ol.steps b {
+    display: block;
+    line-height: 2rem;
+  }
+
+  ol.steps p {
+    grid-column: 2;
+    margin: 0.1rem 0 0;
+    color: var(--ink-2);
+    font-size: var(--step--1);
+    line-height: 1.8;
+  }
+
+  /* ---------- コード ---------- */
+
+  pre {
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    margin: 0 0 1.1rem;
+    line-height: 1.7;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: var(--step--1);
+  }
+
+  /* ---------- 表 ---------- */
+
+  .scroller {
+    overflow-x: auto;
+    margin: 0 0 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--step--1);
+    min-width: 30rem;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.65;
+  }
+
+  th {
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+
+  td.num {
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+
+  /* ---------- 不具合の記録 ---------- */
+
+  .case {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+  }
+
+  /* 症状の帯には市松もようを敷く。この製品の主題そのものなので、
+     「透明にまつわる話」であることが一目で分かる。 */
+  .case__head {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--line);
+    background-color: var(--check-a);
+    background-image: linear-gradient(45deg, var(--check-b) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--check-b) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--check-b) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--check-b) 75%);
+    background-size: 14px 14px;
+    background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+  }
+
+  .case__id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    flex: none;
+  }
+
+  .case__title {
+    font-weight: 700;
+    font-size: var(--step-0);
+    line-height: 1.5;
+  }
+
+  .case__body {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .case__row {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr;
+    gap: 0.75rem;
+    font-size: var(--step--1);
+    line-height: 1.75;
+  }
+
+  .case__label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    padding-top: 0.28em;
+  }
+
+  .evidence {
+    background: var(--ok-wash);
+    color: var(--ok);
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.6;
+  }
+
+  /* ---------- 注意 ---------- */
+
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-wash);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 0 0 1.1rem;
+    font-size: var(--step--1);
+    line-height: 1.8;
+  }
+
+  .callout p:last-child {
+    margin-bottom: 0;
+  }
+
+  .callout--warn {
+    border-left-color: var(--warn);
+    background: var(--warn-wash);
+  }
+
+  /* ---------- 一覧 ---------- */
+
+  ul.plain {
+    margin: 0 0 1.1rem;
+    padding-left: 1.2rem;
+  }
+
+  ul.plain li {
+    margin-bottom: 0.55rem;
+  }
+
+  dl.map {
+    margin: 0;
+    display: grid;
+    gap: 0.1rem;
+  }
+
+  dl.map dt {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--step--1);
+    font-weight: 700;
+    margin-top: 0.9rem;
+  }
+
+  dl.map dd {
+    margin: 0.1rem 0 0;
+    color: var(--ink-2);
+    font-size: var(--step--1);
+    line-height: 1.75;
+  }
+
+  footer {
+    border-top: 1px solid var(--line);
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    color: var(--ink-3);
+    font-size: var(--step--1);
+    line-height: 1.8;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+</style></head><body>
+
+<div class="wrap">
+  <header class="masthead">
+    <p class="kicker">引き継ぎ資料 &nbsp;/&nbsp; ae-Frame</p>
+    <h1>アイコンフレーム メーカー</h1>
+    <p class="standfirst">
+      フレーム画像の背景透過と、アイコン写真への重ね合わせを、3ステップにまとめたブラウザツール。
+      この資料は「どう動いているか」より先に「なぜそう決めたか」を残すために書いています。
+    </p>
+  </header>
+
+  <section>
+    <p class="eyebrow">まず</p>
+    <h2>これは何のためのものか</h2>
+    <p>
+      TikTok でアイコンフレームを配布すると必ず来る「これ、どうやって使うんですか？」に、
+      <strong>リンク1本で答えられるようにする</strong>ためのツールです。
+      アプリのインストールも、会員登録も、画像のアップロードもありません。
+      処理はすべて見ている人の端末の中で完結します。
+    </p>
+    <p>
+      使う人は<strong>スマホしか持っていない前提</strong>で作ってあります。
+      画面に出ている「いま押すボタン」は常に1つだけ。細かい調整は折りたたみの中にしまってあり、
+      うまくいかなかった人だけが開きます。専門用語（アルファチャンネル、マスク等）は使っていません。
+    </p>
+    <div class="callout">
+      <p>
+        <strong>触って確かめる：</strong>
+        <a href="https://claude.ai/code/artifact/d9277c4b-2a5d-4aea-99d0-a1545a4f27c7"
+          >お試し版（HTML1枚に全部入り）</a
+        >。スマホでそのまま最後まで動きます。AI切り抜きだけは、この置き場所が外部通信できないため無効です。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">手順</p>
+    <h2>公開する</h2>
+    <p class="lede">
+      コードは <code>claude/tiktok-icon-frame-editor-dbgywf</code> ブランチにあります。まだ公開されていません。
+    </p>
+    <ol class="steps">
+      <li>
+        <b>ブランチを <code>main</code> に入れる</b>
+        <p>プルリクエストはまだ作っていません。必要なら作ってからマージしてください。</p>
+      </li>
+      <li>
+        <b>Settings → Pages → Source を「GitHub Actions」にする</b>
+        <p>
+          これを忘れると、ワークフローは走るのに公開されません。いちばん引っかかりやすいところです。
+        </p>
+      </li>
+      <li>
+        <b><code>main</code> に push する</b>
+        <p>
+          <code>.github/workflows/deploy.yml</code> が型チェック・ビルド・実ブラウザ検証まで通してから公開します。
+          検証が落ちると公開されません（透過が壊れたまま世に出ないようにするため）。
+        </p>
+      </li>
+    </ol>
+    <p style="margin-top: 1.5rem">
+      ベースURLは相対パス（<code>./</code>）でビルドしているので、
+      <code>https://ユーザー名.github.io/ae-Frame/</code> でも独自ドメインの直下でも、同じ成果物がそのまま動きます。
+    </p>
+
+    <h3>手元で動かす</h3>
+    <div class="scroller">
+      <pre><code>npm install
+npm run dev          # 開発サーバー
+npm run build        # dist/ に本番ビルド
+npm test             # 実ブラウザで検証（先に build が必要）
+npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo/ に</code></pre>
+    </div>
+    <p>Node 22 以上。成果物は静的ファイルだけなので、どこにでも置けます。</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">全体像</p>
+    <h2>中身の地図</h2>
+    <dl class="map">
+      <dt>src/lib/cutout.ts</dt>
+      <dd>
+        いちばん重要なファイル。画像の解析、色キー、囲まれた背景色の保護、結果の検算、
+        スクショの切り出し、仕上げ、合成。透過にまつわる判断はすべてここにあります。
+      </dd>
+      <dt>src/lib/ai.ts</dt>
+      <dd>
+        transformers.js を使った AI 切り抜き。動的 import 専用で、初期表示には載りません。
+        モデルは「試して駄目なら次」の順番リスト。
+      </dd>
+      <dt>src/lib/image.ts</dt>
+      <dd>読み込み、EXIF回転、リサイズ、切り出し、余白の切り詰め、書き出し。</dd>
+      <dt>src/lib/sound.ts</dt>
+      <dd>操作音を Web Audio で合成。音声ファイルは1つも持っていません。</dd>
+      <dt>src/components/CutoutStudio.tsx</dt>
+      <dd>ステップ2（背景をけす）の画面。調整スライダーと手描き修正もここ。</dd>
+      <dt>src/components/ComposeStudio.tsx</dt>
+      <dd>ステップ3（重ねて位置を合わせて保存）の画面。</dd>
+      <dt>src/App.tsx</dt>
+      <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
+      <dt>tests/run.mjs</dt>
+      <dd>実ブラウザでの通し検証。60項目。</dd>
+    </dl>
+  </section>
+
+  <section>
+    <p class="eyebrow">核心</p>
+    <h2>背景透過の考えかた</h2>
+
+    <h3>手法は「推測」ではなく「結果」で決める</h3>
+    <p>
+      最初は、画像の縁の色のばらつきを見て「ばらついていたら AI」と決めていました。これは失敗でした。
+      <strong>ネオンのグローに騙される</strong>からです。光が画像のふちまで届いていると縁がばらついて見えるので、
+      色キーできれいに抜けるフレームまで AI に回してしまう。
+      数十MBのダウンロードを強いたうえに、細い線は AI のほうが鈍ります。
+    </p>
+    <p>いまは、こうしています。</p>
+    <ul class="plain">
+      <li>すでに透過ずみ（半透明の画素が2%以上）なら、<strong>何もしない</strong></li>
+      <li>それ以外は、まず<strong>色キー</strong>をかける</li>
+      <li>その結果を<strong>検算</strong>し、失敗していたら <strong>AI</strong> に回す</li>
+    </ul>
+
+    <h3>色キーは「白を全部消す」ではない</h3>
+    <p>
+      ここがこのツールの中心です。素の色キー（同じ色の画素を全部消す）は、アイコンフレームには使えません。
+      提灯の紙、狐面の白、白い泡、ガラスのハイライトは<strong>デザインの一部</strong>なのに背景と同じ白だからです。
+      ネオンのグローや水彩のにじみは<strong>背景色に溶けた階調</strong>なので、ハードに切ると光が死にます。
+    </p>
+    <p>そこで3つを組み合わせています。</p>
+    <ul class="plain">
+      <li>
+        <strong>つながりで守る。</strong> 背景の塗りつぶしを「画像の四辺」と「画像の中心」の2か所から流し、
+        <strong>どちらからも届かなかった背景色はデザインの一部として復活</strong>させます。
+        中心から流すのはリング状フレームのまん中の穴を抜くため。中心が本当に背景色のときだけ種を蒔くので、
+        中心まで絵が詰まったデザインは壊しません。
+      </li>
+      <li>
+        <strong>塗りつぶしが通れる濃さに上限を置く。</strong>
+        ここが緩いと、うすい水色のリングを塗りつぶしがすり抜けて内側の泡まで消えます。
+        復活させるのも「消えかけた画素」だけ。一律に不透明へ戻すと、階調で残したグローが輪に潰れます。
+      </li>
+      <li>
+        <strong>境目の幅をデザインに合わせる。</strong>
+        グローは距離が連続的に変わるので中間の階調が広く散らばり、うすい色のベタ塗りは一点に固まります。
+        この差をヒストグラムの形で見分けます。
+      </li>
+    </ul>
+
+    <h3>透過ずみの画像には、何もしない</h3>
+    <p>
+      いちばん壊しやすい入力です。アルファはもう正しく付いているので、色にもアルファにも触ってはいけません。
+      とくに背景色の引き算をかけると、<strong>付いていない白を引く</strong>ことになり、
+      半透明のグローの色が沈みます。この経路では引き算の初期値を <code>0</code> にしています。
+    </p>
+
+    <h3>フチの色を抜く（逆合成）</h3>
+    <p>
+      半透明の画素は <code>観測色 = α × 本来の色 + (1 − α) × 背景色</code> になっています。
+      これを本来の色について解いて、背景色の混入を引き算します。
+    </p>
+    <p>
+      効果は「白いフチが消える」だけではありません。グローやにじみが
+      <strong>「うすい水色」ではなく「本来の色を薄く重ねたもの」</strong>になるので、
+      暗いアイコン写真の上に重ねても色がくすまず、ちゃんと発光して見えます。
+      ただし α が小さいほど割り算で誤差が暴れるので、ごく薄いところでは効きを弱めています。
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">数値</p>
+    <h2>効いている数字</h2>
+    <p class="lede">
+      触ると挙動が変わる定数です。どれも根拠があって置いてあるので、動かすときは下の理由を確かめてください。
+    </p>
+
+    <h3>しきい値まわり（<code>src/lib/cutout.ts</code>）</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th>もの</th>
+            <th>値</th>
+            <th>なぜ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>しきい値</td>
+            <td class="num">0.008 〜 0.25<br />（自動）</td>
+            <td>
+              背景は距離0付近に鋭い山を作る。その山が終わる位置に置く。固定の余裕を足すのはやめた（後述の
+              CASE 4）。迷ったら小さい側に倒す方針。消え残りは直せるが、消えた絵は気づきにくい。
+            </td>
+          </tr>
+          <tr>
+            <td>境目の幅</td>
+            <td class="num">グロー: 0.3<br />それ以外: 0.01〜0.2</td>
+            <td>
+              グローなら広く取って階調のまま残す。なければ「背景の終わり」から「絵の色が始まる位置」までの
+              隙間に収める。広すぎると絵の薄い色まで半透明になる。
+            </td>
+          </tr>
+          <tr>
+            <td>グロー判定</td>
+            <td class="num">32階級以上<br />各 0.15% 超</td>
+            <td>
+              1階級あたりの下限が低すぎると、輪郭のアンチエイリアスだけでグローと誤判定する（CASE 4）。
+            </td>
+          </tr>
+          <tr>
+            <td><code>FLOOD_TRAVEL</code></td>
+            <td class="num">128</td>
+            <td>
+              背景の塗りつぶしが通れる不透明度の上限。250 にすると、うすい色のリングをすり抜けて
+              内側の泡まで消える（CASE 2）。
+            </td>
+          </tr>
+          <tr>
+            <td><code>FRAGMENT_LIMIT</code></td>
+            <td class="num">60</td>
+            <td>
+              これを超える断片数は「粉々になった」とみなす。実測でうまく抜けたフレームは 1〜3 個、
+              失敗は 110 個だった。飾りの多いデザインのために健全側へ余裕を取ってある。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>検算：どうなったら AI に回すか</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th>症状</th>
+            <th>条件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>背景が消えていない</td>
+            <td class="num">四隅のうち2つ以上が不透明</td>
+          </tr>
+          <tr>
+            <td>絵がほとんど消えた</td>
+            <td class="num">面積比 &lt; 0.006</td>
+          </tr>
+          <tr>
+            <td>何も消えていない</td>
+            <td class="num">面積比 &gt; 0.75</td>
+          </tr>
+          <tr>
+            <td>粉々になった</td>
+            <td class="num">断片 &gt; 60</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      四隅を見るのがいちばん素直です。アイコンフレームは丸いので、四隅はまず間違いなく背景。
+      そこが残っているなら背景を消せていないと断言できます。
+    </p>
+
+    <h3>スクショの切り出し</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th>もの</th>
+            <th>値</th>
+            <th>なぜ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>切り取らない条件</td>
+            <td class="num">面積比 &gt; 0.72</td>
+            <td>
+              正方形のフレームでは何も起きない。端に置いた文字やロゴが UI と誤認されない歯止めでもある。
+            </td>
+          </tr>
+          <tr>
+            <td>本体の近く</td>
+            <td class="num">本体サイズ × 0.15</td>
+            <td>
+              画像ではなく<strong>本体</strong>の大きさで測る。スクショは画像自体が縦長なので、
+              画像基準だと物差しが伸びすぎる。
+            </td>
+          </tr>
+          <tr>
+            <td>ふちの帯</td>
+            <td class="num">短辺 × 0.06</td>
+            <td>
+              ここに貼りついた塊は UI とみなして落とす。時刻もキャプションもボタン列も端に寄っているが、
+              フレームは真ん中にある。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>そのほか</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th>もの</th>
+            <th>値</th>
+            <th>場所</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>作業解像度の上限</td>
+            <td class="num">1600 px</td>
+            <td><code>WORK_MAX_EDGE</code> / image.ts</td>
+          </tr>
+          <tr>
+            <td>写真の上限</td>
+            <td class="num">2048 px</td>
+            <td><code>PHOTO_MAX_EDGE</code> / App.tsx</td>
+          </tr>
+          <tr>
+            <td>書き出しサイズ</td>
+            <td class="num">1080 px 角</td>
+            <td><code>EXPORT_SIZE</code> / ComposeStudio.tsx</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">記録</p>
+    <h2>実機で壊れたもの</h2>
+    <p class="lede">
+      作っている途中で実際に踏んだ不具合です。同じ場所をまた壊さないために、症状・原因・証拠を残します。
+      すべて検証に固定してあるので、再発すれば <code>npm test</code> が落ちます。
+    </p>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 1</span>
+        <span class="case__title">提灯の紙と狐面の白に穴が開く</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span
+            >素の色キーが「同じ色の画素を全部消す」ため。デザインの一部としての白も背景と同じ白だった。</span
+          >
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span
+            >外側にも中心の穴にもつながっていない背景色を、デザインの一部として復活させる（つながりで守る）。</span
+          >
+        </div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 2</span>
+        <span class="case__title">うすい水色のリングの内側で、白い泡が消える</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span
+            >うすい色のリングは不透明度が 225 ほどにしかならず、背景の塗りつぶしがそこを
+            <strong>すり抜けて</strong>内側に入り込んでいた。</span
+          >
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span
+            >塗りつぶしが通れる不透明度の上限を 250 から 128 に。半分でも残っている絵は壁として扱う。</span
+          >
+        </div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 3</span>
+        <span class="case__title">透過ずみPNGの半透明部分の色が沈む</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span
+            >アルファがすでに正しく付いている画像にまで、背景色の引き算をかけていた。付いていない白を引いていた。</span
+          >
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>この経路では引き算の初期値を 0 に。白フチが焼き付いた画像のために、足す余地は残した。</span>
+        </div>
+        <div class="evidence">グローの色 &nbsp;修正前 rgb(0, 212, 212) &nbsp;→&nbsp; 修正後 rgb(33, 226, 226)　（元 34, 226, 226）</div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 4</span>
+        <span class="case__title">うすい色のフレームが、初期状態でごっそり消える</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            しきい値を「縁のばらつき＋固定の余裕 0.035」で決めていた。この余裕が、デザインの薄い色そのものと
+            同じ大きさだった。金魚フレームの水しぶきは白との色差が <strong>0.056</strong> しかなく、
+            初期値 <strong>0.06</strong> にちょうど飲み込まれていた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">原因2</span>
+          <span>
+            さらにグロー判定の感度が高すぎ、輪郭のアンチエイリアスだけでグローと誤判定して境目を
+            0.3 まで広げていた。これも薄い色を半透明にしていた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            画像全体のヒストグラムから、背景の山が終わる位置を読んでしきい値にする。境目の幅も
+            「背景の終わり」から「絵の色が始まる位置」までの隙間に収める。グロー判定は1階級あたりの下限を上げた。
+          </span>
+        </div>
+        <div class="evidence">
+          色差 0.02 の輪 &nbsp;修正前 alpha=20 &nbsp;→&nbsp; 修正後 alpha=255（4本すべて）
+        </div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 5</span>
+        <span class="case__title">うすい水しぶきや泡が、枠の外に出て見切れる</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            切り出しの範囲を「濃い部分（不透明度128超）」だけで測っていたので、薄い部分が範囲外になっていた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            落とすと決めた UI の矩形を避けながら、かすかにでも残っている画素（不透明度8超）まで範囲を広げ直す。
+          </span>
+        </div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 6</span>
+        <span class="case__title">グロー付きフレームが、無駄に AI へ回る</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            縁の色のばらつきで手法を先に決めていた。光が画像のふちまで届くと縁がばらついて見えるため、
+            色キーで足りるフレームまで AI 行きになっていた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>常に色キーから始め、結果を検算して駄目なら AI に回す。断片数の上限も 350 → 60 に。</span>
+        </div>
+        <div class="evidence">断片数 &nbsp;成功したフレーム 1〜3 個 &nbsp;／&nbsp; 失敗したもの 110 個</div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 7</span>
+        <span class="case__title">スクショを入れると、フレームが片隅の小さな輪になる</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            TikTok は透過を持てないので、受け取る側はスクショで持ってくる。時刻・キャプション・ボタン列まで
+            一緒に入るため、余白を詰める処理がそれらを含めてしまっていた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>読み込んだ直後にフレームだけを切り出す。切り取ったことは画面に出し、取り消せるようにした。</span>
+        </div>
+        <div class="evidence">縦横比 &nbsp;修正前 0.46（縦長のまま） &nbsp;→&nbsp; 修正後 1.00</div>
+      </div>
+    </article>
+
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 8</span>
+        <span class="case__title">設定を変えると「くわしい設定」が閉じて、手なおしも消える</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>処理中に操作パネルごと画面から外していたため、開いていた状態も編集内容も失われていた。</span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            ステップ2と3の画面は、進んでも「隠すだけ」で外さない。手描きの修正も合わせた位置も残る。
+          </span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section>
+    <p class="eyebrow">確かめかた</p>
+    <h2>検証</h2>
+    <p>
+      <code>npm test</code> は実際に Chromium を起動し、画像を読み込ませて、
+      <strong>出力画素のアルファを読んで</strong>判定します。透過の良し悪しは目で見ないと分からないと
+      思われがちですが、次のことは機械的に確かめられます。
+    </p>
+    <ul class="plain">
+      <li>四隅とまん中の穴が透明になっているか</li>
+      <li>うすい色のリングが、半透明にならず残っているか</li>
+      <li>囲まれた白（提灯の紙・狐面・泡）に穴が開いていないか</li>
+      <li>グローが階調のまま残っているか（半透明画素の割合で測る）</li>
+      <li>暗い写真に重ねたとき、グローが色を保っているか</li>
+      <li>透過ずみの画像で、半透明部分の色が変わっていないか</li>
+      <li>スクショから UI が落ち、正方形に近く切り出されているか</li>
+      <li>AI を呼ぶべきとき／呼ばずに済むべきとき、それぞれ正しいか</li>
+    </ul>
+    <p>
+      検証用の画像は <code>tests/fixtures.mjs</code> がその場で描き起こします。実物の見た目を似せたものではなく、
+      <strong>つまずく性質だけ</strong>を取り出したものです。
+    </p>
+
+    <h3>本物のフレームで確かめる</h3>
+    <p>
+      <code>tests/real/</code> を作って自分のフレーム画像（png / jpg / webp）を放り込んでから
+      <code>npm test</code> すると、1枚ずつ通して四隅・まん中の穴・面積比・エラーの有無を確かめます。
+      <code>.gitignore</code> 済みなので、フレームがリポジトリに入ることはありません。
+      画像を置かなければ、この項目は黙って飛ばされます。
+    </p>
+    <div class="callout">
+      <p>
+        <strong>新しいデザインで不具合が出たら、まずここに置いて再現させてください。</strong>
+        直したあと、その性質だけを取り出した画像を <code>tests/fixtures.mjs</code> に足せば、
+        以後は自動で守られます。上の CASE はすべてこの手順で固定しました。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">早見表</p>
+    <h2>こう言われたら、どこを触るか</h2>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th>言われること</th>
+            <th>使う人が触るところ</th>
+            <th>直すならコード</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>フレームが薄く消えてしまう</td>
+            <td>「どこまで消すか」を下げる</td>
+            <td class="num">suggestedTolerance / cutout.ts</td>
+          </tr>
+          <tr>
+            <td>背景が消え残る</td>
+            <td>「どこまで消すか」を上げる</td>
+            <td class="num">同上</td>
+          </tr>
+          <tr>
+            <td>光のにじみが切れて見える</td>
+            <td>「光のにじみを残す」を上げる</td>
+            <td class="num">suggestedSoftness / cutout.ts</td>
+          </tr>
+          <tr>
+            <td>まわりに白いフチが残る</td>
+            <td>「フチをけずる」を上げる</td>
+            <td class="num">shrink（初期値0）</td>
+          </tr>
+          <tr>
+            <td>提灯や面の白まで消える</td>
+            <td>「デザインの中の白もけす」がオフか確認</td>
+            <td class="num">protectEnclosed / cutout.ts</td>
+          </tr>
+          <tr>
+            <td>まん中の穴が抜けない</td>
+            <td>—</td>
+            <td class="num">floodBackground の中心の種</td>
+          </tr>
+          <tr>
+            <td>切り取られすぎた</td>
+            <td>「切り取らずに全部つかう」を押す</td>
+            <td class="num">findSubjectRect / cutout.ts</td>
+          </tr>
+          <tr>
+            <td>白いフレームが見えない</td>
+            <td>「下じき」を暗い市松に切り替える</td>
+            <td class="num">.preview[data-backdrop] / styles.css</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">正直なところ</p>
+    <h2>わかっている制限</h2>
+    <div class="callout callout--warn">
+      <p>
+        <strong>AI切り抜きの実地確認ができていません。</strong>
+        開発環境が huggingface.co を遮断しているため、モデルの取得から推論までを通しで動かせていません。
+        読み込みに失敗したときに色キーへ落ちる経路は確認済みなので行き止まりにはなりませんが、
+        <strong>公開後に一度、白いガラス系のフレームで確かめてください。</strong>
+      </p>
+    </div>
+    <ul class="plain">
+      <li>
+        <strong>iPhone では振動しません。</strong> iOS Safari が Vibration API を持っていないためです。
+        非対応端末ではスイッチ自体を出していません。iPhone では音と見た目だけで手ざわりを作っています。
+      </li>
+      <li>
+        <strong>HEIC はブラウザ次第です。</strong> iOS の写真アプリから選ぶと多くの場合 JPEG に変換されますが、
+        HEIC のまま渡されてデコードできない環境では、日本語で「保存しなおしてください」と出します。
+      </li>
+      <li>
+        <strong>AIモデルのライセンス。</strong> 既定の1番手 RMBG-1.4 は非商用の条件付きです。
+        無料で配る用途なら問題になりませんが、商用にするなら <code>src/lib/ai.ts</code> の
+        <code>MODELS</code> の順番を入れ替えて、MIT の BiRefNet を先頭にしてください。
+      </li>
+      <li>
+        <strong>真っ白を白地に描いたデザインは、色では原理的に分けられません。</strong>
+        色差が 0.008 を下回ると背景と区別できないので AI に回ります。AI でも詰めが甘ければ、
+        「消しのこりを消す／消えすぎをもどす」の筆で仕上げる想定です。
+      </li>
+      <li><strong>オフライン対応はしていません。</strong> Service Worker は入れていません。</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>
+      設計の詳しい理由は <code>README.md</code> に、実装上の判断はコード中のコメントに残してあります。
+      迷ったら、まず <code>src/lib/cutout.ts</code> の冒頭のコメントを読んでください。
+    </p>
+    <p>
+      方針としてひとつだけ： <strong>推測より、出した結果を測ること。</strong>
+      上の CASE はすべて、頭で考えた判定が実物の前で外れた記録です。
+    </p>
+  </footer>
+</div>
+</body></html>
