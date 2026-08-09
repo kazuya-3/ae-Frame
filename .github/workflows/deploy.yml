@@ -45,7 +45,13 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm test
 
+      # enablement: true にすると、Pages がまだ有効になっていないリポジトリでも
+      # ワークフロー自身が有効にしてから進む。
+      # これが無いと「Get Pages site failed / Not Found」で止まる。
+      # 実際そこで1回落ちていて、画面から手で設定しないと先へ進めなかった。
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
