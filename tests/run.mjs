@@ -205,15 +205,36 @@ try {
     await page.close();
   }
 
+  /*
+    白い背景の上では、うすい光とうすい絵の具は同じ色になる。区別する手立ては無い。
+
+    そこで既定は「消しすぎない」側に倒してある。光は階調ではなく色として残り、
+    階調が欲しい人は「光のにじみを残す」を上げる。両方を確かめる。
+  */
   console.log('\n■ ネオン（外周のグローが白地へにじむ）');
   {
     const { page } = await openFrame(browser, 'neon.png');
-    const h = await alphaHistogram(page);
     check('四隅が透明になる', (await alphaAt(page, 0.01, 0.01)) < 10);
     check('まん中の穴が透明になる', (await alphaAt(page, 0.5, 0.5)) < 10);
     check('リング本体は完全に不透明', (await alphaAt(page, 0.5, 0.119)) > 240);
-    // ここが肝。半透明の画素が十分あれば、光が階調のまま生きている。
-    check('グローが階調のまま残る', h.semi > 0.04, `半透明 ${(h.semi * 100).toFixed(1)}%`);
+    // 既定では光を消さない。グローの明るいところが残っていること。
+    check(
+      '既定でグローの色が残る',
+      (await alphaAt(page, 0.5, 0.075)) > 200,
+      `alpha=${await alphaAt(page, 0.5, 0.075)}`,
+    );
+
+    // 逃げ道が本当に効くか。上げれば階調が戻る。
+    await page.getByRole('button', { name: /うまく消えないときは/ }).click();
+    await page.waitForTimeout(250);
+    await page.getByLabel('光のにじみを残す').fill('30');
+    await page.waitForTimeout(700);
+    const h = await alphaHistogram(page);
+    check(
+      '「光のにじみを残す」を上げると階調が戻る',
+      h.semi > 0.04,
+      `半透明 ${(h.semi * 100).toFixed(1)}%`,
+    );
     await page.close();
   }
 

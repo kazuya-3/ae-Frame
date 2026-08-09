@@ -684,7 +684,7 @@ export function CutoutStudio({
                 max={70}
                 onChange={(v) => patch({ softness: v / 100 })}
                 format={(v) => `${v}`}
-                note="ネオンの光や水彩のぼかしを、うすいまま残す幅です。大きいほどふんわり残ります。"
+                note="ふだんは 1 のままでOK。ネオンの光をふんわり消えるように残したいときだけ上げてください（上げすぎると、うすい色のデザインまで透けます）。"
               />
               <Toggle
                 on={!settings.protectEnclosed}

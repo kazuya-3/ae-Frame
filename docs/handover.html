@@ -653,11 +653,11 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
           </tr>
           <tr>
             <td>境目の幅</td>
-            <td class="num">グロー: 0.3<br />それ以外: 0.01</td>
+            <td class="num">つねに 0.01</td>
             <td>
-              グローがあるときだけ広く取る。以前は隙間から計算していたが、実測すると線画も祭も金魚も
-              スクショも上限に張り付いていた。その範囲には画素が無いので何も起きておらず、効いていないのに
-              大きい値が出ている状態だった（CASE 9）。ギザギザは feather が均すので、ここを広げる必要はない。
+              自動では上げない。幅 0.3 は「白との色差 0.31 未満の色をまとめてうすくする」という意味で、
+              光と淡い色が同居するデザインでは絵まで透ける（CASE 10）。光を階調で残したい人が
+              スライダーを上げる、という順番にした。ギザギザは feather が均す。
             </td>
           </tr>
           <tr>
@@ -1009,6 +1009,50 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         <div class="evidence">初期値 &nbsp;線画・祭・金魚・スクショ 20 &nbsp;→&nbsp; 1 ／ ネオンは 30 のまま</div>
       </div>
     </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 10</span>
+        <span class="case__title">グローのあるデザインで、絵そのものが透けてしまう</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            グローを見つけたときだけ境目の幅を 0.3 に広げていた。これは
+            <strong>「白との色差が 0.31 未満の色を、まとめてうすくする」</strong>という意味になる。
+            花火と淡い水彩が同居するようなデザインでは、光だけでなく絵の淡い色まで巻き込まれる。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">背景</span>
+          <span>
+            これは実装の誤りではなく、避けようのない曖昧さに触れている。
+            <strong>白い背景の上では、うすい光とうすい絵の具は同じ色になる。</strong>
+            画素だけを見て区別する手立ては無い。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            どちらを既定にするかを、失敗したときの気づきやすさで決めた。消え残りは画面を見ればすぐ分かり、
+            スライダーでも筆でも直せる。絵がうっすら透けたのは気づきにくく、書き出したあとでは直せない。
+            そこで初期値はつねに 0.01（＝消しすぎない側）にし、光を階調で残したい人が
+            「光のにじみを残す」を上げる、という順番にした。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">代償</span>
+          <span>
+            ネオンのフレームは、既定のままだと光が「階調」ではなく「色」として残る。
+            暗いアイコン写真に重ねたとき、外側へ消えていくフェードは出ない。
+            スライダーを上げれば戻る（検証で固定してある）。
+          </span>
+        </div>
+        <div class="evidence">
+          ネオンの半透明画素 &nbsp;既定 2.3% &nbsp;／&nbsp; にじみを 30 に上げると 12.0%
+        </div>
+      </div>
+    </article>
   </section>
 
   <section>
@@ -1075,8 +1119,13 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
           </tr>
           <tr>
             <td>光のにじみが切れて見える</td>
-            <td>「光のにじみを残す」を上げる</td>
+            <td>「光のにじみを残す」を上げる（既定は 1）</td>
             <td class="num">suggestedSoftness / cutout.ts</td>
+          </tr>
+          <tr>
+            <td>デザインの淡い色が透ける</td>
+            <td>「光のにじみを残す」を下げる</td>
+            <td class="num">同上（上げすぎの副作用）</td>
           </tr>
           <tr>
             <td>まわりに白いフチが残る</td>
