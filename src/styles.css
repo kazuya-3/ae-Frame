@@ -1416,3 +1416,23 @@ input[type='range']:active::-webkit-slider-thumb {
   line-height: 1.65;
   color: var(--ink-soft);
 }
+
+/* 枠の中で開かれているときの但し書き。責めではなく事情の説明として置く。 */
+.saver__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-wash, #faefd8);
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  text-align: left;
+}
+
+.saver__warn svg {
+  flex: none;
+  margin-top: 3px;
+}

@@ -499,8 +499,14 @@
     </p>
     <ol class="steps">
       <li>
-        <b>ブランチを <code>main</code> に入れる</b>
-        <p>プルリクエストはまだ作っていません。必要なら作ってからマージしてください。</p>
+        <b>ブランチはそのままでよい</b>
+        <p>
+          このリポジトリには <code>main</code> がまだ無く、既定のブランチは
+          <code>claude/tiktok-icon-frame-editor-dbgywf</code> のほうです。
+          公開のワークフローは両方を見るようにしてあるので、
+          <strong>いま push すればそのまま公開されます。</strong>
+          あとから <code>main</code> を作っても、そのまま動きます。
+        </p>
       </li>
       <li>
         <b>Settings → Pages → Source を「GitHub Actions」にする</b>
@@ -569,7 +575,7 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/App.tsx</dt>
       <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
       <dt>tests/run.mjs</dt>
-      <dd>実ブラウザでの通し検証。83項目。</dd>
+      <dd>実ブラウザでの通し検証。86項目。</dd>
     </dl>
   </section>
 
@@ -1201,6 +1207,52 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             <strong>関係のない画面のほうが壊れていた</strong>（あとに書いたほうが勝つ）。
             新しいほうを <code>.saver__*</code> に改名し、
             「つかいかたも画面ぜんぶをおおうか」を検証に足した。
+          </span>
+        </div>
+      </div>
+    </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 15</span>
+        <span class="case__title">お試しリンクだと、保存できましたと出るのに1枚も落ちてこない</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            <code>&lt;iframe sandbox&gt;</code> の中では、ブラウザが
+            <strong>ダウンロードそのものを止める</strong>（<code>allow-downloads</code> が要る）。
+            共有も同じく止まる。やっかいなのは <code>&lt;a download&gt;</code> が
+            <strong>例外を投げないこと</strong>で、こちらからは成功したように見える。
+            結果、「保存できました」の緑の案内だけが出て、ファイルは1枚も無い。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            <code>window.self !== window.top</code> で枠の中にいることは分かる。
+            そのときは「保存できました」と<strong>言い切らず</strong>、
+            長おしできる画像のシートを開き、「いま別のサイトの中で開かれています」と
+            事情のほうを説明する。あわせて、成功時の文面も
+            「保存できました！」から「保存しました。見あたらないときは…」に変えた。
+            <strong>こちらから見えているのは「保存をはじめた」ところまで</strong>で、
+            端末に入ったかどうかは分からない。分からないことを断定しない。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">検証</span>
+          <span>
+            検証用サーバーに <code>/__embed</code> を足して、
+            <code>allow-downloads</code> の無いサンドボックス iframe の中で
+            実際に通しに動かしている。「緑の案内を出さないこと」「かわりに
+            長おしできる画像を出すこと」を機械で押さえた。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">運用</span>
+          <span>
+            <strong>お試しリンクは動作確認に使えない。</strong>
+            保存まわりを試すときは、公開した本物の URL を開くこと。
           </span>
         </div>
       </div>

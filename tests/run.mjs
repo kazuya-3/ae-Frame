@@ -44,6 +44,17 @@ function serve() {
       const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png',
         '.svg':'image/svg+xml','.wasm':'application/wasm','.webmanifest':'application/manifest+json'};
       http.createServer((req,res)=>{
+        /*
+          お試しリンクのような「枠の中で開かれた状態」を再現する。
+          allow-downloads を渡さないのがこの再現の要で、
+          このときブラウザは <a download> を例外も出さずに黙って捨てる。
+        */
+        if(req.url.split('?')[0]==='/__embed') {
+          res.writeHead(200,{'Content-Type':'text/html'});
+          return res.end('<!doctype html><meta charset=utf-8>'
+            + '<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style>'
+            + '<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" src="/"></iframe>');
+        }
         let p=path.join(root, decodeURIComponent(req.url.split('?')[0]));
         if(!p.startsWith(root)) { res.writeHead(403); return res.end(); }
         if(fs.existsSync(p)&&fs.statSync(p).isDirectory()) p=path.join(p,'index.html');
@@ -914,6 +925,53 @@ try {
     await dl;
     await page.waitForTimeout(800);
     check('保存後も、設定していなければ出ない', (await page.locator('.tip').count()) === 0);
+    await page.close();
+  }
+
+  /*
+    お試しリンク（別サイトの枠の中）で開かれたとき。
+
+    実機で「保存できましたと出るのに、1枚も落ちてこない」が起きた。
+    枠の中ではダウンロードが止められるが、<a download> は例外を投げないので、
+    こちらからは成功したように見えてしまう。いちばん質の悪い嘘なので、
+    「言い切らない」ことと「その場で保存できる形を出すこと」を機械で押さえる。
+  */
+  console.log('\n■ 枠の中で開かれたとき（お試しリンク）');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+    await page.goto(BASE + '__embed', { waitUntil: 'networkidle' });
+
+    const app = page.frameLocator('iframe');
+    await app
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await app.locator('input[type=file]').first().setInputFiles(join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(600);
+    await app.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(300);
+    await app.locator('input[type=file]').first().setInputFiles(join(FIXTURES, 'lineart.png'));
+    await page.waitForTimeout(4200);
+    await app.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1400);
+
+    await app.getByRole('button', { name: /画像をほぞんする|写真アプリにほぞんする/ }).click();
+    await page.waitForTimeout(1800);
+
+    // ここで「保存できました」と言い切ってはいけない
+    const claimed = await app.locator('.note--ok').count();
+    check('枠の中では「保存できました」と言わない', claimed === 0, `緑の案内 ${claimed} 個`);
+
+    // かわりに、その場で保存できる形が出ていること
+    const img = app.locator('.saver__image');
+    const shown = await img.waitFor({ state: 'visible', timeout: 10000 }).then(
+      () => true,
+      () => false,
+    );
+    check('かわりに長おしできる画像を出す', shown);
+    check('枠の中だと分かる説明を出す', (await app.locator('.saver__warn').count()) === 1);
     await page.close();
   }
 

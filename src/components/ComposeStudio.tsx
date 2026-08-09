@@ -19,6 +19,7 @@ import {
   IconRotate,
   IconShare,
   IconTouch,
+  IconWarn,
   IconX,
 } from './Icons';
 import { TipAfterSave } from './TipJar';
@@ -125,6 +126,24 @@ export function ComposeStudio({
       setCanShare(Boolean(navigator.canShare?.({ files: [probe] })));
     } catch {
       setCanShare(false);
+    }
+  }, []);
+
+  /*
+    このページが、ほかのサイトの中に埋めこまれて開かれているか。
+
+    プレビュー用の枠（お試しリンクなど）の中では、ダウンロードも共有も
+    止められていることがある。しかも <a download> は例外を投げず、
+    ただ何も起きない。検知できるのは「枠の中にいる」という事実だけなので、
+    それを見て、はじめから別の道を出す。
+  */
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => {
+    try {
+      setEmbedded(window.self !== window.top);
+    } catch {
+      // 上の窓を覗けない＝別サイトの枠の中、ということ
+      setEmbedded(true);
     }
   }, []);
 
@@ -508,11 +527,25 @@ export function ComposeStudio({
     }
   };
 
-  /** ファイルとして落とす。パソコンと Android はこれで写真に入る。 */
+  /** ファイルとして落とす。パソコンと Android はこれで保存できる。 */
   const downloadNow = async () => {
     setBusy(true);
     try {
       const blob = readyRef.current?.blob ?? (await buildBlob());
+
+      /*
+        埋めこみの枠の中では、ダウンロードそのものが止められる。
+        <a download> は例外を投げずに、ただ何も起きない。
+        「保存できました」と出したうえで1枚も落ちてこないのが、いちばん悪い。
+        ここでは嘘をつかず、その場で保存できる形（長おしできる画像）を出す。
+      */
+      if (embedded) {
+        if (!readyRef.current) putReady({ blob, url: URL.createObjectURL(blob) });
+        play('done');
+        setSheet(true);
+        return;
+      }
+
       downloadBlob(blob, timestampName('icon', 'png'));
       play('done');
       setSaved(true);
@@ -722,10 +755,18 @@ export function ComposeStudio({
           携帯に入ってこないときは
         </button>
 
+        {/*
+          「保存できました」と言い切らない。
+          こちらから分かるのは「保存をはじめた」ところまでで、
+          本当に端末に入ったかどうかは見えない。
+          見あたらなかった人が次にどこを押せばいいかを、必ず添える。
+        */}
         {saved && (
           <div className="pop">
             <Note tone="ok">
-              保存できました！SNSのプロフィール写真から、この画像をえらんでください。
+              保存しました。SNSのプロフィール写真から、この画像をえらんでください。
+              <br />
+              見あたらないときは、上の「携帯に入ってこないときは」から保存できます。
             </Note>
           </div>
         )}
@@ -780,12 +821,28 @@ export function ComposeStudio({
             </Button>
           </div>
 
+          {/*
+            埋めこみの枠の中にいると分かっているときは、まずそれを言う。
+            「自分の操作が悪かったのかな」と思わせないため。
+          */}
+          {embedded && (
+            <div className="saver__warn">
+              <IconWarn size={18} />
+              <span>
+                いま、このページは<b>ほかのサイトの中で開かれています</b>。
+                その場合、ダウンロードが止められて1枚も保存できません。
+                下の画像を長おしして保存するか、
+                <b>ツールのURLを直接ひらいて</b>ためしてください。
+              </span>
+            </div>
+          )}
+
           <p className="saver__lede">
             <IconTouch size={20} />
             <span>
-              <b>この画像を長おしして「写真に追加」。</b>
-              iPhone は、ここからでないと写真アプリに入りません。
-              長めに押すとメニューが出るので、「写真に追加」または「“写真”に保存」をえらんでください。
+              <b>この画像を長おしすると保存できます。</b>
+              iPhone はメニューの「写真に追加」または「“写真”に保存」、
+              Android は「画像をダウンロード」をえらんでください。
             </span>
           </p>
 
@@ -812,8 +869,9 @@ export function ComposeStudio({
           </div>
 
           <p className="saver__fine">
-            Android とパソコンは「ダウンロード」で保存できます。
-            iPhone でダウンロードすると、写真アプリではなく「ファイル」アプリに入ります。
+            {embedded
+              ? '「ダウンロード」は、この枠の中では効かないことがあります。効かなかったときは、上の画像を長おししてください。'
+              : 'Android とパソコンは「ダウンロード」で保存できます。iPhone でダウンロードすると、写真アプリではなく「ファイル」アプリに入ります。'}
           </p>
         </Sheet>
       )}

@@ -1,9 +1,17 @@
 name: GitHub Pages に公開
 
-# main に入ったら自動で公開する。手動実行もできる。
+# 既定のブランチに入ったら自動で公開する。手動実行もできる。
+#
+# このリポジトリには main がまだ無く、既定のブランチは
+# claude/tiktok-icon-frame-editor-dbgywf のほう。
+# main だけを見ていると、いつまで経っても公開が始まらない
+# （実際そうなっていて、お試しリンクでしか動かせない状態が続いた）。
+# main を作ったあともそのまま動くように、両方を見る。
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - claude/tiktok-icon-frame-editor-dbgywf
   workflow_dispatch:
 
 permissions:
@@ -28,7 +36,9 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npx tsc -b
+      # npm run build の中で tsc -b も走るので、ここで別に叩かない。
+      # オプションを足して叩くと src/ に .js が吐かれ、以後 Vite が
+      # .tsx ではなくそちらを読んでしまう（引き継ぎ資料 CASE 14）。
       - run: npm run build
 
       # 透過の品質は、壊れても型では気づけない。実ブラウザで確かめてから公開する。
