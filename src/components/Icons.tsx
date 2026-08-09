@@ -222,3 +222,28 @@ export const IconFlip = (p: Props) => (
     <path d="M15 7.5L20 12l-5 4.5z" />
   </Svg>
 );
+
+/** 共有（端末の共有シートを開く） */
+export const IconShare = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 15V3.5" />
+    <path d="M8.5 7L12 3.5 15.5 7" />
+    <path d="M5.5 12.5v6a1.5 1.5 0 001.5 1.5h10a1.5 1.5 0 001.5-1.5v-6" />
+  </Svg>
+);
+
+/** かどまる（角の丸い四角） */
+export const IconRounded = (p: Props) => (
+  <Svg {...p}>
+    <rect x="4" y="4" width="16" height="16" rx="5.5" />
+  </Svg>
+);
+
+/** 指で長おし */
+export const IconTouch = (p: Props) => (
+  <Svg {...p}>
+    <path d="M11 11.5V5.2a1.7 1.7 0 013.4 0v8.3" />
+    <path d="M14.4 11.2a1.6 1.6 0 013.2 0v.9" />
+    <path d="M17.6 11.9a1.6 1.6 0 013.1.5v2.4c0 3.2-2.2 5.7-5.4 5.7h-1.4c-2 0-3.2-.8-4.3-2.4l-2.4-3.5a1.7 1.7 0 012.6-2.1l1.3 1.4" />
+  </Svg>
+);

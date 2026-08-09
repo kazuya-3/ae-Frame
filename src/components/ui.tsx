@@ -11,6 +11,7 @@ import {
   type ButtonHTMLAttributes,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { play, unlockAudio, type SoundName } from '../lib/sound';
 import { IconChevron, IconInfo, IconWarn, IconCheck } from './Icons';
 
@@ -342,12 +343,24 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
     };
   }, [onClose]);
 
-  return (
+  /*
+    画面いっぱいに出すものは、かならず body 直下に置く。
+
+    position: fixed は「画面」を基準にするが、transform のかかった親が
+    ひとつでもあると、その親を基準にしてしまう。ステップ3のカードには
+    出現アニメーション（transform）が掛かっているので、その中でこれを開くと
+    「画面いっぱい」のつもりがカードの中の小さな四角になる。
+
+    DOM には居るし、目に見えてもいるので、検証の「表示されているか」は通ってしまう。
+    寸法を測るまで気づけなかった。
+  */
+  return createPortal(
     <div className="sheet-backdrop" onClick={onClose} role="presentation">
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet__grip" />
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

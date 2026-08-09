@@ -7,3 +7,10 @@ dist/
 tests/fixtures/
 tests/real/
 dist-demo/
+
+# tsc がまちがって src に吐いた成果物。
+# これが残っていると、Vite が .tsx ではなく古い .js のほうを読んでしまい、
+# 直したはずの画面が直っていない、という追いにくい状態になる。
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts

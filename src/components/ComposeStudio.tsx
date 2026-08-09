@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canvasToBlob, createCanvas, downloadBlob, get2d, timestampName } from '../lib/image';
 import { play } from '../lib/sound';
-import { Button, Note, Segmented, Slider, Toggle } from './ui';
+import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import {
   IconArrowLeft,
   IconDownload,
@@ -17,6 +17,9 @@ import {
   IconPlus,
   IconRefresh,
   IconRotate,
+  IconShare,
+  IconTouch,
+  IconX,
 } from './Icons';
 import { TipAfterSave } from './TipJar';
 
@@ -41,6 +44,31 @@ const GAP_FILL: Record<Gap, string | null> = {
   black: '#111114',
 };
 
+/**
+ * 下じきにする写真そのものの形。
+ *
+ * フレームの穴より写真を小さくしたとき、四角い写真の角がフレームからはみ出て
+ * 「切り忘れ」みたいに見える。まるく抜いておくと、それだけで仕上がりになる。
+ */
+type Shape = 'fill' | 'circle' | 'rounded' | 'square';
+
+/** 形にそって写真を切り抜く。原点は写真の中心。 */
+function clipToShape(ctx: CanvasRenderingContext2D, w: number, h: number, shape: Shape) {
+  if (shape === 'fill') return;
+  // まる・かどまる・しかくは、短いほうの辺にそろえる。
+  // 長いほうに合わせると、写真の外側（何も無いところ）まで形に含まれてしまう。
+  const s = Math.min(w, h);
+  ctx.beginPath();
+  if (shape === 'circle') {
+    ctx.arc(0, 0, s / 2, 0, Math.PI * 2);
+  } else if (shape === 'rounded' && typeof ctx.roundRect === 'function') {
+    ctx.roundRect(-s / 2, -s / 2, s, s, s * 0.18);
+  } else {
+    ctx.rect(-s / 2, -s / 2, s, s);
+  }
+  ctx.clip();
+}
+
 type Target = 'photo' | 'frame';
 
 const IDENTITY: Transform = { x: 0, y: 0, scale: 1, rotation: 0, flipped: false };
@@ -64,6 +92,7 @@ export function ComposeStudio({
   const [target, setTarget] = useState<Target>('photo');
   const [round, setRound] = useState(true);
   const [gap, setGap] = useState<Gap>('none');
+  const [shape, setShape] = useState<Shape>('fill');
   // 一度でも触ったら、操作の案内は引っ込める
   const [touched, setTouched] = useState(false);
   const [tipDismissed, setTipDismissed] = useState(false);
@@ -84,9 +113,31 @@ export function ComposeStudio({
   const t = target === 'photo' ? photoT : frameT;
   const setT = target === 'photo' ? setPhotoT : setFrameT;
 
+  /*
+    「共有できるか」は navigator.share の有無だけでは分からない。
+    パソコンの Chrome は share を持っているのに、画像ファイルは渡せない。
+    実際に PNG のファイルを1つ作って、それを渡せるかどうかで判断する。
+  */
   useEffect(() => {
-    setCanShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function');
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return;
+    try {
+      const probe = new File([new Uint8Array(1)], 'probe.png', { type: 'image/png' });
+      setCanShare(Boolean(navigator.canShare?.({ files: [probe] })));
+    } catch {
+      setCanShare(false);
+    }
   }, []);
+
+  /*
+    案内は、触れば消える。ただしボタンやスライダーだけで操作する人は
+    プレビューに一度も触らないので、いつまでも絵の上に残ってしまう。
+    読むには十分な時間だけ出して、あとは自分から引っ込める。
+  */
+  useEffect(() => {
+    if (!active || touched) return;
+    const id = setTimeout(() => setTouched(true), 6000);
+    return () => clearTimeout(id);
+  }, [active, touched]);
 
   /* --------------- 画像の基準倍率 --------------- */
 
@@ -127,18 +178,20 @@ export function ComposeStudio({
         ctx.restore();
       }
 
-      const drawLayer = (img: ImageBitmap, base: number, tr: Transform) => {
+      const drawLayer = (img: ImageBitmap, base: number, tr: Transform, cut: Shape = 'fill') => {
         const w = img.width * base * tr.scale * k;
         const h = img.height * base * tr.scale * k;
         ctx.save();
         ctx.translate(size / 2 + tr.x * k, size / 2 + tr.y * k);
         ctx.rotate((tr.rotation * Math.PI) / 180);
         if (tr.flipped) ctx.scale(-1, 1);
+        // 切り抜きは回転のあとに掛ける。写真をかたむけたら、まるも一緒にかたむく。
+        clipToShape(ctx, w, h, cut);
         ctx.drawImage(img, -w / 2, -h / 2, w, h);
         ctx.restore();
       };
 
-      drawLayer(photo, photoBase, photoT);
+      drawLayer(photo, photoBase, photoT, shape);
       drawLayer(frame, frameBase, frameT);
 
       if (withOverlay && round) {
@@ -162,7 +215,7 @@ export function ComposeStudio({
         ctx.restore();
       }
     },
-    [photo, frame, photoBase, frameBase, photoT, frameT, round, gap],
+    [photo, frame, photoBase, frameBase, photoT, frameT, round, gap, shape],
   );
 
   /*
@@ -346,13 +399,89 @@ export function ComposeStudio({
     return canvasToBlob(canvas, 'image/png');
   }, [paint, round]);
 
-  const save = async () => {
+  /*
+    ここは「保存したのに写真に入ってこない」を直すための作りになっている。
+
+    iPhone でつまずく理由が2つあった。
+
+    1. navigator.share は、指が離れてから少しの間しか呼べない（ユーザー操作の有効期限）。
+       ボタンを押してから PNG を作ると 0.2〜1秒かかるので、その間に期限が切れて
+       共有シートが開かない。しかも投げられる例外は「利用者が閉じた」ときと
+       見分けがつきにくく、黙って何も起きないように見える。
+       → 書き出しずみの画像を先に用意しておき、押した瞬間には待ち時間ゼロで呼ぶ。
+
+    2. <a download> は iOS では「写真」ではなく「ファイル」アプリに入る。
+       写真アプリに入れるには、共有シートか、画像の長おし→「写真に追加」しかない。
+       → どちらも出す。うまくいかなかったときの逃げ道を必ず1つ残す。
+  */
+
+  /** 押した瞬間に使えるよう、先に作ってある書き出し結果 */
+  const readyRef = useRef<{ blob: Blob; url: string } | null>(null);
+  const [ready, setReady] = useState<{ blob: Blob; url: string } | null>(null);
+  const [sheet, setSheet] = useState(false);
+
+  const putReady = useCallback((next: { blob: Blob; url: string } | null) => {
+    const prev = readyRef.current;
+    readyRef.current = next;
+    setReady(next);
+    if (prev) URL.revokeObjectURL(prev.url);
+  }, []);
+
+  // 画面の中身が変わったら、少し落ち着いてから書き出しておく。
+  // 指を動かしている最中に毎回 PNG を作ると重いので、止まってからにする。
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    const id = setTimeout(async () => {
+      try {
+        const blob = await buildBlob();
+        if (!alive) return;
+        putReady({ blob, url: URL.createObjectURL(blob) });
+      } catch {
+        /* 用意できなくても、押したときに作り直すので黙っておく */
+      }
+    }, 500);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [buildBlob, active, putReady]);
+
+  useEffect(() => () => putReady(null), [putReady]);
+
+  const makeFile = (blob: Blob) =>
+    new File([blob], timestampName('icon', 'png'), { type: 'image/png' });
+
+  /** 共有シートを開く。待ち時間ゼロで呼べるときだけ成功する。 */
+  const shareNow = (blob: Blob) => {
+    const file = makeFile(blob);
+    if (!navigator.canShare?.({ files: [file] })) return false;
+    navigator
+      .share({ files: [file] })
+      .then(() => {
+        play('done');
+        setSaved(true);
+      })
+      .catch((e: unknown) => {
+        // 利用者が閉じただけなら、何も言わない。
+        // それ以外（期限切れなど）は行き止まりなので、逃げ道を出す。
+        if ((e as { name?: string })?.name !== 'AbortError') setSheet(true);
+      });
+    return true;
+  };
+
+  /** いちばん大きいボタン。ここが「携帯に入れる」入り口。 */
+  const saveToPhone = async () => {
+    const warm = readyRef.current;
+    if (warm && canShare && shareNow(warm.blob)) return;
+
+    // 用意が間に合っていない、または共有できない端末。作ってから逃げ道を出す。
     setBusy(true);
     try {
-      const blob = await buildBlob();
-      downloadBlob(blob, timestampName('icon', 'png'));
+      const blob = warm?.blob ?? (await buildBlob());
+      if (!warm) putReady({ blob, url: URL.createObjectURL(blob) });
       play('done');
-      setSaved(true);
+      setSheet(true);
     } catch {
       play('error');
     } finally {
@@ -360,25 +489,35 @@ export function ComposeStudio({
     }
   };
 
-  const share = async () => {
+  /** 逃げ道の画面を開く。共有は試さず、長おしで保存できる形をそのまま見せる。 */
+  const openSheet = async () => {
+    play('tap');
+    if (readyRef.current) {
+      setSheet(true);
+      return;
+    }
     setBusy(true);
     try {
       const blob = await buildBlob();
-      const file = new File([blob], timestampName('icon', 'png'), {
-        type: 'image/png',
-      });
-      // 画像を共有できない環境では、そのまま保存に切り替える
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file] });
-        play('done');
-        setSaved(true);
-      } else {
-        downloadBlob(blob, file.name);
-        play('done');
-        setSaved(true);
-      }
+      putReady({ blob, url: URL.createObjectURL(blob) });
+      setSheet(true);
     } catch {
-      /* 共有シートを閉じただけなので、何も言わない */
+      play('error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** ファイルとして落とす。パソコンと Android はこれで写真に入る。 */
+  const downloadNow = async () => {
+    setBusy(true);
+    try {
+      const blob = readyRef.current?.blob ?? (await buildBlob());
+      downloadBlob(blob, timestampName('icon', 'png'));
+      play('done');
+      setSaved(true);
+    } catch {
+      play('error');
     } finally {
       setBusy(false);
     }
@@ -509,6 +648,30 @@ export function ComposeStudio({
 
         <div className="field">
           <div className="field__row">
+            <span className="field__label">写真のかたち</span>
+          </div>
+          <Segmented<Shape>
+            ariaLabel="写真のかたち"
+            value={shape}
+            onChange={(v) => {
+              play('tap');
+              setShape(v);
+            }}
+            options={[
+              { value: 'fill', label: 'そのまま' },
+              { value: 'circle', label: 'まる' },
+              { value: 'rounded', label: 'かどまる' },
+              { value: 'square', label: 'しかく' },
+            ]}
+          />
+          <p className="field__note">
+            下じきにする写真そのものを切りぬきます。写真を小さくしてフレームの内側に
+            おさめるとき、四角い角がはみ出さなくなります。
+          </p>
+        </div>
+
+        <div className="field">
+          <div className="field__row">
             <span className="field__label">すきまの色</span>
           </div>
           <Segmented<Gap>
@@ -538,27 +701,31 @@ export function ComposeStudio({
 
         {canShare ? (
           <>
-            <Button variant="primary" onClick={share} disabled={busy}>
-              <IconDownload size={20} />
-              {busy ? '書き出しています…' : 'ほぞん・シェアする'}
+            <Button variant="primary" onClick={saveToPhone} disabled={busy}>
+              <IconShare size={20} />
+              {busy ? '書き出しています…' : '写真アプリにほぞんする'}
             </Button>
-            <Button variant="ghost" onClick={save} disabled={busy}>
-              画像として保存だけする
+            <Button variant="ghost" onClick={downloadNow} disabled={busy}>
+              <IconDownload size={18} />
+              ファイルとしてダウンロード
             </Button>
           </>
         ) : (
-          <Button variant="primary" onClick={save} disabled={busy}>
+          <Button variant="primary" onClick={downloadNow} disabled={busy}>
             <IconDownload size={20} />
             {busy ? '書き出しています…' : '画像をほぞんする'}
           </Button>
         )}
 
+        {/* うまくいかなかったときの逃げ道。押しても保存できない人を、ここで拾う。 */}
+        <button type="button" className="link-quiet" onClick={openSheet} disabled={busy}>
+          携帯に入ってこないときは
+        </button>
+
         {saved && (
           <div className="pop">
             <Note tone="ok">
               保存できました！SNSのプロフィール写真から、この画像をえらんでください。
-              <br />
-              うまく保存できないときは、画像を長おしして「写真に追加」を選んでください。
             </Note>
           </div>
         )}
@@ -584,6 +751,72 @@ export function ComposeStudio({
           </Button>
         </div>
       </div>
+
+      {/*
+        「保存したのに携帯に入ってこない」を最後に受けとめる画面。
+        iPhone では、画像の長おし →「写真に追加」が唯一たしかな道なので、
+        できあがった画像そのものを大きく置いて、そこを長おししてもらう。
+      */}
+      {sheet && ready && (
+        <Sheet
+          onClose={() => {
+            play('back');
+            setSheet(false);
+          }}
+        >
+          <div className="card__head" style={{ marginBottom: 10 }}>
+            <h2 className="card__title" style={{ flex: 1 }}>
+              携帯にほぞんする
+            </h2>
+            <Button
+              variant="icon"
+              aria-label="とじる"
+              onClick={() => {
+                play('back');
+                setSheet(false);
+              }}
+            >
+              <IconX size={20} />
+            </Button>
+          </div>
+
+          <p className="saver__lede">
+            <IconTouch size={20} />
+            <span>
+              <b>この画像を長おしして「写真に追加」。</b>
+              iPhone は、ここからでないと写真アプリに入りません。
+              長めに押すとメニューが出るので、「写真に追加」または「“写真”に保存」をえらんでください。
+            </span>
+          </p>
+
+          {/* 長おしできる本物の <img>。canvas では長おしのメニューが出ない。 */}
+          <img className="saver__image" src={ready.url} alt="できあがったアイコン画像" />
+
+          <div className="saver__actions">
+            {canShare && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  // 押した瞬間に画像が手元にあるので、共有シートは必ず開く
+                  if (!shareNow(ready.blob)) play('error');
+                }}
+              >
+                <IconShare size={20} />
+                共有からほぞんする
+              </Button>
+            )}
+            <Button variant="ghost" onClick={downloadNow} disabled={busy}>
+              <IconDownload size={18} />
+              ファイルとしてダウンロード
+            </Button>
+          </div>
+
+          <p className="saver__fine">
+            Android とパソコンは「ダウンロード」で保存できます。
+            iPhone でダウンロードすると、写真アプリではなく「ファイル」アプリに入ります。
+          </p>
+        </Sheet>
+      )}
     </div>
   );
 }

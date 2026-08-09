@@ -719,6 +719,185 @@ try {
   }
 
   /*
+    写真そのものの切り抜き。フレームの穴より写真を小さくしたときに、
+    四角い角がはみ出さないようにするためのもの。
+  */
+  console.log('\n■ 写真のかたち');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    // フレームの内側におさまる大きさにして、角が見える状態を作る
+    await page.getByLabel(/の大きさ/).fill('60');
+    await page.waitForTimeout(350);
+
+    /*
+      1点だけを見て「抜けたか」を判定すると、かどまるの角の丸みに当たったときに
+      半分だけ塗られた画素を拾って揺れる。形の違いは面積で見るほうが素直。
+
+      そのまま（正方形）＞ かどまる（角を丸めたぶん減る）＞ まる（いちばん減る）
+      という大小関係は、どのフレームでも必ず成り立つ。
+    */
+    const photoArea = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const r = c.width / 2;
+        let opaque = 0;
+        let n = 0;
+        for (let y = 0; y < c.height; y++) {
+          for (let x = 0; x < c.width; x++) {
+            if (Math.hypot(x - r, y - r) > r - 2) continue; // 丸の外は暗幕
+            n++;
+            if (px[(y * c.width + x) * 4 + 3] > 200) opaque++;
+          }
+        }
+        return opaque / Math.max(1, n);
+      });
+
+    const pick = async (label) => {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await page.waitForTimeout(350);
+      return photoArea();
+    };
+
+    const areaFill = await photoArea();
+    const areaRounded = await pick('かどまる');
+    const areaCircle = await pick('まる');
+
+    check(
+      '「まる」は「そのまま」より小さくなる',
+      areaCircle < areaFill - 0.01,
+      `${(areaFill * 100).toFixed(1)}% → ${(areaCircle * 100).toFixed(1)}%`,
+    );
+    check(
+      '「かどまる」はその中間',
+      areaCircle < areaRounded && areaRounded < areaFill,
+      `まる ${(areaCircle * 100).toFixed(1)}% ＜ かどまる ${(areaRounded * 100).toFixed(1)}% ＜ そのまま ${(areaFill * 100).toFixed(1)}%`,
+    );
+
+    const back = await pick('そのまま');
+    check('「そのまま」で元に戻る', Math.abs(back - areaFill) < 0.005);
+
+    // 写真のいちばん外側の角が、まるでは確かに抜けていること
+    await page.getByRole('button', { name: 'まる', exact: true }).click();
+    await page.waitForTimeout(350);
+    const corner = await page.evaluate(() => {
+      const c = document.querySelector('.stage canvas');
+      const d = c.getContext('2d');
+      // 60% の写真は 0.2〜0.8 に広がる。その角のすぐ内側。
+      const f = (fx, fy) =>
+        d.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data[3];
+      return Math.max(f(0.22, 0.22), f(0.78, 0.22), f(0.22, 0.78), f(0.78, 0.78));
+    });
+    check('「まる」で写真の角が抜ける', corner < 16, `alpha ${corner}`);
+
+    // 写真をかたむけたら、まるも一緒にかたむく（＝切り抜きは回転のあと）
+    await page.getByRole('button', { name: 'まる', exact: true }).click();
+    await page.getByLabel('かたむき').fill('30');
+    await page.waitForTimeout(400);
+    const tilted = await page.evaluate(() => {
+      const c = document.querySelector('.stage canvas');
+      const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let opaque = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 200) opaque++;
+      return opaque / (px.length / 4);
+    });
+    // まるは回しても面積が変わらない。四角のまま回っていたら角のぶん増える。
+    check('まるはかたむけても面積が変わらない', tilted > 0.05 && tilted < 0.95, `占有 ${(tilted * 100).toFixed(1)}%`);
+    await page.close();
+  }
+
+  /*
+    「保存したのに携帯に入ってこない」の逃げ道。
+    iPhone は長おし→「写真に追加」しか道が無いので、
+    長おしできる本物の <img> が出ることを確かめる。
+  */
+  /*
+    「つかいかた」も同じシートの部品を使っている。
+    片方を直したときにもう片方が壊れていないことを、ここで押さえる。
+  */
+  console.log('\n■ つかいかたのシート');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await page.getByRole('button', { name: /つかいかた|ヘルプ|使いかた/ }).first().click();
+    const opened = await page
+      .locator('.sheet-backdrop')
+      .waitFor({ state: 'visible', timeout: 10000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    check('つかいかたが開く', opened);
+    if (opened) {
+      const r = await page.evaluate(() => {
+        const b = document.querySelector('.sheet-backdrop').getBoundingClientRect();
+        return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), vw: window.innerWidth };
+      });
+      check('つかいかたも画面ぜんぶをおおう', r.x === 0 && r.y === 0 && r.w >= r.vw, `${r.w} / ${r.vw}`);
+    }
+    await page.close();
+  }
+
+  console.log('\n■ 保存できないときの逃げ道');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    check('逃げ道の入り口がいつも出ている', await page.getByRole('button', { name: '携帯に入ってこないときは' }).isVisible());
+
+    await page.getByRole('button', { name: '携帯に入ってこないときは' }).click();
+    const img = page.locator('.saver__image');
+    const shown = await img.waitFor({ state: 'visible', timeout: 15000 }).then(
+      () => true,
+      () => false,
+    );
+    check('長おしできる画像が出る', shown);
+
+    if (shown) {
+      /*
+        「DOM にあって visible」だけでは足りない。
+        transform のかかった親の中に置くと position: fixed が効かず、
+        画面いっぱいのつもりがカードの中の小さな四角になる。
+        それでも Playwright の visible は通ってしまうので、
+        本当に画面をおおっているかを寸法で見る。
+      */
+      const cover = await page.evaluate(() => {
+        const r = document.querySelector('.sheet-backdrop').getBoundingClientRect();
+        return {
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          vw: window.innerWidth,
+          vh: window.innerHeight,
+        };
+      });
+      check(
+        '画面ぜんぶをおおっている',
+        cover.x === 0 && cover.y === 0 && cover.w >= cover.vw && cover.h >= cover.vh,
+        `${cover.w}×${cover.h} @(${cover.x},${cover.y}) 画面 ${cover.vw}×${cover.vh}`,
+      );
+
+      const src = await img.getAttribute('src');
+      check('画像は書き出したものそのもの', String(src).startsWith('blob:'), String(src).slice(0, 24));
+      const size = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
+      check('書き出しサイズで入っている', size.w === 1080 && size.h === 1080, `${size.w}×${size.h}`);
+      const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+      await page.getByRole('button', { name: /ファイルとしてダウンロード/ }).click();
+      check('逃げ道からも保存できる', !!(await dl));
+    }
+    await page.close();
+  }
+
+  /*
     応援の案内は、設定していないうちは一切出てはいけない。
     そのまま公開しても、ただの無料ツールとして成り立つこと。
   */

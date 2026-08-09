@@ -555,7 +555,8 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/components/ComposeStudio.tsx</dt>
       <dd>
         ステップ3（重ねて位置を合わせて保存）の画面。指・ボタン・キーボードの3通りで
-        同じことができるようにしてあります。
+        同じことができるようにしてあります。写真の切りぬきと、
+        携帯に保存できないときの逃げ道もここ。
       </dd>
       <dt>src/components/TipJar.tsx</dt>
       <dd>応援（チップ）の案内。出す場所と言いかたの決めごとは、このファイルの先頭に書いてあります。</dd>
@@ -568,7 +569,7 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/App.tsx</dt>
       <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
       <dt>tests/run.mjs</dt>
-      <dd>実ブラウザでの通し検証。70項目。</dd>
+      <dd>実ブラウザでの通し検証。83項目。</dd>
     </dl>
   </section>
 
@@ -1116,6 +1117,134 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         </div>
       </div>
     </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 12</span>
+        <span class="case__title">保存したのに、写真アプリに入ってこない</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因1</span>
+          <span>
+            <code>navigator.share</code> には<strong>有効期限</strong>がある。指が離れてから
+            少しの間しか呼べない。ボタンを押してから PNG を作ると 0.2〜1秒かかるので、
+            その間に期限が切れて共有シートが開かない。しかも投げられる例外は
+            「利用者がシートを閉じた」ときと見分けがつきにくく、こちらは
+            <code>catch</code> で黙って捨てていた。<strong>押しても何も起きない</strong>ように見える。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">原因2</span>
+          <span>
+            <code>&lt;a download&gt;</code> は iOS では「写真」ではなく「ファイル」アプリに入る。
+            写真アプリに入れる道は、共有シートか、画像の長おし →「写真に追加」しかない。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            画面の中身が変わるたびに、裏で PNG を作って持っておく（止まってから0.5秒後）。
+            押した瞬間には待ち時間ゼロで共有シートを呼べる。あわせて
+            <strong>「携帯に入ってこないときは」</strong>を常に置き、押すと
+            できあがった画像そのものを大きく出す。ここに置くのは <code>&lt;canvas&gt;</code> ではなく
+            <code>&lt;img&gt;</code>（長おしのメニューが出るのは img だけ）。
+            例外も <code>AbortError</code>（利用者が閉じた）とそれ以外で分け、
+            それ以外のときは必ず逃げ道を出す。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">教訓</span>
+          <span>
+            「保存」を押したあと、何も起きないまま終わる道を1本でも残さないこと。
+            <strong>失敗したことすら分からない</strong>のが、いちばん直しようがない。
+          </span>
+        </div>
+      </div>
+    </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 13</span>
+        <span class="case__title">画面いっぱいのはずのシートが、カードの中に閉じこめられる</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            <code>position: fixed</code> は「画面」を基準にするが、
+            <strong>transform のかかった親がひとつでもあると、その親を基準にしてしまう。</strong>
+            ステップ3のカードには出現アニメーション（<code>transform</code>）が掛かっているので、
+            その中で開いたシートは「画面いっぱい」のつもりでカードの中の四角になる。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">見つけかた</span>
+          <span>
+            DOM にはあるし、目にも見えている。Playwright の
+            <code>toBeVisible</code> も通る。<strong>寸法を測るまで気づけなかった</strong>
+            （390×900 のはずが 356×774 @(17,77) ＝ カードの箱そのもの）。
+            スクリーンショットを撮って初めて「おかしい」と分かった。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            共通部品 <code>Sheet</code> の中で <code>createPortal</code> して
+            <code>body</code> 直下に出すようにした。呼ぶ側は場所を気にしなくてよくなる。
+            検証には「本当に画面をおおっているか」を寸法で見る項目を足した。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">同時に見つかったこと</span>
+          <span>
+            新しいシートに <code>.sheet__*</code> というクラス名を付けたら、
+            すでにあった「つかいかた」のシートの CSS と名前がぶつかり、
+            <strong>関係のない画面のほうが壊れていた</strong>（あとに書いたほうが勝つ）。
+            新しいほうを <code>.saver__*</code> に改名し、
+            「つかいかたも画面ぜんぶをおおうか」を検証に足した。
+          </span>
+        </div>
+      </div>
+    </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 14</span>
+        <span class="case__title">直したはずの画面が、いくら直しても変わらない</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            型チェックのつもりで <code>tsc</code> にオプションを付けて叩いたとき、
+            <code>src/</code> の中に <strong>コンパイル結果の <code>.js</code> が吐き出されていた</strong>。
+            Vite は <code>./ComposeStudio</code> を解決するとき <code>.js</code> を先に見るので、
+            以後ずっと<strong>その時点で凍った古い画面</strong>がビルドされ続ける。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">症状</span>
+          <span>
+            <code>.tsx</code> を直す → ビルドは成功する → 画面は変わらない。
+            検証も「古いほうの画面」に対して通るので、緑のまま嘘をつく。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            <code>src/**/*.js</code> を <code>.gitignore</code> に入れて、
+            混ざったらすぐ <code>git clean -f src/</code> で落とせるようにした。
+            型チェックは <code>npm run typecheck</code> を使うこと
+            （素の <code>tsc</code> にオプションを足して叩かない）。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">見分けかた</span>
+          <span>
+            直したはずのものが反映されないときは、まず
+            <code>find src -name "*.js"</code>。1つでも出てきたら、これを疑う。
+          </span>
+        </div>
+      </div>
+    </article>
   </section>
 
   <section>
@@ -1336,6 +1465,16 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             <td>動かしたのに画面が変わらない</td>
             <td>—</td>
             <td class="num">paintRef / ComposeStudio.tsx（CASE 11）</td>
+          </tr>
+          <tr>
+            <td>保存したのに写真に入ってこない</td>
+            <td>「携帯に入ってこないときは」→ 画像を長おし</td>
+            <td class="num">saveToPhone / ComposeStudio.tsx（CASE 12）</td>
+          </tr>
+          <tr>
+            <td>写真の角がフレームからはみ出る</td>
+            <td>「写真のかたち」を まる にする</td>
+            <td class="num">clipToShape / ComposeStudio.tsx</td>
           </tr>
           <tr>
             <td>応援を受け取れるようにしたい</td>

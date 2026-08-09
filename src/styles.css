@@ -873,6 +873,54 @@ input[type='range']:active::-webkit-slider-thumb {
   display: block;
 }
 
+/*
+  まだ一度も触っていない人に出す案内。
+  絵の上に重ねるので、下が明るくても暗くても読めるように、
+  文字だけを置かず必ず下じきを敷く。
+*/
+.stage__coach {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 20px);
+  padding: 7px 14px;
+  border: var(--lw) solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  animation: coach-in 0.5s var(--ease-spring) both;
+}
+
+.stage__coach svg {
+  flex: none;
+}
+
+@keyframes coach-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+}
+
+/* 画面がせまいと1行に入らないので、そのときだけ小さくする */
+@media (max-width: 380px) {
+  .stage__coach {
+    font-size: 0.7rem;
+    padding: 6px 10px;
+  }
+}
+
 .stage__hint {
   position: absolute;
   left: 50%;
@@ -1268,4 +1316,103 @@ input[type='range']:active::-webkit-slider-thumb {
 
 .tip__quiet:active {
   color: var(--ink);
+}
+
+/* ==========================================================================
+   携帯に保存できないときの逃げ道
+   ========================================================================== */
+
+/*
+  ひかえめな行内リンク。
+  ふだんは目に入らなくていいが、困った人が探したときには必ずそこにある大きさ。
+*/
+.link-quiet {
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 8px 6px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--ink-faint);
+  text-underline-offset: 0.25em;
+}
+
+.link-quiet:active {
+  color: var(--ink);
+}
+
+.link-quiet:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/*
+  クラス名を .sheet__* にしない。
+  「使いかた」のシートがすでに .sheet を使っていて、あとから書いたほうが勝つ。
+  一度それで、関係のない画面のほうが壊れた。
+*/
+.saver__lede {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 14px;
+  font-size: 0.83rem;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.saver__lede b {
+  color: var(--ink);
+}
+
+.saver__lede svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--ink);
+}
+
+/*
+  長おしできる本物の <img>。canvas では長おしのメニューが出ないので、
+  ここだけは img でなければならない。
+  下じきに市松を敷いて、とうめいのままかどうかも分かるようにしておく。
+*/
+.saver__image {
+  display: block;
+  width: min(240px, 62vw);
+  height: auto;
+  margin: 0 auto 16px;
+  border-radius: var(--radius-sm);
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, #e9e7df 25%, transparent 25%),
+    linear-gradient(-45deg, #e9e7df 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e9e7df 75%),
+    linear-gradient(-45deg, transparent 75%, #e9e7df 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  /* 長おしを邪魔しない。ここだけは選択・保存の操作を通す */
+  -webkit-touch-callout: default;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+
+.saver__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.saver__fine {
+  margin: 12px 0 0;
+  font-size: 0.71rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
 }
