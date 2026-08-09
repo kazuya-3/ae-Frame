@@ -215,7 +215,7 @@ export function CutoutStudio({
             // AI も、囲まれた明るい部分（提灯の紙など）を背景と誤ることがある。
             // 色キーと同じ守りを通しておく。
             baseAlphaRef.current = s.protectEnclosed
-              ? applyProtectEnclosed(alpha, source.width, source.height)
+              ? applyProtectEnclosed(alpha, source.width, source.height, s.softness >= 0.08)
               : alpha;
           } catch (e) {
             if (runIdRef.current !== runId) return;
@@ -269,7 +269,12 @@ export function CutoutStudio({
           baseAlphaRef.current = passthroughAlpha(source);
         } else if (aiAlphaRef.current) {
           baseAlphaRef.current = next.protectEnclosed
-            ? applyProtectEnclosed(aiAlphaRef.current, source.width, source.height)
+            ? applyProtectEnclosed(
+                aiAlphaRef.current,
+                source.width,
+                source.height,
+                next.softness >= 0.08,
+              )
             : aiAlphaRef.current;
         }
         if (baseAlphaRef.current) {

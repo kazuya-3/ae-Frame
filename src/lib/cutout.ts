@@ -40,8 +40,8 @@ export const DEFAULT_SETTINGS: CutoutSettings = {
   mode: 'auto',
   keyColor: [255, 255, 255],
   tolerance: 0.06,
-  // 広めに取る。グローや水彩のにじみを、途中で断ち切らずに階調で残すため。
-  softness: 0.3,
+  // 境目は最小から始める。広げるのはグローがあると分かったときだけ（analyze を参照）。
+  softness: 0.01,
   protectEnclosed: true,
   shrink: 0,
   feather: 0.6,
@@ -171,11 +171,6 @@ export function analyze(data: ImageData): Analysis {
   while (end < BINS && hist[end] > floorCount) end++;
   const bgEnd = end / BINS;
 
-  // 絵の色が始まる位置。背景の山を抜けたあと、最初に度数が戻ってくるところ。
-  let start = end;
-  while (start < BINS && hist[start] <= floorCount) start++;
-  const designStart = start / BINS;
-
   /*
     しきい値は「背景の山の外」に置く。縁の実測（98パーセンタイル）も下回らせない。
     消え残りはスライダーでも筆でも直せるが、消えた絵は気づきにくく戻しにくいので、
@@ -208,12 +203,18 @@ export function analyze(data: ImageData): Analysis {
   /*
     境目の幅。
 
-    グローがあるなら広く取って、光を階調のまま残す。
-    ないなら「背景の終わり」から「絵の始まり」までの隙間に収める。
-    ここを広く取りすぎると、絵のいちばん薄い色まで半透明にしてしまう。
+    グローがあるときだけ広く取って、光を階調のまま残す。それ以外は最小に固定する。
+
+    以前は「背景の終わり」から「絵の色が始まる位置」までの隙間から計算していたが、
+    実測すると線画・祭・金魚・スクショのどれもが上限（0.2）に張り付いていた。
+    その範囲には画素が1つも無いので何も起きておらず、効いていないのに大きい値が
+    出ている状態だった。そのうえ、たまたまその範囲に色があるデザインが来ると、
+    理由もなく半透明にしてしまう。
+
+    境目のギザギザは、別に用意した「フチのギザギザをとる」（feather）が均す。
+    ここを広げて誤魔化す必要はない。
   */
-  const gap = Math.max(0, designStart - suggestedTolerance);
-  const suggestedSoftness = hasGlow ? 0.3 : Math.min(0.2, Math.max(0.01, gap * 0.8));
+  const suggestedSoftness = hasGlow ? 0.3 : 0.01;
 
   /*
     どの手法から始めるかは、縁の様子では決めない。
@@ -265,8 +266,19 @@ export function colorKeyAlpha(data: ImageData, s: CutoutSettings): Uint8ClampedA
     alpha[i] = Math.round(a * 255 * (px[j + 3] / 255));
   }
 
-  if (s.protectEnclosed) protectEnclosed(alpha, width, height);
+  if (s.protectEnclosed) protectEnclosed(alpha, width, height, expectsGradients(s));
   return alpha;
+}
+
+/**
+ * このデザインは「背景へ溶けていく階調」を持っているか。
+ *
+ * 境目の幅そのものが、その答えになっている。analyze はグローを見つけたときだけ
+ * 幅を広げるし、ユーザーが手で広げたのなら、それは「にじみを残したい」という意思表示。
+ * どちらの場合も、囲まれた部分の扱いを控えめにする必要がある（protectEnclosed 参照）。
+ */
+function expectsGradients(s: CutoutSettings) {
+  return s.softness >= 0.08;
 }
 
 /**
@@ -354,23 +366,35 @@ export function applyProtectEnclosed(
   alpha: Uint8ClampedArray,
   width: number,
   height: number,
+  preserveGradients = false,
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(alpha);
-  protectEnclosed(out, width, height);
+  protectEnclosed(out, width, height, preserveGradients);
   return out;
 }
 
-function protectEnclosed(alpha: Uint8ClampedArray, width: number, height: number) {
+function protectEnclosed(
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+  preserveGradients: boolean,
+) {
+  /*
+    どこまで戻すかは、そのデザインが階調を持っているかで変える。
+
+    階調がない（線画・ベタ塗り）なら、囲まれた部分は迷わず完全な不透明に戻す。
+    境目の幅を狭くすると、提灯の紙のような "背景色にごく近い色" は
+    アルファ 0 ではなく中途半端な値（184 など）で止まる。ここで戻し切らないと、
+    紙がうっすら透けたままになる。
+
+    階調があるなら控えめにする。グローは外の背景とつながっているが、
+    濃い側は塗りつぶしが入れないので「囲まれている」と判定される。
+    そこを一律に戻すと、せっかくの光がのっぺりした輪に潰れる。
+  */
+  const restoreBelow = preserveGradients ? FLOOD_TRAVEL : 255;
   const reachable = floodBackground(alpha, width, height);
   for (let i = 0; i < alpha.length; i++) {
-    /*
-      復活させるのは「消えかけているのに、外にも中心の穴にもつながっていない」画素だけ。
-
-      半分以上残っている画素（グローの中ほどなど）にはさわらない。
-      ここで一律に 255 へ上げると、せっかく階調で残したネオンの光が
-      のっぺりした不透明の輪に潰れてしまう。
-    */
-    if (!reachable[i] && alpha[i] < FLOOD_TRAVEL) alpha[i] = 255;
+    if (!reachable[i] && alpha[i] < restoreBelow) alpha[i] = 255;
   }
 }
 
