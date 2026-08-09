@@ -8,6 +8,7 @@
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
 import { spawn } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -55,6 +56,16 @@ function serve() {
     { stdio: 'ignore' },
   );
   return child;
+}
+
+/** 条件が立つまで待つ。立たなければ時間切れでそのまま返す（判定は呼び出し側で）。 */
+async function waitFor(fn, timeout = 10000, interval = 150) {
+  const until = Date.now() + timeout;
+  while (Date.now() < until) {
+    if (await fn()) return true;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  return false;
 }
 
 /* ---------------- 画面操作のヘルパー ---------------- */
@@ -136,9 +147,61 @@ try {
 
   console.log('\n■ すでに透過ずみの PNG');
   {
-    const { page } = await openFrame(browser, 'already-transparent.png');
+    const { page, aiRequested } = await openFrame(browser, 'already-transparent.png');
     check('もとの透過をそのまま通す', (await alphaAt(page, 0.01, 0.01)) < 10);
     check('絵は消さない', (await alphaAt(page, 0.5, 0.08)) > 240);
+    check('まん中の穴は透明のまま', (await alphaAt(page, 0.5, 0.5)) < 10);
+    check('よけいな処理をしない（AIを呼ばない）', !aiRequested());
+    await page.close();
+  }
+
+  /*
+    透過ずみ＋半透明グローは、いちばん壊しやすい入力。
+    すでに正しいアルファが付いているので、色にもアルファにも
+    さわらずに通さなければならない。
+  */
+  console.log('\n■ 透過ずみ＋半透明のグロー（さわってはいけない入力）');
+  {
+    const { page } = await openFrame(browser, 'transparent-glow.png');
+    const probe = await page.evaluate(() => {
+      const c = document.querySelector('.preview canvas');
+      const d = c.getContext('2d');
+      const at = (fx, fy) => [
+        ...d.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data,
+      ];
+      // 中心から外へ走査し、アルファが中くらいの画素をひとつ拾う
+      const cx = c.width >> 1;
+      const row = d.getImageData(0, c.height >> 1, c.width, 1).data;
+      let mid = null;
+      for (let x = cx; x < c.width; x++) {
+        const a = row[x * 4 + 3];
+        if (a > 90 && a < 170) {
+          mid = [row[x * 4], row[x * 4 + 1], row[x * 4 + 2], a];
+          break;
+        }
+      }
+      return { corner: at(0.01, 0.01), hole: at(0.5, 0.5), mid };
+    });
+
+    check('四隅は透明のまま', probe.corner[3] < 6, `alpha=${probe.corner[3]}`);
+    check('まん中の穴は透明のまま', probe.hole[3] < 6, `alpha=${probe.hole[3]}`);
+    check(
+      '半透明のグローが残っている',
+      probe.mid != null,
+      probe.mid ? `alpha=${probe.mid[3]}` : '見つからない',
+    );
+
+    if (probe.mid) {
+      // 元の色は水色 (34, 226, 226)。ここがずれていたら、
+      // 付いていない背景色を引き算してしまっている。
+      const [r, g, b] = probe.mid;
+      const near = (v, t) => Math.abs(v - t) <= 12;
+      check(
+        '半透明部分の色が変わっていない',
+        near(r, 34) && near(g, 226) && near(b, 226),
+        `rgb=${r},${g},${b}（元 34,226,226）`,
+      );
+    }
     await page.close();
   }
 
@@ -184,11 +247,95 @@ try {
   console.log('\n■ クリスタル（白いガラスを白地に＝色では判別不能）');
   {
     const { page, aiRequested } = await openFrame(browser, 'glass.png');
+    // AI への切り替えは、検算 → 動的 import → 取得 と段を踏むので、
+    // 固定待ちだと取りこぼす。条件が立つまで待つ。
+    await waitFor(aiRequested, 15000);
     check('自分で検算して AI に切り替える', aiRequested());
     check(
       'AIが使えなくても次へ進める',
       await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
     );
+    await page.close();
+  }
+
+  console.log('\n■ 氷とベリー（ほぼ白い氷＋端ぎりぎりの細い文字）');
+  {
+    const { page } = await openFrame(browser, 'ice-berry.png');
+    // 正方形のフレームは切り取らない。ここが崩れると、端に置いた
+    // 文字やロゴが「スクショのUI」と誤認されて落ちる。
+    check(
+      '正方形のフレームは切り取らない',
+      !(await page.getByText(/自動で切り取りました/).isVisible()),
+    );
+    check('四隅が透明になる', (await alphaAt(page, 0.01, 0.01)) < 10);
+    check('まん中の穴が透明になる', (await alphaAt(page, 0.5, 0.5)) < 10);
+    const berry = await alphaAt(page, 0.5 + 0.37 * Math.cos(0.9), 0.5 + 0.37 * Math.sin(0.9));
+    check('濃いベリーは残る', berry > 240, `alpha=${berry}`);
+    const label = await alphaAt(page, 0.968, 0.5);
+    check('端ぎりぎりの文字も残る', label > 200, `alpha=${label}`);
+    await page.close();
+  }
+
+  /*
+    実際にいちばん多い入力。TikTok は透過を持てないので、
+    受け取る側はスクショでフレームを持ってくる。
+  */
+  console.log('\n■ スマホのスクショ（TikTokのUIごと写っている）');
+  {
+    const { page } = await openFrame(browser, 'phone-screenshot.png');
+    check(
+      '自動で切り取ったことを知らせる',
+      await page.getByText(/自動で切り取りました/).isVisible(),
+    );
+
+    // フレームが十分な大きさを占めていること。UI ごと残っていると、
+    // 輪はキャンバスの片隅の小さな点になる。
+    const fill = await page.evaluate(() => {
+      const c = document.querySelector('.preview canvas');
+      const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let opaque = 0;
+      let minX = c.width;
+      let maxX = -1;
+      let minY = c.height;
+      let maxY = -1;
+      for (let i = 0; i < c.width * c.height; i++) {
+        if (px[i * 4 + 3] > 128) {
+          opaque++;
+          const x = i % c.width;
+          const y = (i - x) / c.width;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+      return {
+        ratio: opaque / (c.width * c.height),
+        spanX: (maxX - minX) / c.width,
+        spanY: (maxY - minY) / c.height,
+        aspect: c.width / c.height,
+      };
+    });
+    check(
+      'フレームが画面いっぱいに残る',
+      fill.spanX > 0.85 && fill.spanY > 0.85,
+      `横 ${(fill.spanX * 100) | 0}% 縦 ${(fill.spanY * 100) | 0}%`,
+    );
+    check(
+      '縦長のままにならない',
+      fill.aspect > 0.8 && fill.aspect < 1.25,
+      `縦横比 ${fill.aspect.toFixed(2)}`,
+    );
+    check('UIの残骸が混ざっていない', fill.ratio < 0.35, `占有 ${(fill.ratio * 100).toFixed(1)}%`);
+
+    // 自動の切り取りは、気に入らなければ取り消せること
+    await page.getByRole('button', { name: /切り取らずに全部つかう/ }).click();
+    await page.waitForTimeout(2500);
+    const after = await page.evaluate(() => {
+      const c = document.querySelector('.preview canvas');
+      return c.width / c.height;
+    });
+    check('「切り取らずに全部つかう」で元に戻せる', after < 0.7, `縦横比 ${after.toFixed(2)}`);
     await page.close();
   }
 
@@ -277,6 +424,90 @@ try {
     );
     check('コンソールエラーなし', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
+  }
+
+  /*
+    本物のフレームでの確認。
+
+    tests/real/ に自分の作ったフレーム画像（png / jpg）を置くと、
+    ここで1枚ずつ通して基本的なところを確かめる。置かなければ黙って飛ばす。
+    実物は作者のものなのでリポジトリには入れない（.gitignore 済み）。
+  */
+  {
+    const realDir = join(here, 'real');
+    const files = existsSync(realDir)
+      ? readdirSync(realDir).filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
+      : [];
+
+    if (!files.length) {
+      console.log('\n■ 本物のフレーム（tests/real/ に画像を置くと実行されます）');
+      console.log('  \x1b[2mSKIP  画像が見つかりません\x1b[0m');
+    } else {
+      console.log(`\n■ 本物のフレーム（${files.length}枚）`);
+      for (const file of files) {
+        const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+        const errors = [];
+        page.on('pageerror', (e) => errors.push(String(e.message)));
+        await page.route('**huggingface.co/**', (r) => r.abort());
+        await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+        await page.goto(BASE, { waitUntil: 'networkidle' });
+        await page
+          .getByRole('button', { name: 'はじめる' })
+          .click()
+          .catch(() => {});
+        await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+        await page.waitForTimeout(400);
+        await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+        await page.waitForTimeout(200);
+        await page.setInputFiles('input[type=file]', join(realDir, file));
+        await waitFor(async () => {
+          const b = page.getByRole('button', { name: /これでOK/ });
+          return (await b.count()) > 0 && (await b.isEnabled());
+        }, 25000);
+
+        const m = await page.evaluate(() => {
+          const c = document.querySelector('.preview canvas');
+          if (!c) return null;
+          const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+          const n = c.width * c.height;
+          const a = (x, y) => px[(y * c.width + x) * 4 + 3];
+          let opaque = 0;
+          let semi = 0;
+          for (let i = 3; i < px.length; i += 4) {
+            if (px[i] > 240) opaque++;
+            else if (px[i] > 10) semi++;
+          }
+          return {
+            corner: Math.max(
+              a(2, 2),
+              a(c.width - 3, 2),
+              a(2, c.height - 3),
+              a(c.width - 3, c.height - 3),
+            ),
+            center: a(c.width >> 1, c.height >> 1),
+            opaque: opaque / n,
+            semi: semi / n,
+          };
+        });
+
+        if (!m) {
+          check(`${file}`, false, '結果が描かれなかった');
+        } else {
+          const ok =
+            m.corner < 16 && // 外側の背景が抜けている
+            m.center < 16 && // まん中の穴が抜けている（重ねたとき写真が見える）
+            m.opaque > 0.02 && // 絵が消えていない
+            m.opaque < 0.75; // 背景が残っていない
+          check(
+            `${file}`,
+            ok,
+            `四隅=${m.corner} 中心=${m.center} 絵=${(m.opaque * 100).toFixed(1)}% 半透明=${(m.semi * 100).toFixed(1)}%`,
+          );
+          if (errors.length) check(`${file}（エラーなし）`, false, errors[0]);
+        }
+        await page.close();
+      }
+    }
   }
 
   console.log('\n■ 書き出し');

@@ -15,6 +15,7 @@ import {
   setSoundOn,
   hasHapticsSupport,
 } from './lib/sound';
+import { autoCropToSubject } from './lib/cutout';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
@@ -46,6 +47,9 @@ export default function App() {
   const [photo, setPhoto] = useState<ImageBitmap | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [frameSource, setFrameSource] = useState<ImageData | null>(null);
+  // 自動で切り取る前の画像。「切り取らない」で戻せるように持っておく。
+  const [frameFull, setFrameFull] = useState<ImageData | null>(null);
+  const [autoCropped, setAutoCropped] = useState(false);
   const [frameResult, setFrameResult] = useState<ImageBitmap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
@@ -107,8 +111,17 @@ export default function App() {
     setError(null);
     try {
       const bmp = await fileToBitmap(file);
-      setFrameSource(bitmapToImageData(bmp));
+      const full = bitmapToImageData(bmp);
       bmp.close?.();
+      /*
+        TikTok は透過を持てないので、フレームは動画・画像として配信され、
+        受け取る側はスクショで持ってくる。そこには時刻やキャプション、
+        右側のボタン列まで写り込んでいる。先にフレームだけを切り出しておく。
+      */
+      const { data, cropped } = autoCropToSubject(full);
+      setFrameFull(full);
+      setFrameSource(data);
+      setAutoCropped(cropped);
     } catch (e) {
       console.warn(e);
       setError(
@@ -128,6 +141,8 @@ export default function App() {
   const restart = useCallback(() => {
     setStep(1);
     setFrameSource(null);
+    setFrameFull(null);
+    setAutoCropped(false);
     setFrameResult(null);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -242,8 +257,32 @@ export default function App() {
         <div style={step === 2 ? undefined : { display: 'none' }}>
           <CutoutStudio
             source={frameSource}
+            notice={
+              autoCropped ? (
+                <Note>
+                  スクショのまわり（時刻・ボタン・キャプションなど）を自動で切り取りました。
+                  <div style={{ marginTop: 8 }}>
+                    <Button
+                      variant="sm"
+                      sound="back"
+                      onClick={() => {
+                        if (!frameFull) return;
+                        setFrameSource(frameFull);
+                        setAutoCropped(false);
+                      }}
+                    >
+                      切り取らずに全部つかう
+                    </Button>
+                  </div>
+                </Note>
+              ) : null
+            }
             onDone={handleCutoutDone}
-            onBack={() => setFrameSource(null)}
+            onBack={() => {
+              setFrameSource(null);
+              setFrameFull(null);
+              setAutoCropped(false);
+            }}
           />
         </div>
       )}
@@ -256,11 +295,11 @@ export default function App() {
           </div>
           <p className="card__hint">
             重ねたいフレームを選ぶと、背景は<b>自動でとうめい</b>になります。
-            白い背景のままの画像でも大丈夫です。
+            白い背景のままの画像でも、<b>スクリーンショットのままでも</b>大丈夫です。
           </p>
           <DropZone
             title="フレームをえらぶ"
-            sub="保存したフレーム画像を選んでください"
+            sub="スクショでもOK。まわりの余計なものは自動で切り取ります"
             icon={<IconFrame size={34} />}
             onFile={loadFrame}
           />
@@ -314,8 +353,9 @@ export default function App() {
               <span className="howto__text">
                 <b>フレームをえらぶ</b>
                 <span>
-                  選んだだけで、背景は自動でとうめいになります。うまくいかないときだけ
-                  「うまく消えないときは」を開いてください。
+                  <b>スクリーンショットのままでOK。</b>
+                  まわりに写った時刻やボタンは自動で切り取り、背景もとうめいにします。
+                  うまくいかないときだけ「うまく消えないときは」を開いてください。
                 </span>
               </span>
             </li>

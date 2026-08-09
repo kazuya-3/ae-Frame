@@ -119,6 +119,24 @@ export function trimTransparent(data: ImageData, alphaThreshold = 8): ImageData 
   return out;
 }
 
+export type Rect = { x: number; y: number; width: number; height: number };
+
+/** 指定した矩形で切り出す。矩形は画像の内側にクランプされる。 */
+export function cropImageData(data: ImageData, rect: Rect): ImageData {
+  const x = Math.max(0, Math.min(data.width - 1, Math.round(rect.x)));
+  const y = Math.max(0, Math.min(data.height - 1, Math.round(rect.y)));
+  const w = Math.max(1, Math.min(data.width - x, Math.round(rect.width)));
+  const h = Math.max(1, Math.min(data.height - y, Math.round(rect.height)));
+  if (x === 0 && y === 0 && w === data.width && h === data.height) return data;
+
+  const out = new ImageData(w, h);
+  for (let row = 0; row < h; row++) {
+    const src = ((y + row) * data.width + x) * 4;
+    out.data.set(data.data.subarray(src, src + w * 4), row * w * 4);
+  }
+  return out;
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

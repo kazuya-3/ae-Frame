@@ -4,7 +4,7 @@
  * 表に出しているのはプレビューと「つぎへ」だけ。
  * 直らなかった人だけが折りたたみを開けば、色キーの調整と手描き修正が全部ある。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   analyze,
   applyProtectEnclosed,
@@ -74,10 +74,13 @@ type UndoPatch = {
 
 export function CutoutStudio({
   source,
+  notice,
   onDone,
   onBack,
 }: {
   source: ImageData;
+  /** 読み込み時に自動でやったこと（切り取りなど）の知らせ */
+  notice?: ReactNode;
   onDone: (result: ImageData) => void;
   onBack: () => void;
 }) {
@@ -289,7 +292,8 @@ export function CutoutStudio({
   const changeMode = useCallback(
     (mode: CutoutMode) => {
       const resolved: Exclude<CutoutMode, 'auto'> = mode === 'auto' ? analysis.recommended : mode;
-      const next = { ...settings, mode: resolved };
+      // 手法を変えたら、背景色の引き算もその手法に合った初期値に戻す
+      const next = { ...settings, mode: resolved, decontaminate: decontaminateFor(resolved) };
       setSettings(next);
       if (resolved === 'ai') setAiTried(true);
       setStatus({ kind: 'working', label: '切り替えています', progress: 0.1 });
@@ -478,6 +482,8 @@ export function CutoutStudio({
           ? 'いま自動で背景をけしています。そのままお待ちください。'
           : '白いところが「市松もよう」になっていれば、とうめいになっています。'}
       </p>
+
+      {notice && <div style={{ marginBottom: 12 }}>{notice}</div>}
 
       <div className="preview" data-backdrop={backdrop}>
         <canvas
@@ -674,7 +680,11 @@ export function CutoutStudio({
             max={100}
             onChange={(v) => patch({ decontaminate: v / 100 })}
             format={(v) => `${v}`}
-            note="白い背景から切り抜いたときの、うっすら白いフチを消します。"
+            note={
+              settings.mode === 'none'
+                ? 'すでに透過ずみの画像なので 0 のままでOKです。白フチが焼き付いている画像のときだけ上げてください。'
+                : '白い背景から切り抜いたときの、うっすら白いフチを消します。'
+            }
           />
 
           <div className="field">
@@ -782,7 +792,20 @@ function initialSettings(a: Analysis): CutoutSettings {
     shrink: 0,
     // AI の出す境界はもともとなめらかなので、ぼかしは控えめに
     feather: a.recommended === 'color' ? 0.8 : 0.4,
+    decontaminate: decontaminateFor(a.recommended),
   };
+}
+
+/**
+ * すでに透過ずみの画像には、背景色の引き算をかけない。
+ *
+ * アルファはもう正しく付いているので、そこからさらに背景色を引くと
+ * 半透明のグローの色が沈む（水色が緑に寄って暗くなる）。
+ * ただし、他のツールで作られた「白フチが焼き付いた透過PNG」もあるので、
+ * スライダーで足せる余地は残しておく。
+ */
+function decontaminateFor(mode: CutoutMode) {
+  return mode === 'none' ? 0 : DEFAULT_SETTINGS.decontaminate;
 }
 
 function rgbToHex([r, g, b]: [number, number, number]) {

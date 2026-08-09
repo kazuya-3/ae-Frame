@@ -5,3 +5,4 @@ dist/
 *.tsbuildinfo
 .vite/
 tests/fixtures/
+tests/real/

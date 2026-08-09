@@ -11,6 +11,8 @@
  * モードを切り替えてもやり直しにならない。
  */
 
+import { cropImageData } from './image';
+
 export type CutoutMode = 'auto' | 'color' | 'ai' | 'none';
 
 export type CutoutSettings = {
@@ -593,6 +595,9 @@ export function composite(
       : new ImageData(width, height);
   const dst = out.data;
   const [kr, kg, kb] = s.keyColor;
+  // AI の境界は色キーほど背景色を巻き込まないので、引き算も控えめでいい。
+  // 'none'（すでに透過ずみ）では、初期値そのものを 0 にしてある。
+  // 付いていない背景色を引き算すると、正しかったグローの色まで沈むため。
   const decon = s.mode === 'ai' ? s.decontaminate * 0.5 : s.decontaminate;
 
   for (let i = 0; i < n; i++) {
@@ -642,10 +647,162 @@ export function composite(
   return out;
 }
 
+/**
+ * スクリーンショットから、フレームだけを切り出す。
+ *
+ * TikTok は透過を持てないので、フレームは動画や画像として配信され、
+ * 受け取る側はスクショを撮る。そこには必ず余計なものが写り込む
+ * ——時刻、ユーザー名、キャプション、右側のボタン列、上下の余白。
+ *
+ * そのまま透過すると、フレーム本体はキャンバスの片隅の小さな輪になり、
+ * UI の文字やアイコンが点々と残った、使えない画像になる。
+ *
+ * ここでは「いちばん大きなかたまり＝フレーム本体」を見つけ、その近くにある
+ * ものだけを残して切り出す。フレームに寄り添う飾り（きらめき、破片、提灯）は
+ * 本体のすぐそばにあるので残り、画面の端にある UI は落ちる。
+ */
+export function findSubjectRect(
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+): { x: number; y: number; width: number; height: number } | null {
+  const n = width * height;
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const minSize = Math.max(64, Math.round(n * 0.0002));
+
+  type Box = { x0: number; y0: number; x1: number; y1: number; size: number };
+  const boxes: Box[] = [];
+
+  for (let start = 0; start < n; start++) {
+    if (seen[start] || alpha[start] <= 128) continue;
+    let top = 0;
+    seen[start] = 1;
+    stack[top++] = start;
+    const b: Box = {
+      x0: width,
+      y0: height,
+      x1: -1,
+      y1: -1,
+      size: 0,
+    };
+    while (top > 0) {
+      const i = stack[--top];
+      const x = i % width;
+      const y = (i - x) / width;
+      b.size++;
+      if (x < b.x0) b.x0 = x;
+      if (x > b.x1) b.x1 = x;
+      if (y < b.y0) b.y0 = y;
+      if (y > b.y1) b.y1 = y;
+      if (x > 0 && !seen[i - 1] && alpha[i - 1] > 128) {
+        seen[i - 1] = 1;
+        stack[top++] = i - 1;
+      }
+      if (x < width - 1 && !seen[i + 1] && alpha[i + 1] > 128) {
+        seen[i + 1] = 1;
+        stack[top++] = i + 1;
+      }
+      if (i >= width && !seen[i - width] && alpha[i - width] > 128) {
+        seen[i - width] = 1;
+        stack[top++] = i - width;
+      }
+      if (i < n - width && !seen[i + width] && alpha[i + width] > 128) {
+        seen[i + width] = 1;
+        stack[top++] = i + width;
+      }
+    }
+    if (b.size >= minSize) boxes.push(b);
+  }
+
+  if (!boxes.length) return null;
+
+  const main = boxes.reduce((a, b) => (b.size > a.size ? b : a));
+  // 本体が小さすぎるときは、たまたま残ったゴミを掴んでいる可能性が高い。触らない。
+  if (main.size < n * 0.004) return null;
+
+  const mainW = main.x1 - main.x0;
+  const mainH = main.y1 - main.y0;
+
+  /*
+    どの塊を一緒に残すかを、2つの物差しで決める。
+
+    1. 本体の近くにあること
+       フレームに寄り添う飾り（きらめき、破片、提灯）は本体のすぐそばにある。
+       距離は画像の大きさではなく "本体の大きさ" に対して測る。
+       スクショは画像そのものが縦に長く、画像基準だと物差しが伸びすぎるため。
+
+    2. 画面のふちに貼りついていないこと
+       時刻・キャプション・右側のボタン列は、どれも画面の端に寄っている。
+       一方フレームは真ん中にあり、端からは離れている。この差で UI を落とせる。
+       （本体そのものは、端に触れていてもこの条件では落とさない）
+  */
+  const near = Math.max(mainW, mainH) * 0.15;
+  const chrome = Math.min(width, height) * 0.06;
+
+  let x0 = main.x0;
+  let y0 = main.y0;
+  let x1 = main.x1;
+  let y1 = main.y1;
+  for (const b of boxes) {
+    if (b === main) continue;
+    const isNear =
+      b.x0 <= main.x1 + near &&
+      b.x1 >= main.x0 - near &&
+      b.y0 <= main.y1 + near &&
+      b.y1 >= main.y0 - near;
+    if (!isNear) continue;
+    const hugsEdge =
+      b.x0 < chrome || b.y0 < chrome || b.x1 > width - 1 - chrome || b.y1 > height - 1 - chrome;
+    if (hugsEdge) continue;
+    x0 = Math.min(x0, b.x0);
+    y0 = Math.min(y0, b.y0);
+    x1 = Math.max(x1, b.x1);
+    y1 = Math.max(y1, b.y1);
+  }
+
+  // まわりに余白を足す。グローのような、薄すぎて塊に数えられなかった部分を巻き取るため。
+  // ここも本体の大きさ基準。入力が何ピクセルでも、同じ見た目の余白になる。
+  const pad = Math.max(x1 - x0, y1 - y0) * 0.045;
+  x0 = Math.max(0, Math.floor(x0 - pad));
+  y0 = Math.max(0, Math.floor(y0 - pad));
+  x1 = Math.min(width - 1, Math.ceil(x1 + pad));
+  y1 = Math.min(height - 1, Math.ceil(y1 + pad));
+
+  return { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+}
+
 /** 元画像をそのまま通す（すでに透過済みの画像向け）。 */
 export function passthroughAlpha(data: ImageData): Uint8ClampedArray {
   const n = data.width * data.height;
   const alpha = new Uint8ClampedArray(n);
   for (let i = 0; i < n; i++) alpha[i] = data.data[i * 4 + 3];
   return alpha;
+}
+
+/**
+ * 読み込んだ画像から、フレームらしい部分だけを切り出す。
+ *
+ * 下読みの透過を一度かけて位置を掴み、切り出してから本番の処理に渡す。
+ * 面積があまり変わらないときは「切り取る必要がなかった」とみなして触らない
+ * （ふつうのフレーム画像では、ユーザーに何も起きていないように見える）。
+ */
+export function autoCropToSubject(data: ImageData): { data: ImageData; cropped: boolean } {
+  const a = analyze(data);
+  const probe: CutoutSettings = {
+    ...DEFAULT_SETTINGS,
+    mode: a.recommended === 'none' ? 'none' : 'color',
+    keyColor: a.borderColor,
+    tolerance: a.suggestedTolerance,
+    softness: a.suggestedSoftness,
+  };
+  const alpha = probe.mode === 'none' ? passthroughAlpha(data) : colorKeyAlpha(data, probe);
+
+  const rect = findSubjectRect(alpha, data.width, data.height);
+  if (!rect) return { data, cropped: false };
+
+  const ratio = (rect.width * rect.height) / (data.width * data.height);
+  if (ratio > 0.72) return { data, cropped: false };
+
+  return { data: cropImageData(data, rect), cropped: true };
 }

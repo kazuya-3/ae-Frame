@@ -147,6 +147,126 @@ export function build() {
     );
   }
 
+  /*
+    ── 透過ずみ、かつ半透明のグローを持つ PNG ──
+
+    いちばん壊しやすい入力。すでに正しいアルファが付いているので、
+    色にもアルファにも一切さわらずに通さなければならない。
+    ここで背景色を引き算したりすると、グローの色が濁る／沈む。
+
+    グローは「不透明度 a の水色」。RGB は乗算済みではなく本来の色を持つ。
+    半径 GLOW_R の位置がちょうど a=0.5 になるようにしてある。
+  */
+  {
+    const R = S * 0.36;
+    const TH = S * 0.05;
+    write(
+      'transparent-glow.png',
+      png(S, S, (x, y) => {
+        const d = Math.hypot(x - C, y - C);
+        const rd = Math.abs(d - R);
+        if (rd < TH / 2) return [16, 16, 22, 255]; // リング本体
+        // 外向きのグロー。半径 R+TH/2 から外へ、なめらかに 0 まで落ちる。
+        const gd = d - (R + TH / 2);
+        if (gd >= 0) {
+          const a = Math.exp(-(gd * gd) / (2 * Math.pow(S * 0.05, 2)));
+          return [34, 226, 226, clamp(a * 255)];
+        }
+        return [0, 0, 0, 0]; // まん中の穴
+      }),
+    );
+  }
+
+  /*
+    ── 氷とベリー：ほぼ白い氷のリング＋端ぎりぎりの細い文字 ──
+
+    2つの罠が同時にある。
+    1. リング本体がほぼ白なので、色だけでは背景と紙一重
+    2. "TEMP : -08°C" のような細い文字が、画像の端すれすれに置かれている
+
+    2 は、スクショの UI を落とす仕組みと衝突しうる。UI も端に寄っているからだ。
+    正方形のフレームでは切り取り自体が起きない（面積がほとんど変わらないため）
+    ——という歯止めが効いているかを、ここで固定する。
+  */
+  {
+    const R = S * 0.37;
+    const TH = S * 0.075;
+    const berries = [0.4, 0.9, 3.6, 4.0, 4.4].map((a) => [
+      C + R * Math.cos(a),
+      C + R * Math.sin(a),
+    ]);
+    const bar = (x, y, x0, y0, x1, y1) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+
+    write(
+      'ice-berry.png',
+      png(S, S, (x, y) => {
+        let col = [255, 255, 255];
+        const d = Math.hypot(x - C, y - C);
+        const rd = Math.abs(d - R);
+        if (rd < TH / 2) {
+          // ほぼ白い氷。フチだけ水色の線が入る。
+          const edge = 1 - Math.min(1, (TH / 2 - rd) / (TH * 0.18));
+          col = over(
+            [clamp(247 - 97 * edge), clamp(250 - 70 * edge), clamp(253 - 38 * edge)],
+            col,
+            Math.min(1, (TH / 2 - rd) / 2),
+          );
+        }
+        // 濃いベリー。ここは確実に残るはず。
+        for (const [bx, by] of berries) {
+          const pd = Math.hypot(x - bx, y - by);
+          if (pd < S * 0.045) col = over([58, 68, 128], col, Math.min(1, (S * 0.045 - pd) / 2));
+        }
+        // 端ぎりぎりの細い文字（デザインの一部）
+        if (bar(x, y, S * 0.028, S * 0.42, S * 0.036, S * 0.58)) col = [120, 120, 130];
+        if (bar(x, y, S * 0.964, S * 0.4, S * 0.972, S * 0.6)) col = [120, 120, 130];
+        return [...col, 255];
+      }),
+    );
+  }
+
+  /*
+    ── スマホのスクリーンショット ──
+
+    TikTok は透過を持てないので、フレームは動画・画像として流れ、
+    受け取る側はスクショで持ってくる。これが実際にいちばん多い入力。
+    時刻・ユーザー名・キャプション・右側のボタン列まで一緒に写り込む。
+  */
+  {
+    const W = 780;
+    const H = 1688;
+    const cx = W / 2 - 0.5;
+    const cy = H * 0.42;
+    const R = W * 0.33;
+    const TH = W * 0.05;
+    const box = (x, y, x0, y0, x1, y1) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+
+    write(
+      'phone-screenshot.png',
+      png(W, H, (x, y) => {
+        let col = [255, 255, 255];
+        const rd = Math.abs(Math.hypot(x - cx, y - cy) - R);
+        if (rd < TH / 2) col = over([16, 16, 22], col, Math.min(1, (TH / 2 - rd) / 2));
+        // 上：時刻と電池
+        if (box(x, y, 40, 40, 150, 70) || box(x, y, W - 140, 42, W - 40, 66)) col = [20, 20, 20];
+        // 右：プロフィール・ハート・コメントのボタン列
+        for (let i = 0; i < 4; i++) {
+          if (Math.hypot(x - (W - 60), y - (H * 0.55 + i * 90)) < 26) col = [35, 35, 40];
+        }
+        // 下：ユーザー名とキャプション
+        if (
+          box(x, y, 40, H - 230, 300, H - 205) ||
+          box(x, y, 40, H - 180, W - 160, H - 158) ||
+          box(x, y, 40, H - 140, W - 260, H - 118)
+        ) {
+          col = [35, 35, 35];
+        }
+        if (box(x, y, 0, H - 70, W, H)) col = [245, 245, 245];
+        return [...col, 255];
+      }),
+    );
+  }
+
   /* ── 重ねる相手。暗い写真ほど、グローの色が正しく出ているか分かる ── */
   write(
     'photo-dark.png',
