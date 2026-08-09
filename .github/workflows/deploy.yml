@@ -45,14 +45,16 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm test
 
-      # Pages のスイッチ（Settings → Pages → Source を「GitHub Actions」に）は、
-      # 一度だけ人が手で入れる必要がある。
+      # enablement: true にすると、Pages がまだ有効でなければ
+      # ワークフロー自身が有効にしてから進む。
       #
-      # enablement: true でワークフロー自身に有効化させようとしたが、これは通らない。
-      #   HttpError: Resource not accessible by integration - create-a-pages-site
-      # ワークフローの既定のトークンには Pages サイトを「作る」権限が無いため
-      # （deploy する権限はある）。試したうえで戻した記録として残しておく。
+      # 一度これで失敗している（Resource not accessible by integration）。
+      # ただしそれはリポジトリが private だったときの話で、
+      # 無料プランの private はそもそも Pages を持てない。
+      # public にしたので、条件が変わったものとしてもう一度試す。
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
