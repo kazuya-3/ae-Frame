@@ -281,6 +281,35 @@ try {
     await page.close();
   }
 
+  /*
+    実機で最初に出た不具合の再現。うすい水彩のフレームが、初期状態のまま
+    デザインごと消えていた（しきい値がデザインの薄い色を飲み込んでいた）。
+  */
+  console.log('\n■ うすい水彩（白にごく近い色のフレーム）');
+  {
+    const { page } = await openFrame(browser, 'pale-wash.png');
+    check('正方形なので切り取らない', !(await page.getByText(/自動で切り取りました/).isVisible()));
+    check('四隅が透明になる', (await alphaAt(page, 0.01, 0.01)) < 10);
+    check('まん中の穴が透明になる', (await alphaAt(page, 0.5, 0.5)) < 10);
+
+    // 内側から外側へ、うすい順に4本。いちばん薄い輪まで残らないといけない。
+    const rings = [
+      ['色差0.02（いちばん薄い）', 0.2],
+      ['色差0.04', 0.27],
+      ['色差0.06', 0.34],
+      ['色差0.09', 0.41],
+    ];
+    for (const [label, r] of rings) {
+      const a = await alphaAt(page, 0.5, 0.5 - r);
+      check(`うすい輪が残る ${label}`, a > 200, `alpha=${a}`);
+    }
+
+    // 外周に散らした、いちばん薄い泡。切り出しで見切れていないか。
+    const bubble = await alphaAt(page, 0.5 + 0.46 * Math.cos(0.3), 0.5 + 0.46 * Math.sin(0.3));
+    check('外周のうすい泡が見切れない', bubble > 200, `alpha=${bubble}`);
+    await page.close();
+  }
+
   console.log('\n■ 氷とベリー（ほぼ白い氷＋端ぎりぎりの細い文字）');
   {
     const { page } = await openFrame(browser, 'ice-berry.png');

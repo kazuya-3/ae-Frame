@@ -136,40 +136,84 @@ export function analyze(data: ImageData): Analysis {
   const p = (q: number) => dists[Math.min(dists.length - 1, Math.floor(dists.length * q))];
   const borderSpread = p(0.9);
 
-  // 縁の 98% が収まる色差 + 余裕。JPEG のノイズやグラデを吸収する。
-  const suggestedTolerance = Math.min(0.35, Math.max(0.03, p(0.98) + 0.035));
-
   /*
-    グロー（背景へ溶けていく階調）があるかを、色差のヒストグラムの形で見分ける。
+    画像全体の「背景色からの距離」のヒストグラムを取る。
+    しきい値も境目の幅も、ここから読む。
 
-    ネオンの光や水彩のにじみは、背景色からの距離が連続的に変化するので
-    中間の階調が「広く薄く」散らばる。
-    一方、うすい水色のベタ塗りは同じ距離に固まるので、少数の階級に集中する。
-
-    つまり "中間の階調がいくつの階級にまたがっているか" で両者を分けられる。
-    輪郭のアンチエイリアスも中間値を作るが、面積が小さいので閾値を越えない。
+    以前は縁のばらつきに固定の余裕（+0.035）を足していたが、これが原因で
+    うすい水色の水しぶき（白との差 0.056 ほど）を持つフレームが、初期状態で
+    ごっそり消えていた。デザインの薄い色と、余裕の幅が同じくらいだったため。
   */
-  const BINS = 64;
+  const BINS = 256; // 1階級 = 0.0039
   const hist = new Int32Array(BINS);
   // 全画素を見る必要はない。3画素おきで形は十分わかる。
+  let counted = 0;
   for (let i = 0; i < total; i += 3) {
     const j = i * 4;
     if (px[j + 3] < 128) continue;
     const d = colorDistance(px[j], px[j + 1], px[j + 2], borderColor);
     hist[Math.min(BINS - 1, Math.floor(d * BINS))]++;
+    counted++;
   }
-  const sampled = Math.ceil(total / 3);
+
+  /*
+    背景の山がどこで終わるかを探す。
+
+    背景は距離 0 付近に鋭い山を作る。そこから外へ歩いて、度数が山の 2% を
+    下回ったところが「背景の終わり」。JPEG のノイズで山が広がっていれば
+    しきい値も自然に広がるし、背景がきれいなら極端に小さくなる。
+  */
+  let peak = 0;
+  for (let b = 0; b < 12; b++) peak = Math.max(peak, hist[b]);
+  const floorCount = Math.max(peak * 0.02, counted * 0.00005);
+
+  let end = 0;
+  while (end < BINS && hist[end] > floorCount) end++;
+  const bgEnd = end / BINS;
+
+  // 絵の色が始まる位置。背景の山を抜けたあと、最初に度数が戻ってくるところ。
+  let start = end;
+  while (start < BINS && hist[start] <= floorCount) start++;
+  const designStart = start / BINS;
+
+  /*
+    しきい値は「背景の山の外」に置く。縁の実測（98パーセンタイル）も下回らせない。
+    消え残りはスライダーでも筆でも直せるが、消えた絵は気づきにくく戻しにくいので、
+    迷ったら小さい側に倒す。
+  */
+  const suggestedTolerance = Math.min(
+    0.25,
+    Math.max(0.008, Math.max(bgEnd + 0.004, p(0.98) + 0.004)),
+  );
+
+  /*
+    グロー（背景へ溶けていく階調）があるかを、ヒストグラムの形で見分ける。
+
+    ネオンの光や水彩のにじみは、距離が連続的に変化するので中間の階調が
+    「広く薄く」散らばる。うすい色のベタ塗りは同じ距離に固まる。
+    つまり "中間の階調がいくつの階級にまたがっているか" で両者を分けられる。
+  */
   const loBin = Math.floor(suggestedTolerance * BINS) + 1;
   const hiBin = Math.floor(0.4 * BINS);
   let glowBins = 0;
   for (let b = loBin; b < hiBin; b++) {
-    if (hist[b] > sampled * 0.001) glowBins++;
+    // ここを低くすると、輪郭のアンチエイリアスだけでグローと誤判定する。
+    // 「面として広がっている」と言える量（画素の0.15%）を1階級の下限にする。
+    if (hist[b] > counted * 0.0015) glowBins++;
   }
-  const hasGlow = glowBins >= 8;
+  // うすい色を何色か使ったデザインは、距離が数か所に固まるので階級は埋まらない。
+  // グローは連続的に変化するので、広い範囲の階級が埋まる。
+  const hasGlow = glowBins >= 32;
 
-  // グローがあるなら境目を広く取って階調のまま残す。
-  // なければ狭くして、うすい色のベタ塗りが半透明にならないようにする。
-  const suggestedSoftness = hasGlow ? 0.3 : 0.12;
+  /*
+    境目の幅。
+
+    グローがあるなら広く取って、光を階調のまま残す。
+    ないなら「背景の終わり」から「絵の始まり」までの隙間に収める。
+    ここを広く取りすぎると、絵のいちばん薄い色まで半透明にしてしまう。
+  */
+  const gap = Math.max(0, designStart - suggestedTolerance);
+  const suggestedSoftness = hasGlow ? 0.3 : Math.min(0.2, Math.max(0.01, gap * 0.8));
 
   /*
     どの手法から始めるかは、縁の様子では決めない。
@@ -793,6 +837,8 @@ export function findSubjectRect(
   const near = Math.max(mainW, mainH) * 0.15;
   const chrome = Math.min(width, height) * 0.06;
 
+  // 落とすもの（画面のふちに貼りついた UI）だけを先に決める
+  const dropped: Box[] = [];
   let x0 = main.x0;
   let y0 = main.y0;
   let x1 = main.x1;
@@ -804,14 +850,39 @@ export function findSubjectRect(
       b.x1 >= main.x0 - near &&
       b.y0 <= main.y1 + near &&
       b.y1 >= main.y0 - near;
-    if (!isNear) continue;
     const hugsEdge =
       b.x0 < chrome || b.y0 < chrome || b.x1 > width - 1 - chrome || b.y1 > height - 1 - chrome;
-    if (hugsEdge) continue;
+    if (!isNear || hugsEdge) {
+      dropped.push(b);
+      continue;
+    }
     x0 = Math.min(x0, b.x0);
     y0 = Math.min(y0, b.y0);
     x1 = Math.max(x1, b.x1);
     y1 = Math.max(y1, b.y1);
+  }
+
+  /*
+    ここまでは「濃い部分（不透明度128超）」だけで測った範囲。
+    これをそのまま切ると、うすい水しぶきや細かい泡のような
+    "薄いけれどデザインの一部" が枠の外に出て、見切れてしまう。
+
+    そこで、落とすと決めた UI の矩形を避けながら、
+    かすかにでも残っている画素（不透明度8超）まで範囲を広げ直す。
+  */
+  const inDropped = (x: number, y: number) =>
+    dropped.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (alpha[y * width + x] <= 8) continue;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue;
+      if (inDropped(x, y)) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
   }
 
   // まわりに余白を足す。グローのような、薄すぎて塊に数えられなかった部分を巻き取るため。

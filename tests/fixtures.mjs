@@ -85,9 +85,10 @@ export function build() {
         let col = [255, 255, 255];
         const rd = Math.abs(d - R);
         if (rd < TH / 2) {
+          // 白との色差が 0.008 未満。どんなしきい値を置いても背景と分けられない。
           const edge = 1 - Math.min(1, (TH / 2 - rd) / (TH * 0.2));
           col = over(
-            [clamp(250 - 16 * edge), clamp(250 - 16 * edge), clamp(252 - 10 * edge)],
+            [clamp(253 - 3 * edge), clamp(253 - 3 * edge), clamp(254 - 2 * edge)],
             col,
             Math.min(1, (TH / 2 - rd) / 2),
           );
@@ -220,6 +221,46 @@ export function build() {
         // 端ぎりぎりの細い文字（デザインの一部）
         if (bar(x, y, S * 0.028, S * 0.42, S * 0.036, S * 0.58)) col = [120, 120, 130];
         if (bar(x, y, S * 0.964, S * 0.4, S * 0.972, S * 0.6)) col = [120, 120, 130];
+        return [...col, 255];
+      }),
+    );
+  }
+
+  /*
+    ── うすい水彩：白にごく近い色でできたフレーム ──
+
+    実機で最初に見つかった不具合の再現。金魚のフレームの水しぶきは
+    白との色差が 0.02〜0.09 しかなく、初期しきい値（0.06）に飲み込まれて
+    デザインごと消えていた。しかも薄い部分は切り出しの範囲からも外れ、
+    絵が見切れていた。
+
+    ここでは内側から外側へ、白にごく近い色から順に4本の輪を描く。
+    いちばん薄い輪（色差 0.02）まで残ることを確かめる。
+  */
+  {
+    // 白との色差がおよそ 0.02 / 0.04 / 0.06 / 0.09 になる、うすい水色
+    const rings = [
+      { r: 0.2, col: [244, 250, 254] },
+      { r: 0.27, col: [232, 244, 252] },
+      { r: 0.34, col: [219, 237, 250] },
+      { r: 0.41, col: [199, 226, 247] },
+    ];
+    write(
+      'pale-wash.png',
+      png(S, S, (x, y) => {
+        const d = Math.hypot(x - C, y - C);
+        let col = [255, 255, 255];
+        for (const { r, col: c } of rings) {
+          const rd = Math.abs(d - S * r);
+          const th = S * 0.028;
+          if (rd < th / 2) col = over(c, col, Math.min(1, (th / 2 - rd) / 2));
+        }
+        // 外側に散らす、いちばん薄い泡。切り出しの範囲に入るかを見る。
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + 0.3;
+          const pd = Math.hypot(x - (C + S * 0.46 * Math.cos(a)), y - (C + S * 0.46 * Math.sin(a)));
+          if (pd < S * 0.02) col = over([244, 250, 254], col, Math.min(1, (S * 0.02 - pd) / 2));
+        }
         return [...col, 255];
       }),
     );
