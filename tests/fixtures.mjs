@@ -226,6 +226,33 @@ export function build() {
   }
 
   /*
+    ── ざらざらした背景の上のフレーム ──
+
+    背景が単色でないので、色キーではどうにもならない。
+    「消えなさすぎ（背景が残った）」を検算で捕まえて AI に回せるかを見る。
+  */
+  {
+    const R = S * 0.4;
+    const TH = S * 0.06;
+    let seed = 1;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    write(
+      'noisy-bg.png',
+      png(S, S, (x, y) => {
+        const d = Math.hypot(x - C, y - C);
+        const n = rnd() * 255;
+        let col = [clamp(n), clamp((n * 0.6 + x / 4) % 255), clamp(Math.sin(x / 23) * 90 + 140)];
+        const rd = Math.abs(d - R);
+        if (rd < TH / 2) col = over([16, 16, 22], col, Math.min(1, (TH / 2 - rd) / 2));
+        return [...col, 255];
+      }),
+    );
+  }
+
+  /*
     ── スマホのスクリーンショット ──
 
     TikTok は透過を持てないので、フレームは動画・画像として流れ、

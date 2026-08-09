@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
     "test": "node tests/run.mjs",
-    "test:fixtures": "node tests/fixtures.mjs"
+    "test:fixtures": "node tests/fixtures.mjs",
+    "build:demo": "DEMO=1 vite build --outDir dist-demo --emptyOutDir"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",
@@ -21,9 +22,10 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "playwright": "^1.49.0",
+    "prettier": "^3.4.2",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
-    "playwright": "^1.49.0",
-    "prettier": "^3.4.2"
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

@@ -171,15 +171,18 @@ export function analyze(data: ImageData): Analysis {
   // なければ狭くして、うすい色のベタ塗りが半透明にならないようにする。
   const suggestedSoftness = hasGlow ? 0.3 : 0.12;
 
-  let recommended: Exclude<CutoutMode, 'auto'>;
-  if (hasAlpha) {
-    recommended = 'none';
-  } else if (borderSpread < 0.06) {
-    // 縁がほぼ単色 → 色キーのほうが AI より輪郭がシャープに出る
-    recommended = 'color';
-  } else {
-    recommended = 'ai';
-  }
+  /*
+    どの手法から始めるかは、縁の様子では決めない。
+
+    以前は「縁の色がばらついていたら AI」にしていたが、これはネオンのグローで
+    簡単に騙される。光が画像のふちまで届いていると、縁がばらついて見えるからだ。
+    そのせいで、色キーできれいに抜けるフレームまで AI に回り、
+    数十MBのダウンロードを強いたうえに、細い線は AI のほうが鈍る。
+
+    いまは常に色キーから始め、"出した結果を検算して" 駄目なら AI に回す
+    （measureQuality を参照）。推測より結果を見るほうが当たる。
+  */
+  const recommended: Exclude<CutoutMode, 'auto'> = hasAlpha ? 'none' : 'color';
 
   return {
     hasAlpha,
@@ -327,11 +330,20 @@ function protectEnclosed(alpha: Uint8ClampedArray, width: number, height: number
   }
 }
 
+/**
+ * これを超える断片数は「粉々になった」とみなす。
+ * うまく抜けたフレームは実測 1〜3 個、失敗したものは 110 個だった。
+ * 飾りの多いデザインのために、健全側へ十分な余裕を取ってある。
+ */
+const FRAGMENT_LIMIT = 60;
+
 export type CutoutQuality = {
   /** 残った絵の面積比 0..1 */
   coverage: number;
   /** ばらばらになった断片の数 */
   fragments: number;
+  /** 四隅のうち、透明になりきらなかった数 0..4 */
+  opaqueCorners: number;
   /** この結果は失敗している可能性が高い */
   suspicious: boolean;
 };
@@ -388,9 +400,50 @@ export function measureQuality(
     if (size >= minSize) fragments++;
   }
 
-  // 絵がほぼ消えた / 粉々になった、のどちらかなら失敗とみなす
-  const suspicious = coverage < 0.03 || fragments > 350;
-  return { coverage, fragments, suspicious };
+  /*
+    いちばん素直な物差しは「四隅が透明になったか」。
+
+    アイコンフレームは丸いので、四隅はまず間違いなく背景。そこが残っているなら、
+    背景を消せていないと断言できる。ざらざらした背景や写真の上に置かれたフレームは、
+    面積比も断片数も中途半端な値になって他の物差しをすり抜けるが、
+    四隅を見れば一発で分かる。
+  */
+  const probe = Math.max(4, Math.round(Math.min(width, height) * 0.02));
+  const cornerMean = (cx: number, cy: number) => {
+    let sum = 0;
+    let count = 0;
+    for (let y = cy; y < cy + probe; y++) {
+      for (let x = cx; x < cx + probe; x++) {
+        sum += alpha[y * width + x];
+        count++;
+      }
+    }
+    return count ? sum / count : 0;
+  };
+  const corners = [
+    cornerMean(0, 0),
+    cornerMean(width - probe, 0),
+    cornerMean(0, height - probe),
+    cornerMean(width - probe, height - probe),
+  ];
+  const opaqueCorners = corners.filter((v) => v > 100).length;
+
+  /*
+    失敗している形。
+
+    1. 四隅が残った … 背景を消せていない（背景が単色でない、写真の上、など）
+    2. 絵がほぼ消えた … 白いガラスを白地に描いたようなデザイン
+    3. 全部残った   … 何も消えていない
+    4. 粉々になった … 絵と背景が入り混じって、断片だらけ
+
+    細い線画は面積が小さいので、面積比だけで失敗と決めつけてはいけない
+    （細くても「ひとつながり」なら、きれいに抜けている）。
+    実測すると、うまくいったフレームの断片は 1〜3 個。
+    ざらざらの背景で失敗したときは 110 個だった。境目はその間に置いている。
+  */
+  const suspicious =
+    opaqueCorners >= 2 || coverage < 0.006 || coverage > 0.75 || fragments > FRAGMENT_LIMIT;
+  return { coverage, fragments, opaqueCorners, suspicious };
 }
 
 /** 半径 r の最小値フィルタ（縦横に分離して近似）。フチを内側に削る。 */

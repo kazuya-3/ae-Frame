@@ -6,3 +6,4 @@ dist/
 .vite/
 tests/fixtures/
 tests/real/
+dist-demo/

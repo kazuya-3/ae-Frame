@@ -8,10 +8,23 @@ export const WORK_MAX_EDGE = 1600;
 export async function fileToBitmap(file: File | Blob): Promise<ImageBitmap> {
   if ('createImageBitmap' in window) {
     try {
+      /*
+        imageOrientation を明示するのが要点。
+
+        スマホで撮った写真は、横向きに撮っても画素はそのままで、
+        「右に90度回して表示せよ」という指示（EXIF）だけが付いていることが多い。
+        既定値はブラウザによって揺れがあるので、指示に従うと明言しておく。
+        これを外すと、横向きの自撮りが倒れたまま読み込まれる。
+      */
+      return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch {
+      /* 古いブラウザは option を受け付けないことがあるので、素で試す */
+    }
+    try {
       // iOS の HEIC など、デコードできない形式はここで例外になる
       return await createImageBitmap(file);
     } catch {
-      /* <img> 経由にフォールバック */
+      /* <img> 経由にフォールバック（<img> は EXIF を自動で反映する） */
     }
   }
   const url = URL.createObjectURL(file);

@@ -250,11 +250,34 @@ try {
     // AI への切り替えは、検算 → 動的 import → 取得 と段を踏むので、
     // 固定待ちだと取りこぼす。条件が立つまで待つ。
     await waitFor(aiRequested, 15000);
-    check('自分で検算して AI に切り替える', aiRequested());
+    check('絵が消えたら AI に切り替える', aiRequested());
     check(
       'AIが使えなくても次へ進める',
       await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
     );
+    await page.close();
+  }
+
+  console.log('\n■ ざらざらした背景（色キーでは抜けない）');
+  {
+    const { page, aiRequested } = await openFrame(browser, 'noisy-bg.png');
+    await waitFor(aiRequested, 15000);
+    check('背景が残ったら AI に切り替える', aiRequested());
+    check(
+      'AIが使えなくても次へ進める',
+      await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
+    );
+    await page.close();
+  }
+
+  /*
+    AI は数十MBのダウンロードを伴う。色キーで足りるデザインで呼んでしまうと、
+    待たせたうえに細い線が鈍る。呼ばないことも、はっきり確かめておく。
+  */
+  console.log('\n■ AIを呼ばずに済むべきデザイン');
+  for (const f of ['lineart.png', 'neon.png', 'festival.png', 'water.png', 'ice-berry.png']) {
+    const { page, aiRequested } = await openFrame(browser, f);
+    check(`${f} でAIを呼ばない`, !aiRequested());
     await page.close();
   }
 

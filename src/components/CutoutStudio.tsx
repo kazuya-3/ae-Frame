@@ -23,12 +23,19 @@ import {
   type PaintMask,
 } from '../lib/cutout';
 import type { AiQuality } from '../lib/ai';
-import { trimTransparent } from '../lib/image';
+import {
+  canvasToBlob,
+  downloadBlob,
+  imageDataToCanvas,
+  timestampName,
+  trimTransparent,
+} from '../lib/image';
 import { play } from '../lib/sound';
 import { Button, Disclosure, Note, Progress, Segmented, Slider, Toggle } from './ui';
 import {
   IconBrush,
   IconCheck,
+  IconDownload,
   IconEraser,
   IconRefresh,
   IconUndo,
@@ -222,8 +229,9 @@ export function CutoutStudio({
             setSettings((prev) => ({ ...prev, mode: 'color' }));
             setStatus({
               kind: 'error',
-              message:
-                'AIの読み込みができませんでした（通信が不安定かもしれません）。かんたん処理に切り替えました。',
+              message: import.meta.env.VITE_DEMO
+                ? 'このお試し版ではAI切り抜きは使えません。かんたん処理に切り替えました（公開版ではAIも使えます）。'
+                : 'AIの読み込みができませんでした（通信が不安定かもしれません）。かんたん処理に切り替えました。',
             });
             play('error');
             console.warn(e);
@@ -460,12 +468,37 @@ export function CutoutStudio({
 
   /* --------------- 次へ --------------- */
 
-  const handleDone = () => {
+  /** いまの設定・手なおしを反映した、透過ずみの画像を作る。 */
+  const buildResult = () => {
     const finished = finishedRef.current;
-    if (!finished) return;
-    const out = composite(source, finished, paintRef.current, settings);
+    if (!finished) return null;
+    return trimTransparent(composite(source, finished, paintRef.current, settings));
+  };
+
+  const handleDone = () => {
+    const out = buildResult();
+    if (!out) return;
     play('done');
-    onDone(trimTransparent(out));
+    onDone(out);
+  };
+
+  /*
+    「フレームだけほしい」人のための出口。
+
+    自分のアイコンに重ねたいわけではなく、透過PNGだけ取れれば十分、という人は
+    そこそこいる。ここに置いておかないと、その人たちは重ねる相手の写真を
+    選ばされてから、最後の画面までたどり着かないと保存できない。
+  */
+  const saveFrameOnly = async () => {
+    const out = buildResult();
+    if (!out) return;
+    try {
+      const blob = await canvasToBlob(imageDataToCanvas(out), 'image/png');
+      downloadBlob(blob, timestampName('frame_toka', 'png'));
+      play('done');
+    } catch {
+      play('error');
+    }
   };
 
   const working = status.kind === 'working';
@@ -560,6 +593,11 @@ export function CutoutStudio({
         <Button variant="primary" onClick={handleDone} disabled={working}>
           <IconCheck size={20} />
           {working ? 'しばらくお待ちください…' : 'これでOK！アイコンに重ねる'}
+        </Button>
+
+        <Button variant="ghost" onClick={saveFrameOnly} disabled={working} sound="tap">
+          <IconDownload size={18} />
+          とうめいなフレームだけ保存する
         </Button>
 
         <Disclosure title="うまく消えないときは" icon={<IconWand size={19} />}>
