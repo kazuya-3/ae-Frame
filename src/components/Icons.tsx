@@ -199,3 +199,26 @@ export const IconRefresh = (p: Props) => (
     <path d="M20.4 4v4.5h-4.5M3.6 20v-4.5h4.5" />
   </Svg>
 );
+
+export const IconHeart = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 20.3l-7.1-7a4.5 4.5 0 0 1 0-6.4 4.5 4.5 0 0 1 6.4 0l.7.7.7-.7a4.5 4.5 0 0 1 6.4 0 4.5 4.5 0 0 1 0 6.4z" />
+  </Svg>
+);
+
+export const IconExternal = (p: Props) => (
+  <Svg {...p}>
+    <path d="M13.5 4.5H19.5V10.5" />
+    <path d="M19.5 4.5L10.8 13.2" />
+    <path d="M17.5 14v4.3a1.7 1.7 0 0 1-1.7 1.7H5.7A1.7 1.7 0 0 1 4 18.3V8.2a1.7 1.7 0 0 1 1.7-1.7H10" />
+  </Svg>
+);
+
+/** 左右反転 */
+export const IconFlip = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 3.5v17" strokeDasharray="2.4 2.6" />
+    <path d="M9 7.5L4 12l5 4.5z" />
+    <path d="M15 7.5L20 12l-5 4.5z" />
+  </Svg>
+);

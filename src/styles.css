@@ -1093,3 +1093,179 @@ input[type='range']:active::-webkit-slider-thumb {
     padding-top: 4px;
   }
 }
+
+/* ===========================================================
+   応援（チップ）
+
+   ツールの一部ではなく「おまけ」に見えるよう、輪郭を破線にして
+   本体のカードとは質感を変えている。押さない人が気まずくならない
+   ことを最優先にしたいので、面積も色も控えめに。
+   =========================================================== */
+
+.tip {
+  position: relative;
+  border: 2px dashed var(--ink-faint);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  padding: 20px 16px 16px;
+  margin-top: 4px;
+  text-align: center;
+}
+
+/* 保存できた直後だけ、少しだけ華やかにする */
+.tip--celebrate {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.tip__close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.tip__close:active {
+  background: var(--paper-3);
+}
+
+.tip__mark {
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.tip__title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.tip__lede {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.75;
+  margin: 0 0 14px;
+  text-align: left;
+}
+
+.tip__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tip__amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 11px 6px;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.09s var(--ease-out),
+    box-shadow 0.09s var(--ease-out);
+  min-height: 62px;
+  justify-content: center;
+}
+
+.tip__amount:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.tip__amount:focus-visible,
+.tip__custom:focus-visible,
+.tip__quiet:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.tip__amount[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tip__value {
+  font-weight: 700;
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tip__note {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  text-align: center;
+  /* 3つ横に並ぶので幅が狭い。長い文言を入れられても、
+     1文字だけ次の行に落ちるような無様な折り返しにはしない。 */
+  text-wrap: balance;
+}
+
+.tip__custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  border: var(--lw) solid var(--ink-faint);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.tip__custom:active {
+  background: var(--paper-3);
+}
+
+.tip__custom[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tip__fine {
+  font-size: 0.71rem;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  margin: 10px 0 0;
+}
+
+/* 常設の小さな入り口。押さない人の視界に居座らない大きさにする。 */
+.tip__quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 4px;
+  text-decoration: underline;
+  text-decoration-color: var(--ink-faint);
+  text-underline-offset: 0.25em;
+}
+
+.tip__quiet:active {
+  color: var(--ink);
+}

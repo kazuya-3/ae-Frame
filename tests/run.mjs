@@ -583,6 +583,161 @@ try {
     }
   }
 
+  /*
+    ステップ3の道具立て。ここは「無い」と思われがちだが実は全部ある、という
+    状態が続いていたので、動くことを機械で押さえておく。
+  */
+  console.log('\n■ 位置あわせの道具');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    /*
+      「絵が変わったか」を見るのに、間引いたサンプルのハッシュを使っていたら
+      変化を取りこぼした。1000画素に1つでは、拡大や反転のような
+      「全体はそのまま、置きかたが変わる」動きに引っかからないことがある。
+
+      なので、画面を12×12のタイルに割って各タイルの平均を取る。
+      全画素を必ず1回ずつ読むので取りこぼしがなく、
+      どこがどれだけ動いたかも数字で言える。
+    */
+    const TILES = 12;
+    const snap = () =>
+      page.evaluate((TILES) => {
+        const c = document.querySelector('.stage canvas');
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const sum = new Float64Array(TILES * TILES * 4);
+        const cnt = new Float64Array(TILES * TILES);
+        for (let y = 0; y < c.height; y++) {
+          const ty = Math.min(TILES - 1, ((y / c.height) * TILES) | 0);
+          for (let x = 0; x < c.width; x++) {
+            const tx = Math.min(TILES - 1, ((x / c.width) * TILES) | 0);
+            const t = ty * TILES + tx;
+            const i = (y * c.width + x) * 4;
+            sum[t * 4] += px[i];
+            sum[t * 4 + 1] += px[i + 1];
+            sum[t * 4 + 2] += px[i + 2];
+            sum[t * 4 + 3] += px[i + 3];
+            cnt[t]++;
+          }
+        }
+        const out = [];
+        for (let t = 0; t < TILES * TILES; t++) {
+          for (let ch = 0; ch < 4; ch++) out.push(sum[t * 4 + ch] / Math.max(1, cnt[t]));
+        }
+        return out;
+      }, TILES);
+
+    /** 2つの絵の食い違い。0 なら完全に同じ。1タイルあたりの平均のずれ。 */
+    const diff = (a, b) => {
+      let d = 0;
+      for (let i = 0; i < a.length; i++) d += Math.abs(a[i] - b[i]);
+      return d / a.length;
+    };
+    // 平均のずれがこれ以上あれば「変わった」と見なす。
+    // 何も操作しないときのずれは 0 なので、余裕をもって小さくてよい。
+    const CHANGED = 0.5;
+
+    const stage = page.locator('.stage');
+    const box = await stage.boundingBox();
+    const base = await snap();
+
+    // 指でドラッグ
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2 + 50, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+    const dragged = await snap();
+    check('ドラッグで写真が動く', diff(dragged, base) > CHANGED, `ずれ ${diff(dragged, base).toFixed(2)}`);
+
+    // 大きさスライダー
+    const sizeSlider = page.getByLabel(/の大きさ/);
+    await sizeSlider.fill('180');
+    await page.waitForTimeout(350);
+    const scaled = await snap();
+    check('大きさスライダーが効く', diff(scaled, dragged) > CHANGED, `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`);
+
+    // 左右反転
+    await page.getByRole('button', { name: '左右を反転する' }).click();
+    await page.waitForTimeout(350);
+    const flipped = await snap();
+    check('左右反転が効く', diff(flipped, scaled) > CHANGED, `ずれ ${diff(flipped, scaled).toFixed(2)}`);
+
+    /*
+      矢印キーでの微調整。1回ぶんは 4px と、わざと小さい。
+      画面ぜんぶの平均で見るとその1回は 0.1 も動かないので、
+      押しつづけたときに積み上がることを見る（そこが道具として大事なところ）。
+    */
+    await stage.focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(350);
+    const nudged = await snap();
+    const byArrow = diff(nudged, flipped);
+    check('矢印キーで少しずつ動かせる', byArrow > CHANGED, `ずれ ${byArrow.toFixed(2)}`);
+
+    // Shift を足すと大きく動く（パソコンから使う人向けの早送り）
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowLeft');
+    await page.waitForTimeout(350);
+    const byShift = diff(await snap(), nudged);
+    check('Shift＋矢印はもっと大きく動く', byShift > byArrow, `ずれ ${byShift.toFixed(2)} > ${byArrow.toFixed(2)}`);
+
+    /*
+      すきまの色。写真を小さくすると、丸の内側に何も無い場所ができる。
+      1点だけ見るとフレームの絵に当たってしまうので、
+      丸の内側で「完全にとうめいな画素」が何個あるかを数える。
+    */
+    await sizeSlider.fill('40');
+    await page.waitForTimeout(350);
+    const clearInsideCircle = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        const r = c.width / 2;
+        let clear = 0;
+        let inside = 0;
+        for (let y = 0; y < c.height; y++) {
+          for (let x = 0; x < c.width; x++) {
+            if (Math.hypot(x - r, y - r) > r - 2) continue; // 丸の外は暗幕がかかる
+            inside++;
+            if (px[(y * c.width + x) * 4 + 3] < 8) clear++;
+          }
+        }
+        return clear / Math.max(1, inside);
+      });
+    const gapBefore = await clearInsideCircle();
+    await page.getByRole('button', { name: '白', exact: true }).click();
+    await page.waitForTimeout(350);
+    const gapAfter = await clearInsideCircle();
+    check(
+      'すきまの色が効く（とうめい→白で不透明になる）',
+      gapBefore > 0.05 && gapAfter < 0.001,
+      `すきま ${(gapBefore * 100).toFixed(1)}% → ${(gapAfter * 100).toFixed(1)}%`,
+    );
+    await page.close();
+  }
+
+  /*
+    応援の案内は、設定していないうちは一切出てはいけない。
+    そのまま公開しても、ただの無料ツールとして成り立つこと。
+  */
+  console.log('\n■ 応援（設定していないとき）');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1200);
+    check('保存前に応援の案内は出ない', (await page.locator('.tip').count()) === 0);
+    check('フッターにも応援の入り口は出ない', (await page.locator('.tip__quiet').count()) === 0);
+
+    const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする|ほぞん・シェアする/ }).click();
+    await dl;
+    await page.waitForTimeout(800);
+    check('保存後も、設定していなければ出ない', (await page.locator('.tip').count()) === 0);
+    await page.close();
+  }
+
   console.log('\n■ 書き出し');
   {
     const { page } = await openFrame(browser, 'neon.png');

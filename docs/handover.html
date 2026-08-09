@@ -553,11 +553,22 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/components/CutoutStudio.tsx</dt>
       <dd>ステップ2（背景をけす）の画面。調整スライダーと手描き修正もここ。</dd>
       <dt>src/components/ComposeStudio.tsx</dt>
-      <dd>ステップ3（重ねて位置を合わせて保存）の画面。</dd>
+      <dd>
+        ステップ3（重ねて位置を合わせて保存）の画面。指・ボタン・キーボードの3通りで
+        同じことができるようにしてあります。
+      </dd>
+      <dt>src/components/TipJar.tsx</dt>
+      <dd>応援（チップ）の案内。出す場所と言いかたの決めごとは、このファイルの先頭に書いてあります。</dd>
+      <dt>src/tip-config.ts</dt>
+      <dd>
+        <strong>応援を有効にするとき、書き換えるのはここだけ。</strong>
+        Stripe の作りかたも、このファイルの先頭に手順として書いてあります。
+        URL が空のあいだは、応援の案内はどこにも出ません。
+      </dd>
       <dt>src/App.tsx</dt>
       <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
       <dt>tests/run.mjs</dt>
-      <dd>実ブラウザでの通し検証。60項目。</dd>
+      <dd>実ブラウザでの通し検証。70項目。</dd>
     </dl>
   </section>
 
@@ -1053,6 +1064,160 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         </div>
       </div>
     </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 11</span>
+        <span class="case__title">素早くドラッグしたあと、ステップ3の画面が一切動かなくなる</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">症状</span>
+          <span>
+            写真をさっと動かしたあと、大きさスライダーも、左右反転も、矢印キーも、すきまの色も、
+            <strong>見た目が何ひとつ変わらなくなる</strong>。値そのものは変わっているので、
+            画面を行き来して描き直させると、その時点の状態でちゃんと描かれる。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            描画は「次のフレームでまとめて1回」に予約していた。予約中かどうかは
+            <code>rafRef</code> に入れた ID で見ていて、片づけのときに
+            <code>cancelAnimationFrame</code> は呼ぶが <strong>ID を 0 に戻していなかった</strong>。
+            1フレームの間に状態が2回変わると（＝指が速いと必ず起きる）、
+            予約は取り消され、しかし「予約中」の印だけが残る。以後
+            <code>if (rafRef.current) return</code> に引っかかりつづけ、
+            この画面は<strong>二度と描き直されない</strong>。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            予約は1つだけ持ち、その中身は毎回いちばん新しい描画関数を
+            <code>paintRef</code> から読みにいく形にした。予約の片づけは部品が消えるときだけ。
+            こうすると、まとめられたフレームでも必ず最新の状態が描かれる（＝コマは落ちても
+            結果は落ちない）。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">見つけかた</span>
+          <span>
+            人の目には見つけにくい種類の不具合だった。触ると値は動き、画面を離れて戻れば直る。
+            気づけたのは、<strong>検証がドラッグの直後にスライダーを動かしていた</strong>から。
+            ただし当初の検証は 1000 画素に1つの間引きサンプルで比べていて、
+            「変わっていない」を「たまたま同じ」と読み違えていた。
+            画面を 12×12 に割って全画素を1回ずつ読む形に変えたら、
+            ずれが <strong>ぴったり 0.00</strong> と出た。ここで初めて、
+            テストの粗さではなくアプリが止まっていると分かった。
+          </span>
+        </div>
+        <div class="evidence">
+          ドラッグ後のずれ &nbsp;修正前 0.00（凍結） &nbsp;／&nbsp; 修正後 33.38（スライダー180%）
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section>
+    <p class="eyebrow">お金のこと</p>
+    <h2>応援（チップ）</h2>
+    <p class="lede">
+      ツールは無料のまま。「気持ちだけ渡したい」という人の受け皿だけを用意してあります。
+      <strong><code>src/tip-config.ts</code> の URL が空のあいだは、応援の案内は画面のどこにも出ません。</strong>
+      設定しなければ、ただの無料ツールとして成立します（そのことも検証で押さえてあります）。
+    </p>
+
+    <h3>置き場所は2つだけ</h3>
+    <dl class="map">
+      <dt>保存できた直後</dt>
+      <dd>
+        画像が手に入った、そのすぐ下。閉じたらそのセッションでは二度と出ません。
+      </dd>
+      <dt>フッターの小さいリンク</dt>
+      <dd>いつでも出ています。上を閉じた人が、あとから自分で探せる場所。</dd>
+    </dl>
+
+    <h3>言いかたで決めたこと</h3>
+    <ol class="steps">
+      <li>
+        <b>受け取る前にお願いしない</b>
+        <p>
+          まだ何ももらっていない人へのお願いは、ただのお願いです。欲しいものが手に入った
+          直後なら、こちらから言わなくても「これ無料でいいの？」と思ってもらえる瞬間がある。
+          そこにだけ置きます。
+        </p>
+      </li>
+      <li>
+        <b>押さないことを気まずくしない</b>
+        <p>
+          「ずっと無料です」「押さなくても、何も変わりません」を先に書き、
+          閉じるボタンを必ず添えます。閉じたら、そのセッションではもう出しません。
+        </p>
+      </li>
+      <li>
+        <b>お金の話は正直に短く</b>
+        <p>どこへ飛ぶのか、カード情報がどこを通るのかを、押す前に書いておきます。</p>
+      </li>
+    </ol>
+
+    <h3>Stripe の設定（10分ほど）</h3>
+    <p>
+      このツールはサーバーを持たない静的サイトです。ふつうの Stripe 決済はサーバー側の処理が
+      要りますが、<strong>支払いリンク（Payment Links）</strong>なら Stripe の決済ページに
+      飛ばすだけなので、サーバーが要りません。
+      <strong>カード番号はこのサイトを一切通りません。</strong>
+    </p>
+    <ol class="steps">
+      <li>
+        <b>アカウントを作る</b>
+        <p>
+          <code>dashboard.stripe.com/register</code> から。日本の個人でも作れます
+          （本人確認と振込先の口座が要ります）。
+        </p>
+      </li>
+      <li>
+        <b>応援用の商品を1つ作る</b>
+        <p>「商品」→「商品を追加」。名前の例：「アイコンフレーム メーカーへの応援」。</p>
+      </li>
+      <li>
+        <b>金額ごとに支払いリンクを作る</b>
+        <p>「支払いリンク」→「新規作成」→ 上で作った商品を選ぶ。100 / 300 / 500円など。</p>
+      </li>
+      <li>
+        <b>金額を相手に決めてもらうリンクも1つ</b>
+        <p>価格を作るときに「顧客が金額を指定できるようにする」を選ぶと作れます。</p>
+      </li>
+      <li>
+        <b>できた URL を貼る</b>
+        <p>
+          <code>https://buy.stripe.com/...</code> の形。貼り先は
+          <code>src/tip-config.ts</code> の <code>TIP_OPTIONS</code> と
+          <code>TIP_CUSTOM_URL</code> だけです。
+        </p>
+      </li>
+      <li>
+        <b>テストしてから本番に差し替える</b>
+        <p>
+          ダッシュボードをテストモードにしてリンクを作り、
+          <code>4242 4242 4242 4242</code>／有効期限は未来の日付／CVC は任意 で通しを確認。
+          本番で使うときは、テストモードを切って作り直したリンクに差し替えます。
+        </p>
+      </li>
+    </ol>
+
+    <h3>先に知っておくこと</h3>
+    <ul class="plain">
+      <li>
+        手数料は日本のカードで <strong>3.6%</strong>（2024年時点。最新は Stripe の料金表で）。
+        100円の応援なら手元に残るのは96円ほど。少額を並べすぎると手数料負けします。
+      </li>
+      <li>受け取ったお金は<strong>所得</strong>です。金額によっては確定申告が要ります。</li>
+      <li>
+        <strong>見返り（特典）を約束しないこと。</strong>
+        約束すると商取引になり、特定商取引法の表示義務などが発生します。
+        「対価のない任意の支援」の形を保ってください。
+      </li>
+    </ul>
   </section>
 
   <section>
@@ -1152,6 +1317,31 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             <td>「下じき」を暗い市松に切り替える</td>
             <td class="num">.preview[data-backdrop] / styles.css</td>
           </tr>
+          <tr>
+            <td>写真の大きさ・位置を変えたい</td>
+            <td>指でつまむ／−＋ボタン／スライダー／矢印キー</td>
+            <td class="num">ComposeStudio.tsx</td>
+          </tr>
+          <tr>
+            <td>フレームの穴と顔がずれる</td>
+            <td>「フレームをうごかす」に切り替えて動かす</td>
+            <td class="num">frameT / ComposeStudio.tsx</td>
+          </tr>
+          <tr>
+            <td>まわりが黒く表示される（SNS側で）</td>
+            <td>「すきまの色」を白か黒にする</td>
+            <td class="num">GAP_FILL / ComposeStudio.tsx</td>
+          </tr>
+          <tr>
+            <td>動かしたのに画面が変わらない</td>
+            <td>—</td>
+            <td class="num">paintRef / ComposeStudio.tsx（CASE 11）</td>
+          </tr>
+          <tr>
+            <td>応援を受け取れるようにしたい</td>
+            <td>—</td>
+            <td class="num">src/tip-config.ts に URL を貼るだけ</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -1186,6 +1376,12 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         <strong>真っ白を白地に描いたデザインは、色では原理的に分けられません。</strong>
         色差が 0.008 を下回ると背景と区別できないので AI に回ります。AI でも詰めが甘ければ、
         「消しのこりを消す／消えすぎをもどす」の筆で仕上げる想定です。
+      </li>
+      <li>
+        <strong>応援の決済は、実際のお金では通していません。</strong>
+        Stripe のアカウントを作れるのは本人だけなので、こちらで確かめられたのは
+        「URL が空なら案内が一切出ない」「入れれば正しいリンクへ飛ぶ」ところまでです。
+        <strong>本番のリンクを貼ったら、テストモードのカードで一度だけ通してください。</strong>
       </li>
       <li><strong>オフライン対応はしていません。</strong> Service Worker は入れていません。</li>
     </ul>

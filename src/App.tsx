@@ -19,6 +19,7 @@ import { autoCropToSubject } from './lib/cutout';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
+import { TipQuietLink } from './components/TipJar';
 import {
   IconArrowRight,
   IconFrame,
@@ -328,6 +329,8 @@ export default function App() {
         <p>
           <IconLock size={14} /> 画像はこの端末の中だけで処理されます。どこにも送信されません。
         </p>
+        {/* 保存のあとの案内を閉じた人が、あとから探せる場所 */}
+        <TipQuietLink />
       </div>
 
       {help && (
