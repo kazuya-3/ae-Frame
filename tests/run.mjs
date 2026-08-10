@@ -7,8 +7,8 @@
  * 「四隅が透明か」「囲まれた白が残っているか」「グローが階調で残っているか」は
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
-import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -19,6 +19,49 @@ const root = join(here, '..');
 const FIXTURES = build();
 const PORT = Number(process.env.PORT ?? 4180);
 const BASE = `http://127.0.0.1:${PORT}/`;
+/** 応援のリンクを1つも設定していない版。同じサーバーの別の場所に置く。 */
+const NO_TIPS_DIR = join(root, 'dist-notips');
+const NO_TIPS_BASE = `${BASE}__notips/`;
+
+/*
+  「設定していないときは、応援の案内がどこにも出ない」を確かめるための版を作る。
+
+  はじめは、配信される JS の中の URL 文字列を空に差し替えて確かめようとした。
+  これは通らない。ビルドの時点で `TIP_CUSTOM_URL.trim() !== ''` が
+  定数の true に畳み込まれてしまい、文字列を変えても分岐が動かないため。
+  （bundle には `.some(...)||!0` と出ていた）
+
+  なので、設定を空にした tip-config.ts で本当にもう1本ビルドする。
+  ビルドが終わったら、元のファイルを必ず戻す。
+*/
+function buildWithoutTips() {
+  const config = join(root, 'src', 'tip-config.ts');
+  const backup = join(root, 'src', 'tip-config.ts.bak');
+  copyFileSync(config, backup);
+  try {
+    const blanked = readFileSync(config, 'utf8').replace(
+      /url:\s*'https:\/\/buy\.stripe\.com\/[^']*'/g,
+      "url: ''",
+    ).replace(
+      /export const TIP_CUSTOM_URL = '[^']*';/,
+      "export const TIP_CUSTOM_URL = '';",
+    );
+    writeFileSync(config, blanked);
+    const r = spawnSync(
+      'npx',
+      ['vite', 'build', '--outDir', NO_TIPS_DIR, '--emptyOutDir', '--logLevel', 'error'],
+      { cwd: root, encoding: 'utf8' },
+    );
+    if (r.status !== 0) {
+      console.log('  （応援なし版のビルドに失敗）', r.stderr?.slice(0, 300));
+      return false;
+    }
+    return true;
+  } finally {
+    copyFileSync(backup, config);
+    rmSync(backup, { force: true });
+  }
+}
 
 const failures = [];
 let checks = 0;
@@ -41,6 +84,7 @@ function serve() {
       `
       const http=require('http'),fs=require('fs'),path=require('path');
       const root=${JSON.stringify(join(root, 'dist'))};
+      const noTips=${JSON.stringify(NO_TIPS_DIR)};
       const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png',
         '.svg':'image/svg+xml','.wasm':'application/wasm','.webmanifest':'application/manifest+json'};
       http.createServer((req,res)=>{
@@ -55,8 +99,12 @@ function serve() {
             + '<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style>'
             + '<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" src="/"></iframe>');
         }
-        let p=path.join(root, decodeURIComponent(req.url.split('?')[0]));
-        if(!p.startsWith(root)) { res.writeHead(403); return res.end(); }
+        let url=decodeURIComponent(req.url.split('?')[0]);
+        // 応援のリンクを設定していない版は、同じサーバーの別の場所から配る
+        let base=root;
+        if(url.startsWith('/__notips/')) { base=noTips; url=url.slice('/__notips'.length); }
+        let p=path.join(base, url);
+        if(!p.startsWith(base)) { res.writeHead(403); return res.end(); }
         if(fs.existsSync(p)&&fs.statSync(p).isDirectory()) p=path.join(p,'index.html');
         if(!fs.existsSync(p)) { res.writeHead(404); return res.end('not found'); }
         res.writeHead(200,{'Content-Type':types[path.extname(p)]||'application/octet-stream'});
@@ -81,7 +129,8 @@ async function waitFor(fn, timeout = 10000, interval = 150) {
 
 /* ---------------- 画面操作のヘルパー ---------------- */
 
-async function openFrame(browser, frameFile, photoFile = 'photo-color.png') {
+async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts = {}) {
+  const origin = opts.origin ?? BASE;
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e.message)));
@@ -96,7 +145,8 @@ async function openFrame(browser, frameFile, photoFile = 'photo-color.png') {
   await page.route('**huggingface.co/**', blockAi);
   await page.route('**cdn.jsdelivr.net/**', blockAi);
 
-  await page.goto(BASE, { waitUntil: 'networkidle' });
+
+  await page.goto(origin, { waitUntil: 'networkidle' });
   await page
     .getByRole('button', { name: 'はじめる' })
     .click()
@@ -982,9 +1032,27 @@ try {
     応援の案内は、設定していないうちは一切出てはいけない。
     そのまま公開しても、ただの無料ツールとして成り立つこと。
   */
+  /*
+    応援のリンクを設定していないとき。
+
+    tip-config.ts の URL が空なら、応援の案内は画面のどこにも出てはいけない。
+    そのまま公開しても、ただの無料ツールとして成り立つこと。
+
+    いまは本番の Stripe リンクが入っているので、空の設定でもう1本ビルドして
+    そちらを開く。配信物の文字列を後から差し替える手も試したが、
+    それでは確かめられない。ビルド時に
+    `TIP_CUSTOM_URL.trim() !== ''` が定数の true に畳み込まれるので、
+    URL を空にしても分岐は動かない（実際そこで一度、通らない検証を書いた）。
+  */
   console.log('\n■ 応援（設定していないとき）');
   {
-    const { page } = await openFrame(browser, 'lineart.png');
+    const built = buildWithoutTips();
+    check('設定を空にした版がビルドできる', built);
+    if (!built) throw new Error('応援なし版をビルドできませんでした');
+
+    const { page } = await openFrame(browser, 'lineart.png', 'photo-color.png', {
+      origin: NO_TIPS_BASE,
+    });
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1200);
     check('保存前に応援の案内は出ない', (await page.locator('.tip').count()) === 0);
@@ -995,6 +1063,224 @@ try {
     await dl;
     await page.waitForTimeout(800);
     check('保存後も、設定していなければ出ない', (await page.locator('.tip').count()) === 0);
+    await page.close();
+  }
+
+  /*
+    設定してあるとき。ここからが本番の並び。
+
+    大事なのは「保存できたあとにだけ出る」ことと、
+    「そこで金額の話を始めない」こと。保存できた直後の画面は
+    本来「できた！」を味わう場所なので、会計の画面にしない。
+  */
+  console.log('\n■ 応援（設定してあるとき）');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    check('フッターに応援の入り口が出る', (await page.locator('.tip__quiet').count()) >= 1);
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1200);
+    check('保存前は応援の案内を出さない', (await page.locator('.tip--celebrate').count()) === 0);
+
+    const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする|ほぞん・シェアする/ }).click();
+    await dl;
+    await page.waitForTimeout(900);
+    check('保存できたら応援の案内が出る', (await page.locator('.tip--celebrate').count()) === 1);
+    check(
+      'ここでは金額を並べない',
+      (await page.locator('.tip .plan').count()) === 0 &&
+        !/300円|500円|1,000円/.test(await page.locator('.tip').innerText()),
+    );
+
+    await page.getByRole('button', { name: /制作活動を応援する/ }).first().click();
+    await page.waitForTimeout(500);
+    check('そこから応援ページへ移動できる', /#\/support$/.test(page.url()), page.url().slice(-24));
+
+    // 閉じたら、そのセッションではもう出さない（既存の約束）
+    await page.goBack();
+    await page.waitForTimeout(500);
+    await page.locator('.tip__close').click();
+    await page.waitForTimeout(400);
+    check('閉じたら引っ込む', (await page.locator('.tip--celebrate').count()) === 0);
+    await page.close();
+  }
+
+  /*
+    応援ページ。ここはお金の話をする唯一の場所。
+
+    いちばん守りたいのは「カードを選んだだけでは、どこへも飛ばない」こと。
+    指が当たっただけで決済ページに飛ぶのは、やってはいけない類の事故なので。
+  */
+  console.log('\n■ 応援ページ');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    /*
+      飾りの素材が置かれていないうちは 404 が出る。これは想定どおりなので、
+      スクリプトの誤りとは分けて数える。ページが使えるかどうかは別に見ている。
+    */
+    const errors = [];
+    const missing = [];
+    const isAssetMiss = (t) => /assets\/support\//.test(t) || /404 \(Not Found\)/.test(t);
+    page.on('pageerror', (e) => errors.push(String(e.message)));
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      (isAssetMiss(m.text()) ? missing : errors).push(m.text());
+    });
+    page.on('requestfailed', (r) => {
+      if (!/assets\/support\//.test(r.url())) errors.push(`${r.url()} が読めない`);
+    });
+    await page.goto(BASE + '#/support', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+
+    const cta = page.locator('.support__cta');
+    check('応援ページが開く', (await page.locator('.support').count()) === 1);
+    check('はじめは 500円 がえらばれている', /500円で応援する/.test(await cta.innerText()), (await cta.innerText()).replace(/\s+/g, ' '));
+    check(
+      'えらばれているものが読み上げにも出る',
+      (await page.getByRole('radio', { checked: true }).innerText()).includes('500円'),
+    );
+
+    // 金額を変えると、押す前のボタンの文字も変わる
+    const pick = async (name) => {
+      await page.getByRole('radio', { name: new RegExp(name) }).click();
+      await page.waitForTimeout(250);
+      return { label: (await cta.innerText()).replace(/\s+/g, ' '), href: await cta.getAttribute('href') };
+    };
+
+    const p300 = await pick('300円');
+    check('300円でボタンの文字が変わる', /300円で応援する/.test(p300.label), p300.label);
+    check('300円のリンクにつながる', p300.href === 'https://buy.stripe.com/bJe7sE4b32r1d3EfYW3VC00', String(p300.href));
+
+    const p500 = await pick('500円');
+    check('500円でボタンの文字が変わる', /500円で応援する/.test(p500.label), p500.label);
+    check('500円のリンクにつながる', p500.href === 'https://buy.stripe.com/00w7sEazrd5F0gSaEC3VC01', String(p500.href));
+
+    const p1000 = await pick('1,000円');
+    check('1,000円でボタンの文字が変わる', /1,000円で応援する/.test(p1000.label), p1000.label);
+    check('1,000円のリンクにつながる', p1000.href === 'https://buy.stripe.com/cNidR2gXP4z90gSbIG3VC02', String(p1000.href));
+
+    const free = await pick('自由入力');
+    check('自由入力でボタンの文字が変わる', /好きな金額で応援する/.test(free.label), free.label);
+    check('自由入力のリンクにつながる', free.href === 'https://buy.stripe.com/dRm00cbDv0iTe7I5ki3VC03', String(free.href));
+
+    /*
+      カードを押しただけで決済ページへ飛ばないこと。
+      新しいタブが開かないこと、URL が変わらないことの両方で見る。
+    */
+    const before = page.url();
+    let opened = 0;
+    page.context().on('page', () => opened++);
+    await page.getByRole('radio', { name: /300円/ }).click();
+    await page.getByRole('radio', { name: /1,000円/ }).click();
+    await page.waitForTimeout(500);
+    check('カードを押しただけでは決済へ飛ばない', page.url() === before && opened === 0, `新しいタブ ${opened} 枚`);
+
+    check('主CTAだけが決済ページへの入口', await cta.getAttribute('target') === '_blank');
+    check(
+      'カード番号の入力欄をこのサイトに作らない',
+      (await page.locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]').count()) === 0,
+    );
+
+    // 390px で横にはみ出さない
+    const overflow = await page.evaluate(() => ({
+      w: document.documentElement.scrollWidth,
+      v: window.innerWidth,
+    }));
+    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+
+    /*
+      素材の画像がまだ置かれていなくても、ページはそのまま使えること。
+      いまはまさにその状態なので、ここで確かめられる。
+    */
+    check(
+      '画像が無くてもページは使える',
+      (await cta.isVisible()) && (await page.locator('.plan').count()) >= 3,
+    );
+
+    // Web Share が無い端末（この Chromium がそれ）でも、リンクは配れる
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+    await page.getByRole('button', { name: /リンクをコピー/ }).click();
+    await page.waitForTimeout(400);
+    check('共有が使えなくてもリンクをコピーできる', (await page.getByText('コピーしました').count()) >= 1);
+
+    check('スクリプトのエラーが出ない', errors.length === 0, errors[0] ?? '');
+    // 素材を置いたら 0 になる。置く前でもページが使えることは、上で確かめている。
+    console.log(`  \x1b[2m素材がまだ無いための 404: ${missing.length} 件\x1b[0m`);
+    await page.close();
+  }
+
+  /*
+    お礼のページ。決済のあとに Stripe から戻ってくる場所。
+    ここを「ありがとうございました」で終わらせず、作る画面へ返す。
+  */
+  console.log('\n■ お礼のページ');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+
+    check('お礼のページが開く', (await page.getByText('応援ありがとう！').count()) >= 1);
+    check('3つめのステップが光っている', (await page.locator(".steps--static .steps__item[data-state='current'] .steps__label").innerText()).includes('完了'));
+
+    const overflow = await page.evaluate(() => ({
+      w: document.documentElement.scrollWidth,
+      v: window.innerWidth,
+    }));
+    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+
+    await page.getByRole('button', { name: /もう1個つくる/ }).click();
+    await page.waitForTimeout(600);
+    check('「もう1個つくる」で作る画面へ戻れる', (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1);
+    await page.close();
+  }
+
+  /*
+    どの幅でも、横にはみ出さないこと。
+    スマホは 390px を基準にしているが、実際にはもっと狭い端末も、
+    折りたたみを開いた広い端末もある。
+  */
+  console.log('\n■ いろいろな画面幅');
+  {
+    for (const width of [320, 375, 390, 430, 768, 1280]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      const bad = [];
+      for (const [name, hash] of [
+        ['応援', '#/support'],
+        ['お礼', '#/support/thanks'],
+      ]) {
+        await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(400);
+        const m = await page.evaluate(() => {
+          const doc = document.documentElement;
+          // 文字やボタンが箱からはみ出していないかも、いっしょに見る
+          const over = [...document.querySelectorAll('.support *')].filter(
+            (el) => el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflowX === 'visible',
+          ).length;
+          return { w: doc.scrollWidth, v: window.innerWidth, over };
+        });
+        if (m.w > m.v + 1) bad.push(`${name} ${m.w}>${m.v}`);
+      }
+      check(`${width}px で横スクロールが出ない`, bad.length === 0, bad.join(' / '));
+      await page.close();
+    }
+  }
+
+  /*
+    動きを減らす設定にしている人には、飾りを動かさない。
+  */
+  console.log('\n■ 動きを減らす設定');
+  {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 900 },
+      reducedMotion: 'reduce',
+    });
+    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    const anim = await page.evaluate(() => {
+      const el = document.querySelector('.decor__celebration');
+      return el ? getComputedStyle(el).animationName : 'none';
+    });
+    check('紙吹雪をアニメーションさせない', anim === 'none', anim);
     await page.close();
   }
 

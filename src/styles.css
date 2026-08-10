@@ -1436,3 +1436,430 @@ input[type='range']:active::-webkit-slider-thumb {
   flex: none;
   margin-top: 3px;
 }
+
+/* ==========================================================================
+   応援ページ（#/support）と、そのお礼ページ（#/support/thanks）
+
+   既存のトークン（--paper / --ink / --accent …）だけで組む。
+   ここで新しい色や角丸を作らない。同じサイトの中を移動しているだけ、
+   と見えることのほうが、ページ単体の見栄えより大事なので。
+   ========================================================================== */
+
+/* ---------- 飾りの層 ---------- */
+
+/*
+  素材は1枚のモックではなく、独立した層として置く。
+  文字は HTML のまま上に載るので、幅が変わっても崩れない。
+
+  すべて pointer-events: none。飾りが指を吸い取ると、
+  その下のボタンが押せなくなる。
+*/
+.decor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* 中の z-index を、この箱の中だけの話にとどめる */
+  isolation: isolate;
+}
+
+.decor > * {
+  position: absolute;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+
+/* 1: ページ全体の淡い地。文字が読めなくなるほど濃くしない */
+.decor__bg {
+  inset: 0;
+  z-index: 1;
+  background-position: center top;
+  background-size: cover;
+  opacity: 0.5;
+  /* 中央を白く抜いて、本文の下だけ静かにする */
+  -webkit-mask-image: radial-gradient(circle at 50% 42%, transparent 18%, black 78%);
+  mask-image: radial-gradient(circle at 50% 42%, transparent 18%, black 78%);
+}
+
+/*
+  背景の URL は、このファイルではなくコンポーネント側で入れている。
+  ビルドすると CSS は dist/assets/ の中に置かれるので、
+  ここに書いた './assets/...' は assets/assets/... を指してしまう。
+  HTML から見た相対パスで解決させたいので、要素の style で渡す。
+*/
+
+/*
+  水と果実は「画面の外から少し入ってくる」置きかたにする。
+  中央を丸く囲むと、そこに文字を置けなくなるので。
+*/
+.decor__water {
+  z-index: 2;
+  right: -12%;
+  bottom: -6%;
+  width: min(78vw, 620px);
+  aspect-ratio: 3 / 2;
+  background-size: contain;
+  background-position: right bottom;
+  opacity: 0.42;
+}
+
+.decor__fruit {
+  z-index: 3;
+  left: -14%;
+  top: -4%;
+  width: min(66vw, 520px);
+  aspect-ratio: 3 / 2;
+  background-size: contain;
+  background-position: left top;
+  opacity: 0.38;
+}
+
+/* 完了ページだけの紙吹雪。本文の上に来るので、いちばん薄くする */
+.decor__celebration {
+  inset: 0;
+  z-index: 6;
+  background-size: cover;
+  background-position: center top;
+  opacity: 0.3;
+  /* まん中は空ける。読めなくなったら装飾の意味がない */
+  -webkit-mask-image: radial-gradient(ellipse at 50% 46%, transparent 34%, black 74%);
+  mask-image: radial-gradient(ellipse at 50% 46%, transparent 34%, black 74%);
+  animation: celebrate-in 0.9s var(--ease-out) both;
+}
+
+@keyframes celebrate-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* 狭い画面では飾りを減らす。情報 ＞ キャラクター ＞ 装飾 */
+@media (max-width: 560px) {
+  .decor__water {
+    width: 92vw;
+    opacity: 0.3;
+    right: -22%;
+  }
+  .decor__fruit {
+    width: 80vw;
+    opacity: 0.26;
+    left: -26%;
+  }
+  .decor__bg {
+    opacity: 0.4;
+  }
+  .decor__celebration {
+    opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decor__celebration {
+    animation: none;
+  }
+}
+
+/* ---------- ハリネズミ ---------- */
+
+.mascot-slot {
+  z-index: 5;
+  flex: none;
+  width: min(180px, 44vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+/* 素材がまだ置かれていないときは、空き地を残さず畳む */
+.mascot-slot[data-missing='true'] {
+  display: none;
+}
+
+.mascot {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* 紙に貼ったシールに見えるよう、線画のUIと同じ実線の影にそろえる */
+  filter: drop-shadow(2px 3px 0 rgb(0 0 0 / 8%));
+}
+
+/* ---------- ページの本体 ---------- */
+
+.support {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.support__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.support__hero--center {
+  flex-direction: column;
+  text-align: center;
+}
+
+/* 狭い画面では、文字とキャラクターを重ねずに上下へ逃がす */
+@media (max-width: 430px) {
+  .support__hero {
+    flex-direction: column;
+    text-align: center;
+    gap: 8px;
+  }
+}
+
+.support__lead {
+  min-width: 0;
+}
+
+.support__title {
+  font-size: 1.16rem;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+.support__title--big {
+  font-size: clamp(1.5rem, 7vw, 2rem);
+}
+
+.support__sub {
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 0.855rem;
+  line-height: 1.7;
+}
+
+/* ---------- 金額のカード ---------- */
+
+.plans {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  /* 指で押す場所は 44px より小さくしない */
+  min-height: 92px;
+  padding: 12px 12px 12px 34px;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    transform 0.09s var(--ease-out),
+    box-shadow 0.09s var(--ease-out),
+    background 0.18s;
+}
+
+.plan:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.plan:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* 選択は色だけで示さない。枠の太さと、丸の中のチェックでも分かるようにする */
+.plan[data-on] {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+  box-shadow: 2px 2px 0 var(--accent);
+}
+
+.plan__mark {
+  position: absolute;
+  left: 11px;
+  top: 13px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: var(--lw) solid var(--ink-faint);
+  display: grid;
+  place-items: center;
+  background: var(--paper-2);
+  color: var(--accent-ink);
+}
+
+.plan[data-on] .plan__mark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.plan__badge {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border: var(--lw) solid var(--line);
+}
+
+.plan__amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.plan__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.plan__note {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+/* とても狭い画面（320px）では1列にして、文字を折らない */
+@media (max-width: 359px) {
+  .plans {
+    grid-template-columns: 1fr;
+  }
+  .plan {
+    min-height: 0;
+  }
+}
+
+/* ---------- 進むボタン ---------- */
+
+.support__cta {
+  text-decoration: none;
+}
+
+.support__cta[aria-disabled='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ---------- 安心の但し書き ---------- */
+
+.safety {
+  border: var(--lw) dashed var(--ink-faint);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--paper-3);
+}
+
+.safety__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.safety__list {
+  margin: 8px 0 0;
+  padding-left: 1.1em;
+  font-size: 0.76rem;
+  line-height: 1.75;
+  color: var(--ink-soft);
+}
+
+/* ---------- 作品と、広めてもらう場所 ---------- */
+
+.support__next,
+.support__share {
+  border-top: var(--lw) solid var(--paper-3);
+  padding-top: 14px;
+}
+
+.support__next-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.support__next-body {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  line-height: 1.75;
+  color: var(--ink-soft);
+}
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.share__links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.share__links .btn {
+  flex: 1 1 auto;
+  text-decoration: none;
+}
+
+/* ---------- お礼のページ ---------- */
+
+.thanks__body {
+  font-size: 0.87rem;
+  line-height: 1.85;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---------- 応援へ進むボタン（保存の直後に出るもの） ---------- */
+
+.tip__go {
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* ---------- ステップ（押せない表示だけの版） ---------- */
+
+.steps--static {
+  list-style: none;
+  padding: 0;
+}
+
+.steps--static .steps__item {
+  cursor: default;
+}
+
+/* ---------- 読み上げにだけ伝える文字 ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

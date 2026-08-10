@@ -43,7 +43,7 @@ const STEPS: { id: Step; label: string }[] = [
   { id: 3, label: '重ねて保存' },
 ];
 
-export default function App() {
+export default function App({ active = true }: { active?: boolean }) {
   const [step, setStep] = useState<Step>(1);
   const [photo, setPhoto] = useState<ImageBitmap | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -59,8 +59,16 @@ export default function App() {
 
   const photoUrlRef = useRef<string | null>(null);
 
-  // 初回だけ、使いかたを開いておく（迷わせない）
+  /*
+    初回だけ、使いかたを開いておく（迷わせない）。
+
+    ただし、この画面が表に出ているときだけ。
+    つくる画面は、応援ページへ寄り道しても作りかけが消えないように
+    隠して残してある。使いかたのシートは body の直下に出るので、
+    隠れている側から開くと、応援ページの上にかぶさってしまう。
+  */
   useEffect(() => {
+    if (!active) return;
     try {
       if (!localStorage.getItem('aeframe.seen')) {
         setHelp(true);
@@ -69,7 +77,7 @@ export default function App() {
     } catch {
       /* localStorage が使えない環境では出さない */
     }
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     return () => {
@@ -333,7 +341,7 @@ export default function App() {
         <TipQuietLink />
       </div>
 
-      {help && (
+      {help && active && (
         <Sheet onClose={() => setHelp(false)}>
           <div className="card__head" style={{ marginBottom: 10 }}>
             <h2 className="card__title" style={{ flex: 1 }}>

@@ -19,6 +19,11 @@
  * カード番号はこのサイトを一切通りません。Stripe の画面で直接入力されます。
  * こちらは何も預からないので、いちばん安全で、いちばん手間がかからない形です。
  *
+ * ここに並ぶ URL は「決済ページの入口」で、秘密の情報ではありません。
+ * 押してもらうためのものなので、公開リポジトリに入っていて問題ありません。
+ * 逆に、Stripe の**シークレットキーをここに書いてはいけません**。
+ * このファイルは、そのまま利用者のブラウザに配られます。
+ *
  *
  * ── 作りかた（10分ほど） ──
  *
@@ -30,34 +35,40 @@
  *
  * 3. 金額ごとに「支払いリンク」を作る
  *    ダッシュボード左の「支払いリンク」→「新規作成」→ 上で作った商品を選ぶ
- *    100円 / 300円 / 500円 のように、欲しい金額のぶんだけ作ります
  *
  * 4. 金額を相手に決めてもらう用のリンクも1つ作る
  *    価格を作るときに「顧客が金額を指定できるようにする」を選ぶと作れます
  *
  * 5. できた URL（https://buy.stripe.com/... の形）を下に貼る
  *
- * 6. テストしたいときは、ダッシュボードを「テストモード」にしてリンクを作り、
- *    カード番号 4242 4242 4242 4242 ／ 有効期限は未来の日付 ／ CVC は任意 で試せます
- *    本番で使うときは、テストモードを切ってから作り直したリンクに差し替えてください
+ * 6. 各リンクの「支払い後」の遷移先に、このツールの完了ページを設定する
+ *    → 公開URL + `#/support/thanks`
+ *    （例：https://kazuya-3.github.io/ae-Frame/#/support/thanks）
+ *    ここは Stripe のダッシュボード側の設定なので、コードからは変えられません。
  *
  *
  * ── 注意 ──
  *
  * ・Stripe の手数料は、日本のカードで 3.6%（2024年時点。最新は Stripe の料金表で確認）。
- *   100円の応援なら手元に残るのは 96円ほどです。少額を並べすぎると手数料負けします。
+ *   300円の応援なら手元に残るのは 289円ほどです。少額を並べすぎると手数料負けします。
  * ・受け取ったお金は所得になります。金額によっては確定申告が要ります。
  * ・「対価のない任意の支援」として受け取る形なので、見返り（特典）を約束しないこと。
  *   約束すると商取引になり、特定商取引法の表示義務などが発生します。
  */
 
 export type TipOption = {
-  /** ボタンに出る金額の表示 */
+  /** 見分けるための ID。検証と選択状態に使う */
+  id: string;
+  /** カードの見出し。「300円」など */
   label: string;
-  /** その下の小さな説明。押す理由を一言で */
+  /** その下の短い名前。「ちょこっと応援」など */
+  title: string;
+  /** さらに下の一言。押す理由を短く */
   note: string;
   /** Stripe の支払いリンク（https://buy.stripe.com/... ） */
   url: string;
+  /** 「おすすめ」を付けるか。1つだけ */
+  recommended?: boolean;
 };
 
 /**
@@ -65,14 +76,41 @@ export type TipOption = {
  * URL を空のままにしたものは表示されません。
  */
 export const TIP_OPTIONS: TipOption[] = [
-  // note は横に3つ並ぶので、折り返さない長さ（8文字くらいまで）にしておく
-  { label: '¥100', note: 'ありがとう', url: '' },
-  { label: '¥300', note: 'コーヒー1杯', url: '' },
-  { label: '¥500', note: '応援してます', url: '' },
+  {
+    id: 'p300',
+    label: '300円',
+    title: 'ちょこっと応援',
+    note: '気軽なきもちで',
+    url: 'https://buy.stripe.com/bJe7sE4b32r1d3EfYW3VC00',
+  },
+  {
+    id: 'p500',
+    label: '500円',
+    title: 'もうひと押し応援',
+    note: 'いちばん選ばれています',
+    url: 'https://buy.stripe.com/00w7sEazrd5F0gSaEC3VC01',
+    recommended: true,
+  },
+  {
+    id: 'p1000',
+    label: '1,000円',
+    title: 'しっかり応援',
+    note: '制作の助けになります',
+    url: 'https://buy.stripe.com/cNidR2gXP4z90gSbIG3VC02',
+  },
 ];
 
-/** 金額を自分で決めたい人むけ。空なら「すきな金額」ボタンは出ません。 */
-export const TIP_CUSTOM_URL = '';
+/** 金額を自分で決めたい人むけ。空なら「自由入力」カードは出ません。 */
+export const TIP_CUSTOM_URL = 'https://buy.stripe.com/dRm00cbDv0iTe7I5ki3VC03';
+
+/** 自由入力のカードも、ほかと同じ形で扱えるようにしておく */
+export const CUSTOM_OPTION: TipOption = {
+  id: 'custom',
+  label: '自由入力',
+  title: '好きな金額で応援',
+  note: '金額は次の画面で',
+  url: TIP_CUSTOM_URL,
+};
 
 /** ひとつでも設定されていれば、応援の案内を出す。 */
 export function hasTipLinks() {
@@ -82,4 +120,16 @@ export function hasTipLinks() {
 /** 実際に表示する選択肢だけを返す。 */
 export function activeTipOptions() {
   return TIP_OPTIONS.filter((o) => o.url.trim() !== '');
+}
+
+/** 自由入力を含めた、応援ページに並べるカード。 */
+export function supportPlans(): TipOption[] {
+  const plans = activeTipOptions();
+  return TIP_CUSTOM_URL.trim() ? [...plans, CUSTOM_OPTION] : plans;
+}
+
+/** 最初から選んでおくもの。「おすすめ」があればそれ、無ければ先頭。 */
+export function defaultPlanId(): string | null {
+  const plans = supportPlans();
+  return plans.find((p) => p.recommended)?.id ?? plans[0]?.id ?? null;
 }

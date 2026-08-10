@@ -580,7 +580,38 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         携帯に保存できないときの逃げ道もここ。
       </dd>
       <dt>src/components/TipJar.tsx</dt>
-      <dd>応援（チップ）の案内。出す場所と言いかたの決めごとは、このファイルの先頭に書いてあります。</dd>
+      <dd>
+        応援（チップ）の案内。出す場所と言いかたの決めごとは、このファイルの先頭に書いてあります。
+        ここでは金額を出さず、応援ページへ渡すだけにしています。
+      </dd>
+      <dt>src/lib/route.ts</dt>
+      <dd>
+        画面の切りかえ。ハッシュ（<code>#/support</code>）だけの小さなもの。
+        GitHub Pages は「どのURLでも index.html を返す」ができないので、
+        ふつうのパスで直リンクを配ると 404 になります。
+      </dd>
+      <dt>src/Root.tsx</dt>
+      <dd>
+        つくる画面・応援ページ・お礼ページの出し分け。つくる画面は外さずに隠すので、
+        応援ページへ寄り道しても作りかけが消えません。
+      </dd>
+      <dt>src/components/SupportPage.tsx</dt>
+      <dd>応援ページ（<code>#/support</code>）。金額をえらんで Stripe へ渡すところ。</dd>
+      <dt>src/components/ThanksPage.tsx</dt>
+      <dd>
+        決済のあとに戻ってくるページ（<code>#/support/thanks</code>）。
+        いちばん大きいボタンはお礼ではなく「もう1個つくる」です。
+      </dd>
+      <dt>src/components/PageDecor.tsx</dt>
+      <dd>
+        応援まわりの飾り。素材が置かれていなくてもページが完全に動くよう、
+        飾りは CSS の背景、意味のある絵だけ <code>&lt;img&gt;</code> にしています。
+      </dd>
+      <dt>public/assets/support/</dt>
+      <dd>
+        応援ページの素材7枚を置く場所。どのファイルが何かは、
+        そこの <code>README.md</code> に表で書いてあります。
+      </dd>
       <dt>src/tip-config.ts</dt>
       <dd>
         <strong>応援を有効にするとき、書き換えるのはここだけ。</strong>
@@ -590,7 +621,7 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/App.tsx</dt>
       <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
       <dt>tests/run.mjs</dt>
-      <dd>実ブラウザでの通し検証。90項目。</dd>
+      <dd>実ブラウザでの通し検証。126項目。</dd>
     </dl>
   </section>
 
@@ -1463,6 +1494,82 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
   </section>
 
   <section>
+    <p class="eyebrow">お金の受け皿</p>
+    <h2>応援ページと、お礼のページ</h2>
+    <p class="lede">
+      <code>#/support</code> で金額をえらび、Stripe の決済ページへ渡す。
+      決済のあとは <code>#/support/thanks</code> に戻ってくる。
+    </p>
+
+    <div class="scroller">
+      <pre><code>つくる → 保存 → 応援(#/support) → Stripe → お礼(#/support/thanks) → またつくる</code></pre>
+    </div>
+
+    <p>
+      輪になっているのが大事なところ。お礼のページを「決済ありがとうございました」で
+      終わらせると、そこで人が止まる。だから<strong>いちばん大きいボタンは「もう1個つくる」</strong>。
+    </p>
+
+    <h3>崩してはいけない約束</h3>
+    <ul class="plain">
+      <li>
+        <strong>カードを選んだだけでは、どこへも飛ばない。</strong>
+        選ぶ操作と、お金の話へ進む操作を分けてある。指が当たっただけで
+        決済ページに飛ぶのは、いちばんやってはいけない類の事故なので。
+      </li>
+      <li>
+        <strong>カード番号の入力欄を1つも作らない。</strong>
+        決済は Stripe の画面でだけ起きる。シークレットキーも使わない
+        （そもそもフロントエンドに置けるものではない）。
+      </li>
+      <li>
+        <strong>保存直後の案内では金額を出さない。</strong>
+        できた！を味わう場所に金額のカードを4枚並べると、会計の画面になってしまう。
+      </li>
+      <li>
+        <strong>URL は <code>src/tip-config.ts</code> にだけ書く。</strong>
+        画面の側に貼らない。金額を変えるときに探し回らずに済む。
+      </li>
+    </ul>
+
+    <h3>なぜハッシュ（#/support）なのか</h3>
+    <p>
+      GitHub Pages には「どのURLでも index.html を返す」設定が無い。
+      ふつうのパス（<code>/support</code>）で直リンクを配ると 404 になる。
+      ハッシュならサーバーから見ればいつも同じ1枚なので、必ず開ける。
+      画面は3つしかないので、ルーティングのライブラリは入れていない。
+    </p>
+    <p>
+      つくる画面は、応援ページへ寄り道しても<strong>外さずに隠しておく</strong>。
+      写真もフレームも手でなおした跡も、ここで消えると
+      「応援したせいで作りかけが消えた」ことになる。
+    </p>
+
+    <h3>素材</h3>
+    <p>
+      <code>public/assets/support/</code> に7枚。
+      <strong>置いていなくてもページは完全に動く</strong>（飾りが出ないだけ）。
+      飾りは CSS の背景として敷いてあるので、ファイルが無ければ何も起きない。
+      意味のある絵（ハリネズミ）だけ <code>&lt;img&gt;</code> にして、
+      読み込みに失敗したら枠ごと畳む。
+    </p>
+    <div class="callout">
+      <p>
+        飾りの URL はスタイルシートではなく、要素の <code>style</code> で渡している。
+        ビルドすると CSS は <code>dist/assets/</code> の中に置かれるので、
+        そこに書いた <code>./assets/...</code> は <code>assets/assets/...</code> を
+        指してしまう。
+      </p>
+    </div>
+
+    <h3>Stripe 側で、人がやること</h3>
+    <p>
+      各支払いリンクの「支払い後」の遷移先に、公開URL＋<code>#/support/thanks</code>
+      を設定する。ここはダッシュボードの設定なので、コードからは変えられない。
+    </p>
+  </section>
+
+  <section>
     <p class="eyebrow">確かめかた</p>
     <h2>検証</h2>
     <p>
@@ -1590,9 +1697,19 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             <td class="num">clipToShape / ComposeStudio.tsx</td>
           </tr>
           <tr>
-            <td>応援を受け取れるようにしたい</td>
+            <td>応援の金額やリンクを変えたい</td>
             <td>—</td>
-            <td class="num">src/tip-config.ts に URL を貼るだけ</td>
+            <td class="num">src/tip-config.ts だけ（他に書かない）</td>
+          </tr>
+          <tr>
+            <td>応援ページの飾りを変えたい</td>
+            <td>—</td>
+            <td class="num">public/assets/support/ に同じ名前で置く</td>
+          </tr>
+          <tr>
+            <td>決済後の戻り先を変えたい</td>
+            <td>—</td>
+            <td class="num">Stripe 側の設定（コードからは変えられない）</td>
           </tr>
         </tbody>
       </table>
