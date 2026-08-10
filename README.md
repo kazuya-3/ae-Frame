@@ -155,9 +155,11 @@ Node 22 以上。ビルド成果物は静的ファイルだけなので、どこ
    private のままだと Pages に有料プラン（Pro）が要ります。画像はすべて端末の中だけで
    処理するので、公開して困る情報（鍵・個人情報）はコードに入っていません。
 2. **Settings → Pages → Source を「GitHub Actions」にする。**
-   ワークフローに自動で有効化させる設定（`enablement: true`）も試しましたが、
-   `Resource not accessible by integration` で通りませんでした。ワークフローの既定の
-   トークンには Pages サイトを**作る**権限が無いためです（deploy する権限はあります）。
+   **ここは自動化できません。** ワークフローに有効化させる設定（`enablement: true`）を
+   private のときと public にしたあとの2回試して、どちらも
+   `Create Pages site failed. Resource not accessible by integration` で落ちました。
+   ワークフローの既定のトークンには Pages サイトを**作る**権限が無いためで、
+   公開・非公開とは関係ありません（deploy する権限はあります）。
 
 これを忘れると、ビルドも検証も通るのに `Get Pages site failed` で止まります。
 

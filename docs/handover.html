@@ -520,12 +520,13 @@
       <li>
         <b>Settings → Pages → Source を「GitHub Actions」にする</b>
         <p>
-          <strong>ここだけは、人が手でやる必要があります。</strong>
-          ワークフローに自動で有効化させる設定（<code>enablement: true</code>）も試しましたが、
-          <code>Resource not accessible by integration</code> で通りませんでした。
-          ワークフローの既定のトークンには Pages サイトを「作る」権限が無いためです
-          （deploy する権限はあります）。
-          これを忘れると、ワークフローは走るのに公開されません。
+          <strong>ここだけは、人が手でやる必要があります。自動化できません。</strong>
+          ワークフローに有効化させる設定（<code>enablement: true</code>）を、
+          private のときと public にしたあとの2回ためして、どちらも
+          <code>Create Pages site failed. Resource not accessible by integration</code>
+          で落ちました。ワークフローの既定のトークンには Pages サイトを「作る」権限が
+          無いためで、公開・非公開とは関係ありません（deploy する権限はあります）。
+          これを忘れると、ビルドも検証も通るのに <code>Get Pages site failed</code> で止まります。
         </p>
       </li>
       <li>
