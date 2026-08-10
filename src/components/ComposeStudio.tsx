@@ -130,6 +130,27 @@ export function ComposeStudio({
   }, []);
 
   /*
+    iPhone / iPad かどうか。ここで「保存の道」が正反対になる。
+
+      iPhone : 共有シートに「画像を保存」があり、写真アプリに入れる道はそこだけ。
+               ダウンロードすると「ファイル」アプリ行きになる。
+      Android: 共有シートは Gmail や Instagram に「送る」ためのもので、
+               保存の項目が無い。保存できるのはダウンロードのほう。
+
+    実機（Android）で共有シートを開いてもらったら、
+    Gmail / Instagram / 画像をコピー / QRコード しか並んでいなかった。
+    つまり Android で共有を主役のボタンにするのは、はっきり間違い。
+    だから端末を見て、大きいボタンの中身を入れ替える。
+  */
+  const [isIOS, setIsIOS] = useState(false);
+  useEffect(() => {
+    const ua = navigator.userAgent || '';
+    // iPadOS 13 以降は Macintosh を名乗るので、指で触れるかどうかで見分ける
+    const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    setIsIOS(/iPhone|iPad|iPod/.test(ua) || iPadOS);
+  }, []);
+
+  /*
     このページが、ほかのサイトの中に埋めこまれて開かれているか。
 
     プレビュー用の枠（お試しリンクなど）の中では、ダウンロードも共有も
@@ -479,7 +500,13 @@ export function ComposeStudio({
       .share({ files: [file] })
       .then(() => {
         play('done');
-        setSaved(true);
+        /*
+          共有できた＝保存できた、とは限らない。
+          iPhone の共有シートには「画像を保存」があるので保存の道になるが、
+          Android の共有シートは Gmail や Instagram に送るだけで、保存の項目が無い。
+          Android で「保存しました」と出すのは嘘になるので、そこは黙っておく。
+        */
+        if (isIOS) setSaved(true);
       })
       .catch((e: unknown) => {
         // 利用者が閉じただけなら、何も言わない。
@@ -732,7 +759,12 @@ export function ComposeStudio({
           label={round ? 'まるく切りぬく（SNSのアイコン用）' : 'しかくいまま保存する'}
         />
 
-        {canShare ? (
+        {/*
+          いちばん大きいボタンは、その端末で「ほんとうに保存できる道」にする。
+          iPhone は共有シート、それ以外はダウンロード。
+          共有は、保存できない端末では「送る」ための道具として下に置く。
+        */}
+        {isIOS && canShare ? (
           <>
             <Button variant="primary" onClick={saveToPhone} disabled={busy}>
               <IconShare size={20} />
@@ -744,10 +776,18 @@ export function ComposeStudio({
             </Button>
           </>
         ) : (
-          <Button variant="primary" onClick={downloadNow} disabled={busy}>
-            <IconDownload size={20} />
-            {busy ? '書き出しています…' : '画像をほぞんする'}
-          </Button>
+          <>
+            <Button variant="primary" onClick={downloadNow} disabled={busy}>
+              <IconDownload size={20} />
+              {busy ? '書き出しています…' : '画像をほぞんする'}
+            </Button>
+            {canShare && (
+              <Button variant="ghost" onClick={saveToPhone} disabled={busy}>
+                <IconShare size={18} />
+                ほかのアプリに送る（保存ではありません）
+              </Button>
+            )}
+          </>
         )}
 
         {/* うまくいかなかったときの逃げ道。押しても保存できない人を、ここで拾う。 */}
@@ -764,7 +804,9 @@ export function ComposeStudio({
         {saved && (
           <div className="pop">
             <Note tone="ok">
-              保存しました。SNSのプロフィール写真から、この画像をえらんでください。
+              {isIOS
+                ? '保存しました。写真アプリから、この画像をえらんでください。'
+                : '保存しました。写真アプリ（ギャラリー）の「ダウンロード」に入っています。'}
               <br />
               見あたらないときは、上の「携帯に入ってこないときは」から保存できます。
             </Note>
@@ -841,37 +883,61 @@ export function ComposeStudio({
             <IconTouch size={20} />
             <span>
               <b>この画像を長おしすると保存できます。</b>
-              iPhone はメニューの「写真に追加」または「“写真”に保存」、
-              Android は「画像をダウンロード」をえらんでください。
+              {isIOS
+                ? '出てきたメニューから「写真に追加」または「“写真”に保存」をえらんでください。'
+                : '出てきたメニューから「画像をダウンロード」をえらんでください。'}
             </span>
           </p>
 
           {/* 長おしできる本物の <img>。canvas では長おしのメニューが出ない。 */}
           <img className="saver__image" src={ready.url} alt="できあがったアイコン画像" />
 
+          {/* ここも、その端末で保存になるほうを上に置く */}
           <div className="saver__actions">
-            {canShare && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  // 押した瞬間に画像が手元にあるので、共有シートは必ず開く
-                  if (!shareNow(ready.blob)) play('error');
-                }}
-              >
-                <IconShare size={20} />
-                共有からほぞんする
-              </Button>
+            {isIOS && canShare ? (
+              <>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    // 押した瞬間に画像が手元にあるので、共有シートは必ず開く
+                    if (!shareNow(ready.blob)) play('error');
+                  }}
+                >
+                  <IconShare size={20} />
+                  共有からほぞんする
+                </Button>
+                <Button variant="ghost" onClick={downloadNow} disabled={busy}>
+                  <IconDownload size={18} />
+                  ファイルとしてダウンロード
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="primary" onClick={downloadNow} disabled={busy}>
+                  <IconDownload size={20} />
+                  ファイルとしてダウンロード
+                </Button>
+                {canShare && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      if (!shareNow(ready.blob)) play('error');
+                    }}
+                  >
+                    <IconShare size={18} />
+                    ほかのアプリに送る（保存ではありません）
+                  </Button>
+                )}
+              </>
             )}
-            <Button variant="ghost" onClick={downloadNow} disabled={busy}>
-              <IconDownload size={18} />
-              ファイルとしてダウンロード
-            </Button>
           </div>
 
           <p className="saver__fine">
             {embedded
               ? '「ダウンロード」は、この枠の中では効かないことがあります。効かなかったときは、上の画像を長おししてください。'
-              : 'Android とパソコンは「ダウンロード」で保存できます。iPhone でダウンロードすると、写真アプリではなく「ファイル」アプリに入ります。'}
+              : isIOS
+                ? 'iPhone は「ダウンロード」だと、写真アプリではなく「ファイル」アプリに入ります。写真アプリに入れたいときは、長おしか共有からどうぞ。'
+                : 'Android の共有シートには保存の項目がありません。保存したいときは「ダウンロード」か、上の画像の長おしを使ってください。'}
           </p>
         </Sheet>
       )}

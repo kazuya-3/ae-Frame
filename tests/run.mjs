@@ -821,6 +821,76 @@ try {
   }
 
   /*
+    いちばん大きいボタンは、その端末で「ほんとうに保存できる道」でなければならない。
+
+    Android の共有シートには保存の項目が無い（Gmail・Instagram・コピー等だけ）ので、
+    共有を主役にすると、押しても1枚も保存できない。
+    iPhone はその逆で、写真アプリに入れる道は共有シートしかない。
+  */
+  console.log('\n■ 保存ボタンの出し分け');
+  {
+    // ここは共有そのものが無い環境（＝パソコン）。ダウンロードが主役になる。
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+    const primary = await page.locator('.btn--primary').last().innerText();
+    check(
+      '共有できない端末では「ほぞんする」が主役',
+      /画像をほぞんする/.test(primary),
+      primary.replace(/\s+/g, ' '),
+    );
+    check(
+      '保存でないものを保存のように出さない',
+      (await page.getByRole('button', { name: /写真アプリにほぞんする/ }).count()) === 0,
+    );
+    await page.close();
+  }
+
+  {
+    /*
+      iPhone のふり（UA を差し替え、共有できる端末として振る舞わせる）。
+      実機を並べられないので、判定の分かれ目だけをここで押さえる。
+    */
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 900 },
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+    // 共有できる端末に見せる
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { value: () => Promise.resolve() });
+      Object.defineProperty(navigator, 'canShare', { value: () => true });
+    });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(250);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'lineart.png'));
+    await page.waitForTimeout(4200);
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    const primary = await page.locator('.btn--primary').last().innerText();
+    check(
+      'iPhone では「写真アプリにほぞんする」が主役',
+      /写真アプリにほぞんする/.test(primary),
+      primary.replace(/\s+/g, ' '),
+    );
+    check(
+      'ダウンロードは下に残しておく',
+      (await page.getByRole('button', { name: /ファイルとしてダウンロード/ }).count()) >= 1,
+    );
+    await page.close();
+  }
+
+  /*
     「保存したのに携帯に入ってこない」の逃げ道。
     iPhone は長おし→「写真に追加」しか道が無いので、
     長おしできる本物の <img> が出ることを確かめる。

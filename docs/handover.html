@@ -590,7 +590,7 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       <dt>src/App.tsx</dt>
       <dd>3ステップの進行と状態。ファイルの読み込みと自動切り出しの入り口。</dd>
       <dt>tests/run.mjs</dt>
-      <dd>実ブラウザでの通し検証。86項目。</dd>
+      <dd>実ブラウザでの通し検証。90項目。</dd>
     </dl>
   </section>
 
@@ -1222,6 +1222,52 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             <strong>関係のない画面のほうが壊れていた</strong>（あとに書いたほうが勝つ）。
             新しいほうを <code>.saver__*</code> に改名し、
             「つかいかたも画面ぜんぶをおおうか」を検証に足した。
+          </span>
+        </div>
+      </div>
+    </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 16</span>
+        <span class="case__title">Android で、共有シートを主役のボタンにしていた</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            共有できる端末なら共有シートを大きいボタンにする、という作りにしていた。
+            これは iPhone を基準にした思い込みで、
+            <strong>Android の共有シートには保存の項目が無い。</strong>
+            実機で開いてもらったら、Gmail / Instagram / 画像をコピー / QR コードしか
+            並んでいなかった。押しても1枚も保存できないボタンが、
+            いちばん目立つ場所に置かれていたことになる。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">正しい対応関係</span>
+          <span>
+            iPhone は共有シートに「画像を保存」があり、<strong>写真アプリに入れる道はそこだけ</strong>
+            （ダウンロードは「ファイル」アプリ行き）。Android はその逆で、
+            <strong>保存できるのはダウンロードのほう</strong>。つまり正反対。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            端末を見て、大きいボタンの中身を入れ替える。iPhone は共有、それ以外はダウンロード。
+            もう片方は下に小さく残し、Android 側の共有には
+            <strong>「（保存ではありません）」</strong>と書き添える。
+            あわせて、Android では共有が成功しても「保存しました」と出さないようにした
+            （共有できた＝保存できた、ではない）。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">検証</span>
+          <span>
+            実機を並べられないので、UA を iPhone に差し替えて
+            <code>navigator.share</code> を生やしたページで判定の分かれ目を押さえている。
+            「共有できない端末では『画像をほぞんする』が主役」
+            「iPhone では『写真アプリにほぞんする』が主役」の2つ。
           </span>
         </div>
       </div>
