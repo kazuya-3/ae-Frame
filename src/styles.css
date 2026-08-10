@@ -1468,6 +1468,13 @@ input[type='range']:active::-webkit-slider-thumb {
   position: absolute;
   pointer-events: none;
   background-repeat: no-repeat;
+  /*
+    素材の背景が「とうめい」ではなく「白」で書き出されていることがある。
+    そのまま敷くと、白い四角がページの上に乗ってしまう。
+    かけ算で重ねると白は消えるので、どちらで書き出されていても成り立つ。
+    暗いテーマのときは飾りが引っ込むが、白い箱が光るよりはそのほうがいい。
+  */
+  mix-blend-mode: multiply;
 }
 
 /* 1: ページ全体の淡い地。文字が読めなくなるほど濃くしない */
