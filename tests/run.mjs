@@ -1235,6 +1235,41 @@ try {
   }
 
   /*
+    決済から戻ってくる道。
+
+    ここは自分たちだけで完結しない。Stripe が戻り先に session_id を足したり、
+    末尾のスラッシュが付いたりする。完全一致で見ていると、そのどれか1つで
+    「お礼のページのはずが、つくる画面が出る」ことになる。
+    決済した直後にそれが起きるのが、いちばん体験が悪い。
+  */
+  console.log('\n■ 決済から戻ってくる道');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    const arrivals = [
+      ['session_id が足されても', '#/support/thanks?session_id=cs_live_a1b2c3'],
+      ['末尾にスラッシュが付いても', '#/support/thanks/'],
+      ['大文字で入力されても', '#/Support/Thanks'],
+      ['ハッシュが落ちても（?thanks=1）', '?thanks=1'],
+    ];
+    for (const [name, suffix] of arrivals) {
+      await page.goto(BASE + suffix, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(500);
+      check(`${name}お礼のページが出る`, (await page.getByText('応援ありがとう！').count()) >= 1);
+    }
+
+    // ?thanks=1 で来たら、以後ふつうに動くようハッシュの形へ直しておく
+    await page.goto(BASE + '?thanks=1', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    check('?thanks=1 はハッシュの形に直る', /#\/support\/thanks$/.test(page.url()), page.url().slice(-30));
+
+    // 応援ページ側も同じ扱い
+    await page.goto(BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    check('応援ページも余計な文字を無視する', (await page.locator('.support .plan').count()) >= 3);
+    await page.close();
+  }
+
+  /*
     どの幅でも、横にはみ出さないこと。
     スマホは 390px を基準にしているが、実際にはもっと狭い端末も、
     折りたたみを開いた広い端末もある。
