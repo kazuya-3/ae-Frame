@@ -491,6 +491,150 @@
     </div>
   </section>
 
+  <section id="status">
+    <p class="eyebrow">いまどこ</p>
+    <h2>現在の状況（2026-08-11）</h2>
+
+    <div class="callout">
+      <p>
+        <strong>公開ずみで、決済の輪はひととおり通っています。</strong>
+        実機（Android・本番URL）で
+        つくる → 保存 → 応援 → Stripe（テストモード） → お礼 → もう1個つくる
+        を最後まで確認しました。テスト決済のあと
+        <code>?thanks=1</code> で戻ってきて、お礼のページが出るところまで通っています。
+      </p>
+    </div>
+
+    <h3>できていること</h3>
+    <ul class="plain">
+      <li>GitHub Pages で公開（リポジトリは public、Pages の Source は GitHub Actions）</li>
+      <li>3ステップ（写真 → 背景けし → 重ねて保存）が実機で通る</li>
+      <li>保存が iPhone / Android / パソコンの3経路すべてで成立する</li>
+      <li>応援ページ（<code>#/support</code>）とお礼ページ（<code>#/support/thanks</code>）</li>
+      <li>Stripe 支払いリンク4本を接続（URL は <code>src/tip-config.ts</code> にだけ書いてある）</li>
+      <li>決済から戻る道を4通り（session_id 付き・末尾スラッシュ・大文字・<code>?thanks=1</code>）受けられる</li>
+      <li>実ブラウザでの通し検証 132項目、CI で毎回全通し</li>
+    </ul>
+
+    <h3>残っていること</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>優先</th><th>やること</th><th>誰が</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">S</td>
+            <td>本番4リンクの決済後リダイレクトを <code>?thanks=1</code> に揃える</td>
+            <td>人（Stripe ダッシュボード）</td>
+          </tr>
+          <tr>
+            <td class="num">S</td>
+            <td>応援ページの素材を軽くする（いま 6.62MB）</td>
+            <td>人（書き出し）</td>
+          </tr>
+          <tr>
+            <td class="num">S</td>
+            <td>OG画像とSNSメタタグ（いま1つも無い）</td>
+            <td>画像は人、タグはコード</td>
+          </tr>
+          <tr>
+            <td class="num">A</td>
+            <td>市松が焼き込まれた素材の書き出し直し</td>
+            <td>人（書き出し）</td>
+          </tr>
+          <tr>
+            <td class="num">A</td>
+            <td>本番300円で1回だけ決済 → 領収書メールと入金記録の確認</td>
+            <td>人</td>
+          </tr>
+          <tr>
+            <td class="num">B</td>
+            <td>未使用素材の削除（<code>.unused</code> の1.53MB）</td>
+            <td>コード</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      素材まわりの詳細は <strong><code>docs/ASSET_AUDIT.md</code></strong> にまとめてあります
+      （何が足りないか、どれが使われていないか、どこは画像を作らずCSSで済むか）。
+    </p>
+  </section>
+
+  <section id="stripe">
+    <p class="eyebrow">お金</p>
+    <h2>Stripe の設定（確定ぶん）</h2>
+
+    <h3>アカウント</h3>
+    <ul class="plain">
+      <li>本人確認：完了／カード決済：利用可／JCB：利用可／Link：利用可</li>
+      <li>銀行口座：登録ずみ／払出し：<strong>手動</strong></li>
+      <li>サポートメール：<code>youknow.okamoto@gmail.com</code>（ブランド専用への切替は将来の改善候補）</li>
+    </ul>
+
+    <h3>商品</h3>
+    <p>
+      商品名「ae-Frame 制作活動応援」。説明文で
+      <strong>商品や個別返信などの特典が無いこと</strong>、
+      <strong>一回払いであること</strong>を明記ずみ。ブランド用の商品画像も設定ずみ。
+    </p>
+    <div class="callout callout--warn">
+      <p>
+        ここは表現を変えないでください。<strong>見返りを約束すると商取引になり</strong>、
+        特定商取引法の表示義務などが発生します。「対価のない任意の支援」の形を保つこと。
+        サイト側の文面（<code>src/components/SupportPage.tsx</code> の安心表示）も同じ理由で書いています。
+      </p>
+    </div>
+
+    <h3>支払いリンク（4本とも本番・有効）</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>金額</th><th>URL</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>300円</td><td class="num">buy.stripe.com/bJe7sE4b32r1d3EfYW3VC00</td></tr>
+          <tr><td>500円</td><td class="num">buy.stripe.com/00w7sEazrd5F0gSaEC3VC01</td></tr>
+          <tr><td>1,000円</td><td class="num">buy.stripe.com/cNidR2gXP4z90gSbIG3VC02</td></tr>
+          <tr><td>自由入力</td><td class="num">buy.stripe.com/dRm00cbDv0iTe7I5ki3VC03</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      自由入力は最低100円・初期表示500円。すべて一回払い。
+      <strong>URL を書く場所は <code>src/tip-config.ts</code> だけ</strong>です。
+      画面の側には貼りません（金額を変えるときに探し回らずに済むように）。
+    </p>
+
+    <h3>決済後の戻り先</h3>
+    <div class="scroller">
+      <pre><code>https://kazuya-3.github.io/ae-Frame/?thanks=1</code></pre>
+    </div>
+    <p>
+      ハッシュ（<code>#/support/thanks</code>）でも動きますが、
+      <strong>こちらのほうが壊れようがありません</strong>。ハッシュは経路によっては落ちるためです。
+      開いた瞬間にハッシュの形へ直すので、その後の戻る・進むもふつうに動きます。
+    </p>
+
+    <h3>そのほかの設定</h3>
+    <ul class="plain">
+      <li>Stripe Tax 自動徴収：OFF／請求書PDF：OFF／プロモーションコード：OFF</li>
+      <li>電話番号・住所・納税番号の収集：OFF（応援に要らないものは集めない）</li>
+      <li>決済成功時の領収書メール：<strong>ON</strong></li>
+    </ul>
+
+    <div class="callout">
+      <p>
+        <strong>テストカードは本番リンクでは使えません。</strong>
+        <code>4242 4242 4242 4242</code> は
+        「ライブモードのリクエストに既存のテスト用クレジットカードが使用されました」で弾かれます。
+        通しを確かめたいときは、ダッシュボードをテストモードにして
+        テスト用の支払いリンクを1本だけ作ってください（無料）。
+      </p>
+    </div>
+  </section>
+
   <section>
     <p class="eyebrow">手順</p>
     <h2>公開する</h2>
@@ -609,8 +753,14 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
       </dd>
       <dt>public/assets/support/</dt>
       <dd>
-        応援ページの素材7枚を置く場所。どのファイルが何かは、
-        そこの <code>README.md</code> に表で書いてあります。
+        応援ページの素材を置く場所。どのファイルが何かは、そこの <code>README.md</code> に
+        表で書いてあります。いま何が揃っていて何が足りないかは
+        <code>docs/ASSET_AUDIT.md</code> のほう。
+      </dd>
+      <dt>docs/ASSET_AUDIT.md</dt>
+      <dd>
+        画像・アイコンの棚卸し。参照されているのに無いもの、あるのに使われていないもの、
+        画像を作らずに CSS で済むところまで、実測値つきで書いてあります。
       </dd>
       <dt>src/tip-config.ts</dt>
       <dd>
@@ -1745,6 +1895,25 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         <strong>真っ白を白地に描いたデザインは、色では原理的に分けられません。</strong>
         色差が 0.008 を下回ると背景と区別できないので AI に回ります。AI でも詰めが甘ければ、
         「消しのこりを消す／消えすぎをもどす」の筆で仕上げる想定です。
+      </li>
+      <li>
+        <strong>応援ページが重い。</strong>
+        実測で 6.62MB（お礼ページは 5.74MB）。つくる画面の 1.11MB に対して6倍あります。
+        素材5枚がどれも 1.5〜2.6MB あるためで、長辺 1200px まで縮めれば
+        見た目をほとんど変えずに 1MB 未満になります。
+        <strong>スマホしか持っていない人が前提のツールとしては、ここがいちばん外れている点です。</strong>
+      </li>
+      <li>
+        <strong>SNSに貼ったときの絵がありません。</strong>
+        <code>index.html</code> に <code>og:image</code> も <code>twitter:card</code> も
+        1つも入っていません。サイト内には「Xで伝える」「LINEで送る」を自分で置いているので、
+        <strong>シェアを促しておきながら、シェアされたときの見た目を用意していない</strong>状態です。
+      </li>
+      <li>
+        <strong>素材に市松模様が焼き込まれているものがあります。</strong>
+        「とうめい」の目印が絵として塗り込まれた状態
+        （白 254 と薄灰 247 が交互）。いまは CSS で打ち消していますが応急処置です。
+        書き出しのときに「背景を含める」を切れば要らなくなります。
       </li>
       <li>
         <strong>応援の決済は、実際のお金では通していません。</strong>
