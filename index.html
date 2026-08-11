@@ -13,6 +13,44 @@
       name="description"
       content="フレーム画像の背景を自動でとうめいにして、そのままアイコン写真に重ねられる無料ツール。画像はスマホの中だけで処理されます。"
     />
+    <!--
+      SNS に貼られたときの見た目。
+
+      サイトの中に「X で伝える」「LINE で送る」を自分で置いているのに、
+      貼られたときの絵を用意していなかったので足した。
+
+      ここだけ絶対URLで書く。ほかは相対パス（./）で組んであるが、
+      og:image と og:url は、読むのが相手のサーバーなので相対では解決できない。
+      公開先を変えるときは、この4か所も一緒に変えること。
+
+      title / description は <title> や meta[name=description] と少し違う。
+      あちらは検索結果とタブ用、こちらは人に手渡されたときの1行なので、
+      役割が違うぶん言いかたも変えている（内容は矛盾させない）。
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ae-Frame" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:title" content="ae-Frame｜アイコンフレームを、もっと簡単に。" />
+    <meta
+      property="og:description"
+      content="アイコンフレームの背景を消して、プロフィール写真に重ねて保存。アプリ不要・登録不要で使える無料Webツール。"
+    />
+    <meta property="og:url" content="https://kazuya-3.github.io/ae-Frame/" />
+    <meta property="og:image" content="https://kazuya-3.github.io/ae-Frame/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="アイコンフレーム メーカーの紹介画像" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ae-Frame｜アイコンフレームを、もっと簡単に。" />
+    <meta
+      name="twitter:description"
+      content="アイコンフレームの背景を消して、プロフィール写真に重ねて保存。アプリ不要・登録不要で使える無料Webツール。"
+    />
+    <meta name="twitter:image" content="https://kazuya-3.github.io/ae-Frame/og-image.png" />
+
+    <link rel="canonical" href="https://kazuya-3.github.io/ae-Frame/" />
+
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />

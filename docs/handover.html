@@ -513,7 +513,35 @@
       <li>応援ページ（<code>#/support</code>）とお礼ページ（<code>#/support/thanks</code>）</li>
       <li>Stripe 支払いリンク4本を接続（URL は <code>src/tip-config.ts</code> にだけ書いてある）</li>
       <li>決済から戻る道を4通り（session_id 付き・末尾スラッシュ・大文字・<code>?thanks=1</code>）受けられる</li>
-      <li>実ブラウザでの通し検証 132項目、CI で毎回全通し</li>
+      <li>実ブラウザでの通し検証 144項目、CI で毎回全通し</li>
+    </ul>
+
+    <h3>Sprint 1（公開前の仕上げ・2026-08-11）</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>ページ</th><th>転送量 Before</th><th>After</th><th>404 Before → After</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>つくる</td><td class="num">1.11 MB</td><td class="num">1.11 MB</td><td class="num">0 → 0</td></tr>
+          <tr><td>応援</td><td class="num">6.62 MB</td><td class="num"><strong>1.42 MB</strong></td><td class="num">4 → 1</td></tr>
+          <tr><td>お礼</td><td class="num">5.74 MB</td><td class="num"><strong>1.53 MB</strong></td><td class="num">7 → 2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="plain">
+      <li>
+        素材4枚を長辺1200px・webp に（<strong>8,278KB → 594KB / −93%</strong>）。
+        透過は保たれていて、PC・スマホの両方で見比べても劣化は分かりません
+      </li>
+      <li>
+        元画像は <code>assets-src/support/</code> へ退避。原寸のまま残し、配るのは webp のほう。
+        変換は <code>node tools/optimize-assets.mjs</code>
+      </li>
+      <li>SNSメタタグ14個を実装（og 9 / twitter 4 / canonical）。絶対URLかどうかも検証している</li>
+      <li>お礼ページの背景は<strong>画像を作らず CSS</strong> で実装（0KB・素材1枚ぶん不要に）</li>
+      <li>本番へ配信される未使用ファイルを0件に（1.53MB ぶん）</li>
+      <li>候補探索の無駄な404を0件に（残る404は「まだ作っていない飾り2枚」だけ）</li>
     </ul>
 
     <h3>残っていること</h3>
@@ -530,13 +558,11 @@
           </tr>
           <tr>
             <td class="num">S</td>
-            <td>応援ページの素材を軽くする（いま 6.62MB）</td>
-            <td>人（書き出し）</td>
-          </tr>
-          <tr>
-            <td class="num">S</td>
-            <td>OG画像とSNSメタタグ（いま1つも無い）</td>
-            <td>画像は人、タグはコード</td>
+            <td>
+              <code>og-image.png</code>（1200×630・透過なし）を <code>public/</code> に置く
+              <br /><span style="color: var(--ink-3)">タグ側は実装ずみ。ファイルを置けば効く</span>
+            </td>
+            <td>人（画像制作）</td>
           </tr>
           <tr>
             <td class="num">A</td>
@@ -1897,17 +1923,10 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
         「消しのこりを消す／消えすぎをもどす」の筆で仕上げる想定です。
       </li>
       <li>
-        <strong>応援ページが重い。</strong>
-        実測で 6.62MB（お礼ページは 5.74MB）。つくる画面の 1.11MB に対して6倍あります。
-        素材5枚がどれも 1.5〜2.6MB あるためで、長辺 1200px まで縮めれば
-        見た目をほとんど変えずに 1MB 未満になります。
-        <strong>スマホしか持っていない人が前提のツールとしては、ここがいちばん外れている点です。</strong>
-      </li>
-      <li>
-        <strong>SNSに貼ったときの絵がありません。</strong>
-        <code>index.html</code> に <code>og:image</code> も <code>twitter:card</code> も
-        1つも入っていません。サイト内には「Xで伝える」「LINEで送る」を自分で置いているので、
-        <strong>シェアを促しておきながら、シェアされたときの見た目を用意していない</strong>状態です。
+        <strong>SNSに貼ったときの絵が、まだ出ません。</strong>
+        タグは実装ずみですが、<code>public/og-image.png</code>（1200×630・透過なし）が
+        まだ置かれていないので、カードは画像なしで表示されます。
+        <strong>ファイルを1枚置けば、それだけで効きます。</strong>
       </li>
       <li>
         <strong>素材に市松模様が焼き込まれているものがあります。</strong>

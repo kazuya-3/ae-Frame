@@ -12,12 +12,16 @@
  * CSS の背景なら、無ければ何も起きないだけで済む。
  * 意味を持つ絵（ハリネズミ）だけは <img> にして、alt を付ける。
  *
- * ── 拡張子を1つに決めない ──
- * 素材を用意するのは、書き出しツールの都合で png になったり webp になったりする。
- * 「webp でなければ出ません」は、絵を描く側にとって理不尽な決まりごとなので、
- * 候補をいくつか並べて、あるものを使う。
- * CSS の background-image はカンマで並べると重なって描かれるだけなので、
- * 先頭が無ければ次が見える＝そのまま代わりとして働く。
+ * ── 配るのは webp、元は別の場所 ──
+ * 元画像（1.5〜2.6MB）は assets-src/support/ に置いたまま触らず、
+ * tools/optimize-assets.mjs が長辺1200px・webp に落としたものを配る。
+ * 合計 8.3MB → 0.6MB。スマホしか持っていない人が前提のツールなので、
+ * ここは見た目より先に効く。
+ *
+ * 背景の層は URL を1つしか書かない。CSS の background-image をカンマで並べると
+ * 「無ければ次」ではなく「全部取りに行って重ねる」ので、
+ * 候補を並べたぶんだけ無駄な 404 が出る。
+ * マスコットだけは <img> なので、順に試しても無駄打ちが出ない。
  *
  * ── URL をスタイルシートに書かない理由 ──
  * ビルドすると CSS は dist/assets/ の中に置かれるので、
@@ -34,19 +38,24 @@ import { useState } from 'react';
 
 export type DecorVariant = 'support' | 'thanks';
 
-/**
- * 素材の置き場所。ここだけ見れば、どのファイルが要るか分かる。
- * 先に書いたものが優先。無ければ次を使う。
- */
+/** 素材の置き場所。ここだけ見れば、どのファイルが要るか分かる。 */
 export const SUPPORT_ASSETS = {
-  supportBg: ['support-bg.webp', 'support-bg.png'],
-  thanksBg: ['thanks-bg.webp', 'thanks-bg.png'],
-  hedgehogSupport: ['hedgehog-support.png', 'hedgehog-support.webp'],
-  hedgehogThanks: ['hedgehog-thanks.png', 'hedgehog-thanks.webp'],
-  water: ['support-water-decoration.png', 'support-water-decoration.webp'],
-  fruit: ['support-fruit-decoration.png', 'support-fruit-decoration.webp'],
-  celebration: ['support-celebration.png', 'support-celebration.webp'],
+  /** 背景の層。1つだけ書く（並べると全部取りに行ってしまうため） */
+  supportBg: 'support-bg.webp',
+  water: 'support-water-decoration.webp',
+  fruit: 'support-fruit-decoration.webp',
+  celebration: 'support-celebration.webp',
+  /** マスコットは <img>。順に試しても無駄打ちにならないので候補を持てる */
+  hedgehogSupport: ['hedgehog-support.webp', 'hedgehog-support.png'],
+  hedgehogThanks: ['hedgehog-thanks.webp', 'hedgehog-thanks.png'],
 } as const;
+
+/*
+  お礼ページの地は、画像を持たない。
+  中央を空けた淡いにじみが欲しいだけで、それは既存の色トークンだけで書ける。
+  画像1枚（数百KB）を足すより軽く、暗いテーマにも自動で追随する。
+  （CSS の .decor[data-variant='thanks'] .decor__bg を参照）
+*/
 
 /** 公開したときの置き場所に合わせて URL を組み立てる。 */
 export function assetUrl(file: string) {
@@ -54,21 +63,15 @@ export function assetUrl(file: string) {
   return `${base}assets/support/${file}`;
 }
 
-/** 候補をぜんぶ重ねる。先頭が無ければ、次のものがそのまま見える。 */
-const bg = (files: readonly string[]) => ({
-  backgroundImage: files.map((f) => `url("${assetUrl(f)}")`).join(', '),
-});
+const bg = (file: string) => ({ backgroundImage: `url("${assetUrl(file)}")` });
 
 export function PageDecor({ variant }: { variant: DecorVariant }) {
   const thanks = variant === 'thanks';
 
   return (
     <div className="decor" data-variant={variant} aria-hidden="true">
-      {/* z-index 1 : ページ全体の淡い地 */}
-      <div
-        className="decor__bg"
-        style={bg(thanks ? SUPPORT_ASSETS.thanksBg : SUPPORT_ASSETS.supportBg)}
-      />
+      {/* z-index 1 : ページ全体の淡い地。お礼のほうは CSS だけで描く */}
+      <div className="decor__bg" style={thanks ? undefined : bg(SUPPORT_ASSETS.supportBg)} />
       {/* z-index 2 : 水・泡・ガラス */}
       <div className="decor__water" style={bg(SUPPORT_ASSETS.water)} />
       {/* z-index 3 : 葡萄・葉・蔓 */}

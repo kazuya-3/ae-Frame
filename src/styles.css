@@ -1502,6 +1502,25 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 /*
+  お礼のページの地は、画像を持たない。
+
+  欲しいのは「上のほうがほんのり色づいている」だけで、それは既存の色トークンで書ける。
+  画像1枚（数百KB）を足すより軽く、暗いテーマにも自動で追随し、
+  どの画面幅でも崩れない。素材が1枚減るぶん、作る手間も減る。
+*/
+.decor[data-variant='thanks'] .decor__bg {
+  opacity: 1;
+  background-image:
+    radial-gradient(115% 70% at 50% 0%, var(--accent-wash) 0%, transparent 62%),
+    radial-gradient(80% 55% at 100% 100%, var(--ok-wash) 0%, transparent 70%);
+  /* 画像ではないので、かけ算で薄める必要がない */
+  mix-blend-mode: normal;
+  filter: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/*
   背景の URL は、このファイルではなくコンポーネント側で入れている。
   ビルドすると CSS は dist/assets/ の中に置かれるので、
   ここに書いた './assets/...' は assets/assets/... を指してしまう。

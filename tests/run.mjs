@@ -1235,6 +1235,57 @@ try {
   }
 
   /*
+    SNS に貼られたときの見た目。
+
+    サイトの中に「X で伝える」「LINE で送る」を自分で置いているので、
+    貼られたときの絵が無いのは片手落ちになる。
+    タグそのものと、絶対URLで書けているか（相対では相手のサーバーが解決できない）を見る。
+  */
+  console.log('\n■ SNSに貼られたときの見た目');
+  {
+    const page = await browser.newPage();
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    const meta = await page.evaluate(() => {
+      const get = (sel) => document.querySelector(sel)?.getAttribute('content') ?? null;
+      return {
+        type: get('meta[property="og:type"]'),
+        title: get('meta[property="og:title"]'),
+        desc: get('meta[property="og:description"]'),
+        url: get('meta[property="og:url"]'),
+        image: get('meta[property="og:image"]'),
+        card: get('meta[name="twitter:card"]'),
+        tTitle: get('meta[name="twitter:title"]'),
+        tDesc: get('meta[name="twitter:description"]'),
+        tImage: get('meta[name="twitter:image"]'),
+        canonical: document.querySelector('link[rel=canonical]')?.getAttribute('href') ?? null,
+      };
+    });
+
+    check('og:type がある', meta.type === 'website', String(meta.type));
+    check('og:title がある', !!meta.title, String(meta.title));
+    check('og:description がある', !!meta.desc);
+    check('og:url がある', !!meta.url, String(meta.url));
+    check('og:image がある', !!meta.image, String(meta.image));
+    check('twitter:card は大きい画像', meta.card === 'summary_large_image', String(meta.card));
+    check('twitter の title / description / image がある', !!(meta.tTitle && meta.tDesc && meta.tImage));
+    check('canonical がある', !!meta.canonical);
+
+    /*
+      ここがいちばん間違えやすい。相手のサーバーが読みにくるので、
+      相対パス（./og-image.png）では解決できない。
+    */
+    const absolute = (v) => typeof v === 'string' && /^https:\/\//.test(v);
+    check('og:image は絶対URL', absolute(meta.image), String(meta.image));
+    check('og:url は絶対URL', absolute(meta.url), String(meta.url));
+    check('twitter:image は絶対URL', absolute(meta.tImage), String(meta.tImage));
+    check(
+      'og と twitter で食い違っていない',
+      meta.title === meta.tTitle && meta.desc === meta.tDesc && meta.image === meta.tImage,
+    );
+    await page.close();
+  }
+
+  /*
     決済から戻ってくる道。
 
     ここは自分たちだけで完結しない。Stripe が戻り先に session_id を足したり、
