@@ -1448,8 +1448,10 @@ try {
         tooStrong.map((l) => `${l.cls} ${l.share} opacity:${l.opacity}`).join(' / '),
       );
 
-      // 端の飾り（地ではないもの）は、面積のうちわずかであること
-      const edge = layers.filter((l) => l.image && !/decor__bg/.test(l.cls));
+      // 端の飾り（地でも輪でもないもの）は、面積のうちわずかであること
+      const edge = layers.filter(
+        (l) => l.image && !/decor__bg|decor__celebration/.test(l.cls),
+      );
       const fat = edge.filter((l) => l.share > 0.2);
       check(
         `${name}：端の飾りは画面の2割まで`,
@@ -1466,9 +1468,80 @@ try {
     page.on('request', (r) => asked.push(r.url().split('/').pop()));
     await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
-    const heavy = asked.filter((f) => /celebration|support-bg|fruit/.test(f));
-    check('お礼のページは背景の画像を取りに行かない', heavy.length === 0, heavy.join(','));
+    const heavy = asked.filter((f) => /support-bg|fruit/.test(f));
+    check('お礼のページは地の画像を取りに行かない', heavy.length === 0, heavy.join(','));
     await page.close();
+  }
+
+  /*
+    お礼ページの水の輪だけの決まりごと。
+
+    この素材は一度「使えない」と判断して外し、あとで置きかたのほうが
+    間違っていたと分かって戻した。戻すときに決めた2つの条件を、ここで固定する。
+
+    1. 画面ではなく**本文の列**に合わせること
+       画面幅に連動させると、広い画面ほど輪が余白へ散らばる。それが最初の失敗。
+    2. ステップ表示（1・2・3）より下から始まること
+       輪のいちばん濃いところがちょうど「完了」に重なり、文字が泡に埋まっていた。
+  */
+  console.log('\n■ お礼ページの水の輪');
+  {
+    const seen = [];
+    for (const [label, w] of [
+      ['ふつうの画面', 1280],
+      ['とても広い画面', 1920],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: w, height: 900 } });
+      await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
+      const m = await page.evaluate(() => {
+        const el = document.querySelector('.decor__celebration');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        /*
+          ステップ行は「.steps」だけで引くと、つくる側の（隠れている）ほうを
+          拾ってしまい、下端 0px として素通りする。応援まわりのものを名指しする。
+        */
+        const steps = document.querySelector('.steps--static');
+        // カードも同じ理由で名指しする（.card はつくる側にもある）
+        const card = document.querySelector('.card.support');
+        return {
+          width: Math.round(r.width),
+          top: Math.round(r.top),
+          stepsBottom: steps ? Math.round(steps.getBoundingClientRect().bottom) : null,
+          cardWidth: card ? Math.round(card.getBoundingClientRect().width) : null,
+        };
+      });
+      check(`${label}：輪が置かれている`, m !== null && m.stepsBottom !== null);
+      if (m && m.stepsBottom !== null) {
+        seen.push([label, m.width]);
+        // 本文の列（カード）から左右へ出るのは、あわせて 200px まで
+        check(
+          `${label}：輪が本文の列からはみ出しすぎない`,
+          m.width <= m.cardWidth + 200,
+          `輪 ${m.width}px / カード ${m.cardWidth}px`,
+        );
+        check(
+          `${label}：輪がステップ表示にかからない`,
+          m.top >= m.stepsBottom,
+          `輪 ${m.top}px / ステップの下端 ${m.stepsBottom}px`,
+        );
+      }
+      await page.close();
+    }
+
+    /*
+      これがいちばん効く1件。
+
+      最初の失敗は「画面いっぱいに敷いた」ことだった。画面幅に連動していると、
+      広い画面ほど輪が大きくなり、余白へ散らばっていく。
+      幅が画面によって変わらなければ、その失敗は再現しない。
+    */
+    check(
+      '輪の大きさが画面の広さで変わらない',
+      seen.length === 2 && seen[0][1] === seen[1][1],
+      seen.map(([l, w]) => `${l} ${w}px`).join(' / '),
+    );
   }
 
   /*

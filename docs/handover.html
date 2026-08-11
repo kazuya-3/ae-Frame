@@ -555,14 +555,14 @@
             <td>応援</td>
             <td class="num">6.62 MB</td>
             <td class="num">1.42 MB</td>
-            <td class="num"><strong>0.83 MB</strong></td>
+            <td class="num"><strong>0.75 MB</strong></td>
             <td class="num">0</td>
           </tr>
           <tr>
             <td>お礼</td>
             <td class="num">5.74 MB</td>
             <td class="num">1.53 MB</td>
-            <td class="num"><strong>0.71 MB</strong></td>
+            <td class="num"><strong>0.81 MB</strong></td>
             <td class="num">0</td>
           </tr>
         </tbody>
@@ -594,8 +594,8 @@
     <h4>Sprint 2（BFL の飾りを置く・OG を置く）</h4>
     <ul class="plain">
       <li>
-        新しい素材3枚を配置（葡萄・水の書き直し・地）。合計
-        <strong>10,121KB → 852KB（−92%）</strong>
+        新しい素材を配置（葡萄・水の書き直し・地・水の輪・お礼マスコットの差し替え）。
+        合計 <strong>11,744KB → 864KB（−93%）</strong>
       </li>
       <li>
         <strong>市松模様の焼き込みが解消しました</strong>（水の素材が とうめい 0% → 84.8%）。
@@ -609,7 +609,12 @@
       <li>
         <strong>AI の実行環境（855KB）が、どのページを開いても落ちていた問題を修正</strong>（CASE 17）
       </li>
-      <li>404 を3ページとも0件に。検証を 144 → 155 項目に</li>
+      <li>
+        <strong>ハリネズミの書き出しを 560px に。</strong>出る枠が
+        <code>min(180px, 44vw)</code> しかないのに 1200px を配っていて、
+        お礼ページで 300KB 使っていた。見た目は変わらない（−297KB）
+      </li>
+      <li>404 を3ページとも0件に。検証を 144 → 162 項目に</li>
     </ul>
 
     <h4>飾りの置きかた（方針）</h4>
@@ -646,7 +651,10 @@
           </tr>
           <tr>
             <td>お礼</td>
-            <td><strong>背景画像なし。</strong>CSS の <code>radial-gradient</code> 2本（0KB）＋ 右下に水1枚だけ</td>
+            <td>
+              <strong>地は画像を使わない。</strong>CSS の <code>radial-gradient</code> 2本（0KB）
+              ＋ 右下に水 ＋ カードを縁取る水の輪
+            </td>
           </tr>
         </tbody>
       </table>
@@ -660,36 +668,77 @@
       角の飾りをもう1枚足すと読ませたいものの周りが埋まる。−250KB）。
     </p>
 
-    <h4>採用しなかった素材：紙吹雪（<code>support-celebration</code>）</h4>
+    <h4>一度外して、置きかたを直して戻した素材：水の輪（<code>support-celebration</code>）</h4>
     <p>
-      画面いっぱいに敷く1枚だったので、薄くして中央をマスクで抜いても、
-      パソコンでは左右の余白が大きな水の形で埋まりました。お礼ページは
-      読ませたいものがいちばん少ないページ（「ありがとう」の1行と、ボタン1つ）で、
-      <strong>そこを飾りで埋めるのは順番が逆</strong>です。
-      喜んでいる絵はマスコットがすでに担っています。
+      最初は「この素材は使えない」と判断しました。<strong>それは間違いでした。</strong>
+      使えなかったのは絵ではなく、こちらの置きかたです。
     </p>
     <p>
-      <strong>素材は捨てていません。</strong>
-      <code>assets-src/support/support-celebration-draft.png</code> に残してあり、
-      <code>PageDecor.tsx</code> と <code>styles.css</code> に「どこに書いてあったか」の
-      目印があります。置きどころが決まれば戻せます。配らないことで、お礼ページは
-      288KB 軽くなりました。
+      絵は<strong>中央がまるく空いた輪</strong>で、何かを囲むために描かれています。
+      それを画面いっぱい（<code>background-size: cover</code>）に引き伸ばしていたので、
+      輪の左右の腕がパソコンの広い余白に散らばり、水の塊が並んでいるように見えていました。
+      「UIより目立つ」「広告っぽい」と判定したのは、その状態のことです。
     </p>
 
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th></th><th>やったこと</th><th>何が起きたか</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">1</td>
+            <td>画面いっぱい（cover / opacity 0.34）</td>
+            <td>輪の腕が余白に散らばる。<strong>不採用と判断</strong></td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td>本文の列に合わせる（top 0）</td>
+            <td>腕は収まったが、輪の濃いところが<strong>ステップ表示に重なり</strong>「完了」が泡に埋まる</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td>開始をカードの上端へ（top 132px）</td>
+            <td>ステップ表示が完全に読める。輪がカードを縁取る形に。<strong>採用</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p>
+        <strong>素材の良し悪しと、置きかたの良し悪しは別のものです。</strong>
+        1つの置きかたで悪く見えたことを、素材そのものの判定にしてしまっていました。
+        次に「この素材は使えない」と思ったときは、置きかたを2〜3通り試してから決めること。
+      </p>
+    </div>
+
     <p>
-      見た目の良し悪しは測れませんが、<strong>そうなる手前の条件</strong>は測れます。
+      いまの決まりごとは2つです。<strong>画面幅に連動させない</strong>
+      （連動させると広い画面ほど輪が余白へ散らばる）。
+      <strong>ステップ表示より下から始める</strong>
+      （<code>top: 132px</code> ＝ カードの上端。パソコンで145px、スマホで141px なので1つの値で足ります）。
+      どちらも検証で見張っています。
+    </p>
+
+          見た目の良し悪しは測れませんが、<strong>そうなる手前の条件</strong>は測れます。
       検証に足しました：画面を覆う画像の層は薄い地の1枚まで（opacity 0.25以下）／
-      端の飾りは画面の面積の2割まで／お礼ページは背景の画像を取りに行かない／
-      動きを減らす設定の人には飾りを動かさない。
+      端の飾りは画面の面積の2割まで／お礼ページは地の画像を取りに行かない／
+      <strong>水の輪の大きさが画面の広さで変わらない</strong>／
+      <strong>水の輪がステップ表示にかからない</strong>／
+      動きを減らす設定の人には飾りを動かさない／
+      開いただけで400KBを超えるものを落とさない。
       地の opacity を 0.5 に戻すと、これは実際に落ちます（確認ずみ）。
+      輪の2件は、実際に踏んだ失敗をそのまま条件にしてあります。
     </p>
 
     <h3>残っていること</h3>
 
     <p>
       <strong>公開を止める問題はありません。</strong>
-      Sprint 2 で <code>og-image.png</code> と素材の書き出し直しが片づいたので、
-      残っているのは人の手が要るもの（Stripe の設定と本番決済の1回）が中心です。
+      <code>og-image.png</code>、素材の書き出し直し、お礼マスコットの差し替え、
+      水の輪の配置がすべて片づいたので、残っているのは
+      <strong>Stripe の設定と本番決済の1回</strong>だけです。
     </p>
 
     <div class="scroller">
@@ -707,14 +756,6 @@
             <td class="num">A</td>
             <td>本番300円で1回だけ決済 → 領収書メールと入金記録の確認</td>
             <td>人</td>
-          </tr>
-          <tr>
-            <td class="num">A</td>
-            <td>
-              <code>hedgehog-thanks</code> をハリネズミ単体で作り直す
-              <br /><span style="color: var(--ink-3)">いまは葡萄と1枚に同居している。見た目のみで、急ぎではない</span>
-            </td>
-            <td>人（画像制作）</td>
           </tr>
           <tr>
             <td class="num">B</td>
@@ -736,11 +777,6 @@
             <td class="num">C</td>
             <td><code>favicon.ico</code>（古いブラウザ・一部の検索クローラ向け）</td>
             <td>人（画像制作）</td>
-          </tr>
-          <tr>
-            <td class="num">C</td>
-            <td>紙吹雪（<code>support-celebration</code>）の置きどころを決める。決めなければ不要</td>
-            <td>人（判断）</td>
           </tr>
         </tbody>
       </table>

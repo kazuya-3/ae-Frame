@@ -45,11 +45,17 @@ export const SUPPORT_ASSETS = {
   water: 'support-water-decoration.webp',
   fruit: 'support-fruit-decoration.webp',
   /*
-    紙吹雪（support-celebration）は、実画面に置いてみて「使わない」と決めた。
-    理由は assets-src/support/README.md に残してある。要約すると、
-    画面いっぱいに敷く1枚で、お礼のページの短い文とボタンより目立ってしまった。
-    素材は捨てていないので、置きどころが見つかれば戻せる。
+    お礼ページの水の輪。
+
+    一度「使わない」と判断して外した素材だが、それは置きかたの判断を
+    絵の判断と取り違えていた。画面いっぱいに引き伸ばして敷いていたので、
+    輪の左右の腕がパソコンの広い余白に散らばり、大きな塊に見えていた。
+
+    絵そのものは、中央がまるく空いた「輪」で、何かを囲むために描かれている。
+    なので画面ではなく**本文の列に合わせて**置く。カードの上に弧がかかり、
+    左右の腕はカードの後ろに隠れる。余白には散らばらない。
   */
+  celebration: 'support-celebration.webp',
   /** マスコットは <img>。順に試しても無駄打ちにならないので候補を持てる */
   hedgehogSupport: ['hedgehog-support.webp', 'hedgehog-support.png'],
   hedgehogThanks: ['hedgehog-thanks.webp', 'hedgehog-thanks.png'],
@@ -87,6 +93,8 @@ export function PageDecor({ variant }: { variant: DecorVariant }) {
         取りに行かなくなるぶん、お礼のページは 250KB 軽くなる。
       */}
       {!thanks && <div className="decor__fruit" style={bg(SUPPORT_ASSETS.fruit)} />}
+      {/* z-index 4 : お礼ページだけ。本文の列に合わせた水の輪 */}
+      {thanks && <div className="decor__celebration" style={bg(SUPPORT_ASSETS.celebration)} />}
     </div>
   );
 }

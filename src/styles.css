@@ -1563,16 +1563,56 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 /*
-  ここには完了ページ用の紙吹雪（.decor__celebration）があった。
+  お礼ページの水の輪。
 
-  画面に置いて、やめた。画面いっぱいに敷く1枚なので、
-  薄くしても左右の余白が大きな水の形で埋まり、
-  「ありがとう」の1行と「もう1個つくる」より飾りのほうが目に入る。
-  お礼のページは、読ませたいものがいちばん少ないページで、
-  そこを飾りで埋めるのは順番が逆。
+  一度これを画面いっぱい（background-size: cover）で敷いて、失敗した。
+  輪の左右の腕がパソコンの広い余白に散らばり、水の塊が並んでいるように見えた。
+  そのとき「この素材は使えない」と判断したが、間違っていたのは素材ではなく
+  置きかたのほうだった。
 
-  素材は assets-src/support/ に残っている（配布はしない）。
+  絵は中央がまるく空いた輪で、何かを囲むために描かれている。
+  だから画面ではなく、**本文の列**（--page = 30rem）に合わせて置く。
+  カードの上に弧がかかり、左右の腕はカードの後ろに回る。余白には出ていかない。
+
+  飾りの層はすべて .app（z-index 1）より後ろにあるので、
+  文字やボタンの上に乗ることはない。ここで効くのは「余白に散らかるか」だけ。
 */
+.decor__celebration {
+  z-index: 4;
+  /*
+    カードの上端に合わせる。
+
+    最初は top: 0 に置いていて、輪のいちばん濃いところが
+    ちょうどステップ表示（1・2・3）に重なった。「完了」の文字が
+    水の泡に埋まって読みにくくなる。飾りとしてはそこで失敗している。
+
+    132px は「上のバーとステップ行の高さ」＝カードの上端。
+    パソコンで 145px、スマホで 141px なので、1つの値で足りる。
+    ここは見た目の都合ではなく他の要素との関係で決まっているので、
+    ずれたら気づけるように検証で見張っている（steps より下から始まること）。
+  */
+  top: 132px;
+  left: 50%;
+  /* 列の幅＋左右に少しはみ出すぶん。画面の広さには連動させない。
+     連動させると、広い画面ほど輪が余白へ散らばっていく */
+  width: min(calc(var(--page) + 130px), 96vw);
+  transform: translateX(-50%);
+  aspect-ratio: 3 / 2;
+  background-size: contain;
+  background-position: center top;
+  opacity: 0.46;
+  /* 下half は消す。輪の下側は本文の高さまで垂れてきて、ただの汚れに見える */
+  -webkit-mask-image: linear-gradient(black 46%, transparent 82%);
+  mask-image: linear-gradient(black 46%, transparent 82%);
+  animation: celebrate-in 0.9s var(--ease-out) both;
+}
+
+@keyframes celebrate-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+}
 
 /* 狭い画面では飾りを減らす。情報 ＞ キャラクター ＞ 装飾 */
 @media (max-width: 560px) {
@@ -1588,6 +1628,19 @@ input[type='range']:active::-webkit-slider-thumb {
   }
   .decor__bg {
     opacity: 0.14;
+  }
+  /* 狭い画面ではカードが画面いっぱいなので、輪はほとんど後ろに隠れ、
+     見えるのは上の弧の端だけになる。それでいい。
+     少しだけ広げて、隠れきらないようにする */
+  .decor__celebration {
+    width: 112vw;
+    opacity: 0.34;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decor__celebration {
+    animation: none;
   }
 }
 

@@ -42,6 +42,19 @@ const OUT = join(root, 'public', 'assets', 'support');
 
 /** 長辺の上限。これ以上大きくても、画面では見分けがつかない。 */
 const MAX_EDGE = 1200;
+
+/*
+  素材ごとの上限。出る大きさが違うので、1つの数字で揃えると無駄が出る。
+
+  ハリネズミは .mascot-slot（min(180px, 44vw)）の中に出る。
+  いちばん大きくて 180px なので、解像度が3倍の端末を見込んでも 540px で足りる。
+  ここを 1200px のまま配っていて、お礼のページで 303KB 使っていた。
+  560px にすると 3分の1以下になり、拡大しても違いは見て取れない。
+*/
+const MAX_EDGE_BY_FILE = {
+  'hedgehog-support': 560,
+  'hedgehog-thanks': 560,
+};
 /** webp の品質。0.82 で、飾りとしては元と見分けがつかなかった。 */
 const QUALITY = 0.82;
 
@@ -62,9 +75,7 @@ mkdirSync(OUT, { recursive: true });
   ・見本（bfl04-ui-reference）はデザインを決めるときに見るだけのもの。
     サイトには一切出さないので、変換もしない。
   ・差し替え前の記録（.unused）も同じ。
-  ・紙吹雪の下書き（support-celebration-draft）は、実画面に置いてから
-    「使わない」と決めた。素材は残すが、配らないので変換もしない。
-    経緯は assets-src/support/README.md にある。
+  ・下書き（-draft）も配らない。
 
   配らないと決めたものをここに書いておくと、
   public/ に置いたまま誰も参照しないファイルが残らずに済む。
@@ -77,12 +88,14 @@ const files = readdirSync(SRC).filter(
 let before = 0;
 let after = 0;
 
-console.log(`長辺 ${MAX_EDGE}px / 品質 ${QUALITY} で webp にします\n`);
+console.log(`長辺 ${MAX_EDGE}px（素材によっては小さく）/ 品質 ${QUALITY} で webp にします\n`);
 
 for (const file of files) {
   const srcPath = join(SRC, file);
   const raw = readFileSync(srcPath);
   const inSize = statSync(srcPath).size;
+  const stem = file.replace(/\.[^.]+$/, '');
+  const maxEdge = MAX_EDGE_BY_FILE[stem] ?? MAX_EDGE;
 
   const result = await page.evaluate(
     async ([b64, type, maxEdge, quality]) => {
@@ -114,7 +127,7 @@ for (const file of files) {
         data: c.toDataURL('image/webp', quality),
       };
     },
-    [raw.toString('base64'), `image/${extname(file).slice(1).replace('jpg', 'jpeg')}`, MAX_EDGE, QUALITY],
+    [raw.toString('base64'), `image/${extname(file).slice(1).replace('jpg', 'jpeg')}`, maxEdge, QUALITY],
   );
 
   const out = Buffer.from(result.data.split(',')[1], 'base64');
