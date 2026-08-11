@@ -288,7 +288,7 @@ try {
     // 逃げ道が本当に効くか。上げれば階調が戻る。
     await page.getByRole('button', { name: /うまく消えないときは/ }).click();
     await page.waitForTimeout(250);
-    await page.getByLabel('光のにじみを残す').fill('30');
+    await page.getByRole('slider', { name: '光のにじみを残す' }).fill('30');
     await page.waitForTimeout(700);
     const h = await alphaHistogram(page);
     check(
@@ -714,7 +714,7 @@ try {
     check('ドラッグで写真が動く', diff(dragged, base) > CHANGED, `ずれ ${diff(dragged, base).toFixed(2)}`);
 
     // 大きさスライダー
-    const sizeSlider = page.getByLabel(/の大きさ/);
+    const sizeSlider = page.getByRole('slider', { name: /の大きさ/ });
     await sizeSlider.fill('180');
     await page.waitForTimeout(350);
     const scaled = await snap();
@@ -790,7 +790,7 @@ try {
     await page.waitForTimeout(1300);
 
     // フレームの内側におさまる大きさにして、角が見える状態を作る
-    await page.getByLabel(/の大きさ/).fill('60');
+    await page.getByRole('slider', { name: /の大きさ/ }).fill('60');
     await page.waitForTimeout(350);
 
     /*
@@ -856,7 +856,7 @@ try {
 
     // 写真をかたむけたら、まるも一緒にかたむく（＝切り抜きは回転のあと）
     await page.getByRole('button', { name: 'まる', exact: true }).click();
-    await page.getByLabel('かたむき').fill('30');
+    await page.getByRole('slider', { name: 'かたむき' }).fill('30');
     await page.waitForTimeout(400);
     const tilted = await page.evaluate(() => {
       const c = document.querySelector('.stage canvas');
@@ -1317,6 +1317,79 @@ try {
     await page.goto(BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
     check('応援ページも余計な文字を無視する', (await page.locator('.support .plan').count()) >= 3);
+    await page.close();
+  }
+
+  /*
+    数字を直接打てること、変えたものだけ「もどす」が出ること。
+
+    つまみだけだと、狙った値でぴたりと止められない。
+    「1にしたい」のに 1 と 2 のあいだで往復する、というのが実機で起きる。
+    幅の狭いスマホでは 1px の差が数値の 2〜3 になるので、なおさら。
+
+    「もどす」は、触った項目にだけ出す。触っていないものに付いていても
+    押すところが増えるだけで助けにならないし、出ていること自体が
+    「ここを触った」という印になる。
+  */
+  console.log('\n■ 数字を直接打つ／もどす');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /うまく消えないときは/ }).click();
+    await page.waitForTimeout(400);
+
+    const box = page.getByRole('textbox', { name: /どこまで消すか/ });
+    const slider = page.getByRole('slider', { name: 'どこまで消すか' });
+    /*
+      exact を付けないと「消えすぎをもどす」（手なおしの取り消し）にも当たる。
+      部分一致のまま書いていて、実際にここで1回ひっかかった。
+    */
+    const reset = () => page.getByRole('button', { name: 'もどす', exact: true });
+
+    const opened = await slider.inputValue();
+    check('はじめは「もどす」が出ていない', (await reset().count()) === 0);
+
+    // 数字を打つ → つまみも一緒に動く
+    await box.fill('42');
+    await box.press('Enter');
+    await page.waitForTimeout(400);
+    check('打った数字がつまみに入る', (await slider.inputValue()) === '42', await slider.inputValue());
+    check('変えたら「もどす」が出る', (await reset().count()) === 1, String(await reset().count()));
+
+    // 範囲の外は、範囲の内側に収める（max は 60）
+    await box.fill('999');
+    await box.press('Enter');
+    await page.waitForTimeout(400);
+    check('大きすぎる数字は上限で止まる', (await slider.inputValue()) === '60', await slider.inputValue());
+
+    await box.fill('-5');
+    await box.press('Enter');
+    await page.waitForTimeout(400);
+    check('小さすぎる数字は下限で止まる', (await slider.inputValue()) === '1', await slider.inputValue());
+
+    // 数字でないものを打っても壊れない（1 のまま）
+    await box.fill('あ');
+    await box.press('Enter');
+    await page.waitForTimeout(400);
+    check('数字でないものは無視する', (await slider.inputValue()) === '1', await slider.inputValue());
+
+    /*
+      もどす → 開いたときの値へ。
+      いまは下限で止まったあとなので、開いたときの値と同じかもしれない。
+      それだと「戻った」ことを確かめられないので、必ず違う値にしてから押す。
+    */
+    await box.fill('37');
+    await box.press('Enter');
+    await page.waitForTimeout(400);
+    check('戻す前は、開いたときと違う値', (await slider.inputValue()) !== opened, await slider.inputValue());
+    await reset().click();
+    await page.waitForTimeout(600);
+    check(
+      '「もどす」で開いたときの値に戻る',
+      (await slider.inputValue()) === opened,
+      `${await slider.inputValue()} / 開いたとき ${opened}`,
+    );
+    check('戻したら「もどす」は消える', (await reset().count()) === 0);
+
     await page.close();
   }
 

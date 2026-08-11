@@ -693,6 +693,7 @@ export function ComposeStudio({
         <Slider
           label={target === 'photo' ? '写真の大きさ' : 'フレームの大きさ'}
           value={Math.round(t.scale * 100)}
+          defaultValue={100}
           min={15}
           max={400}
           onChange={(v) => setT((t0) => ({ ...t0, scale: v / 100 }))}
@@ -701,6 +702,7 @@ export function ComposeStudio({
         <Slider
           label="かたむき"
           value={Math.round(t.rotation)}
+          defaultValue={0}
           min={-180}
           max={180}
           onChange={(v) => setT((t0) => ({ ...t0, rotation: v }))}

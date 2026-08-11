@@ -13,7 +13,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { play, unlockAudio, type SoundName } from '../lib/sound';
-import { IconChevron, IconInfo, IconWarn, IconCheck } from './Icons';
+import { IconChevron, IconInfo, IconWarn, IconCheck, IconRefresh } from './Icons';
 
 /* ---------------- ボタン ---------------- */
 
@@ -90,6 +90,29 @@ export function Toggle({
 
 /* ---------------- スライダー ---------------- */
 
+/**
+ * つまみ＋数字。
+ *
+ * ── なぜ数字を直接打てるようにしたか ──
+ *
+ * つまみだけだと、狙った値でぴたりと止められない。
+ * 「1にしたい」のに 1 と 2 のあいだで往復する、というのが実際に起きる。
+ * とくに幅の狭いスマホでは、1px の差が数値の 2〜3 になる。
+ *
+ * 右の数字を、読むだけのものから**打てるもの**に変えた。
+ * つまみは今までどおり。急ぐ人はつまみ、狙いがある人は数字。
+ *
+ * 打っている途中は文字のまま持っておく（「1」を消して「12」にしたいとき、
+ * 空になった瞬間に 0 へ丸めると打ち直せない）。確定したときだけ、
+ * 範囲に収めて刻みに合わせる。
+ *
+ *
+ * ── なぜ「もどす」が出たり消えたりするのか ──
+ *
+ * 触っていない項目に「もどす」が付いていても、押すところが増えるだけで
+ * 何の助けにもならない。**変えたものにだけ**出す。
+ * 出ているということは「ここを触った」という印にもなる。
+ */
 export function Slider({
   label,
   value,
@@ -99,6 +122,7 @@ export function Slider({
   onChange,
   format,
   note,
+  defaultValue,
 }: {
   label: string;
   value: number;
@@ -108,15 +132,76 @@ export function Slider({
   onChange: (v: number) => void;
   format?: (v: number) => string;
   note?: string;
+  /** 開いたときの値。これと違うときだけ「もどす」を出す */
+  defaultValue?: number;
 }) {
   const id = useId();
+  /** 打っている途中の文字。null のあいだは value をそのまま見せる */
+  const [typing, setTyping] = useState<string | null>(null);
+
+  /** 打ち終わったものを、範囲と刻みに収める */
+  const commit = (raw: string) => {
+    setTyping(null);
+    const n = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(n)) return; // 空・数字でない → 元の値のまま
+    const snapped = Math.round(n / step) * step;
+    const clamped = Math.min(max, Math.max(min, snapped));
+    // 小数の刻みで 0.30000000000000004 のような値にならないように丸める
+    const fixed = Number(clamped.toFixed(6));
+    if (fixed !== value) {
+      play('tick');
+      onChange(fixed);
+    }
+  };
+
+  const changed = defaultValue !== undefined && value !== defaultValue;
+
   return (
     <div className="field">
       <div className="field__row">
         <label className="field__label" htmlFor={id}>
           {label}
         </label>
-        <span className="field__value">{format ? format(value) : value}</span>
+        {changed && (
+          <button
+            type="button"
+            className="field__reset"
+            onClick={() => {
+              play('back');
+              setTyping(null);
+              onChange(defaultValue);
+            }}
+          >
+            <IconRefresh size={13} />
+            もどす
+          </button>
+        )}
+        <input
+          className="field__value"
+          type="text"
+          /* スマホで数字のキーボードを出す。type=number のスピナーは小さすぎて押せない */
+          inputMode="decimal"
+          value={typing ?? String(format ? format(value) : value)}
+          aria-label={`${label}（数字で入力）`}
+          onFocus={(e) => {
+            unlockAudio();
+            // 単位付きの表示（100% など）は、打ち始めたら数字だけにする
+            setTyping(String(value));
+            requestAnimationFrame(() => e.target.select());
+          }}
+          onChange={(e) => setTyping(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === 'Escape') {
+              setTyping(null);
+              e.currentTarget.blur();
+            }
+          }}
+        />
       </div>
       <input
         id={id}
@@ -128,6 +213,7 @@ export function Slider({
         onPointerDown={unlockAudio}
         onChange={(e) => {
           play('tick');
+          setTyping(null);
           onChange(Number(e.target.value));
         }}
       />

@@ -95,6 +95,14 @@ export function CutoutStudio({
   const analysis: Analysis = useMemo(() => analyze(source), [source]);
 
   const [settings, setSettings] = useState<CutoutSettings>(() => initialSettings(analysis));
+  /*
+    開いたときの設定。スライダーの「もどす」が戻る先。
+
+    DEFAULT_SETTINGS ではなく、この画像を見て決めた値のほうを覚える。
+    「さいしょ」というのは、この人がこのフレームを開いた瞬間のことで、
+    どこかに書いてある固定値のことではない。
+  */
+  const openedWith = useMemo(() => initialSettings(analysis), [analysis]);
   const [status, setStatus] = useState<Status>({
     kind: 'working',
     label: '読み込んでいます',
@@ -681,6 +689,7 @@ export function CutoutStudio({
               <Slider
                 label="どこまで消すか"
                 value={Math.round(settings.tolerance * 100)}
+                defaultValue={Math.round(openedWith.tolerance * 100)}
                 min={1}
                 max={60}
                 onChange={(v) => patch({ tolerance: v / 100 })}
@@ -690,6 +699,7 @@ export function CutoutStudio({
               <Slider
                 label="光のにじみを残す"
                 value={Math.round(settings.softness * 100)}
+                defaultValue={Math.round(openedWith.softness * 100)}
                 min={1}
                 max={70}
                 onChange={(v) => patch({ softness: v / 100 })}
@@ -712,6 +722,7 @@ export function CutoutStudio({
           <Slider
             label="フチをけずる"
             value={settings.shrink}
+            defaultValue={openedWith.shrink}
             min={0}
             max={6}
             onChange={(v) => patch({ shrink: v })}
@@ -721,6 +732,7 @@ export function CutoutStudio({
           <Slider
             label="フチのギザギザをとる"
             value={Math.round(settings.feather * 10)}
+            defaultValue={Math.round(openedWith.feather * 10)}
             min={0}
             max={30}
             onChange={(v) => patch({ feather: v / 10 })}
@@ -729,6 +741,7 @@ export function CutoutStudio({
           <Slider
             label="フチに残った色をぬく"
             value={Math.round(settings.decontaminate * 100)}
+            defaultValue={Math.round(openedWith.decontaminate * 100)}
             min={0}
             max={100}
             onChange={(v) => patch({ decontaminate: v / 100 })}
@@ -784,6 +797,7 @@ export function CutoutStudio({
               <Slider
                 label="筆の太さ"
                 value={brushSize}
+                defaultValue={28}
                 min={4}
                 max={100}
                 onChange={setBrushSize}
