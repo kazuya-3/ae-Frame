@@ -1593,17 +1593,25 @@ input[type='range']:active::-webkit-slider-thumb {
   */
   top: 132px;
   left: 50%;
-  /* 列の幅＋左右に少しはみ出すぶん。画面の広さには連動させない。
-     連動させると、広い画面ほど輪が余白へ散らばっていく */
-  width: min(calc(var(--page) + 130px), 96vw);
+  /*
+    列の幅＋左右に出すぶん。**画面の広さには連動させない。**
+    連動させると、広い画面ほど輪が大きくなって余白へ散らばっていく。
+    それが最初の失敗だった（98vw は狭い画面での上限としてだけ効く）。
+
+    +130px まで絞っていた時期がある。そのときは輪の中央がカードに隠れて、
+    左右に水の塊が2つ浮いているように見えた。輪だと分からない大きさなら、
+    輪として置く意味がない。+300px まで広げて、薄くして成立させている。
+  */
+  width: min(calc(var(--page) + 300px), 98vw);
   transform: translateX(-50%);
   aspect-ratio: 3 / 2;
   background-size: contain;
   background-position: center top;
-  opacity: 0.46;
-  /* 下half は消す。輪の下側は本文の高さまで垂れてきて、ただの汚れに見える */
-  -webkit-mask-image: linear-gradient(black 46%, transparent 82%);
-  mask-image: linear-gradient(black 46%, transparent 82%);
+  /* 広げたぶん薄くする。濃さと大きさの両方を上げると、ただの広告になる */
+  opacity: 0.34;
+  /* 下側は消す。本文の高さまで垂れてくると、ただの汚れに見える */
+  -webkit-mask-image: linear-gradient(black 52%, transparent 88%);
+  mask-image: linear-gradient(black 52%, transparent 88%);
   animation: celebrate-in 0.9s var(--ease-out) both;
 }
 
@@ -1630,11 +1638,11 @@ input[type='range']:active::-webkit-slider-thumb {
     opacity: 0.14;
   }
   /* 狭い画面ではカードが画面いっぱいなので、輪はほとんど後ろに隠れ、
-     見えるのは上の弧の端だけになる。それでいい。
-     少しだけ広げて、隠れきらないようにする */
+     見えるのは上の弧だけになる。それでいい。
+     画面の外まで広げて、弧が途中で切れないようにする */
   .decor__celebration {
-    width: 112vw;
-    opacity: 0.34;
+    width: 130vw;
+    opacity: 0.3;
   }
 }
 
