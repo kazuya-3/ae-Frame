@@ -8,23 +8,50 @@
 node tools/optimize-assets.mjs
 ```
 
+（`Executable doesn't exist` と出たら `npx playwright install chromium` を先に。
+すでにどこかにある場合は `CHROMIUM_PATH=/path/to/chromium` を頭に付けても動きます）
+
 長辺1200px・webp に落としたものが `public/assets/support/` にできます。
-配られるのはそちらです（合計 8.3MB → 0.6MB になりました）。
+配られるのはそちらです（合計 12.4MB → 0.85MB になりました）。
 
 置くときの名前は下の表のとおり。**拡張子は `.png` でも `.webp` でも大丈夫です**
 （変換のときに揃えます）。素材が無くてもページは完全に動きます（飾りが出ないだけ）。
 
 **お礼ページの背景（`thanks-bg`）は要りません。** CSS のグラデーションで描いています。
 
+## いま配っているもの
+
 | ファイル名 | 何の絵か | どこに出るか |
 | --- | --- | --- |
-| `support-bg.webp` / `.png` | 水色の水と泡の淡い背景 | 応援ページ全体の地（z-index 1） |
-| `thanks-bg.webp` / `.png` | お礼ページ用の淡い背景 | お礼ページ全体の地（z-index 1） |
+| `support-bg.png` | 水色の水と泡の淡い背景 | 応援ページ全体の地（z-index 1、opacity 0.18） |
 | `hedgehog-support.png` | **ピンク**のハートをかかえたハリネズミ | 応援ページの主役（z-index 5） |
 | `hedgehog-thanks.png` | **青**のハートをかかえて喜ぶハリネズミ | お礼ページの主役（z-index 5） |
-| `support-water-decoration.png` | 水・泡・ガラス | 右下から入ってくる飾り（z-index 2） |
-| `support-fruit-decoration.png` | 葡萄・葉・蔓 | 左上から入ってくる飾り（z-index 3） |
-| `support-celebration.png` | ハート・星・紙吹雪 | お礼ページの上に重ねる演出（z-index 6） |
+| `support-water-decoration.png` | 水・泡・ガラス | 右下から入ってくる飾り（z-index 2、両ページ） |
+| `support-fruit-decoration.png` | 葡萄・葉・蔓 | 左上から入ってくる飾り（z-index 3、**応援ページだけ**） |
+
+## 配らないもの（残してあるだけ）
+
+変換もされません（`tools/optimize-assets.mjs` の `SKIP`）。
+
+| ファイル名 | なぜ配らないか |
+| --- | --- |
+| `support-celebration-draft.png` | 画面に置いて、やめた。下の「紙吹雪をやめた理由」を参照 |
+| `bfl04-ui-reference.png` | デザインを決めるときに見るだけの見本。サイトには一切出さない |
+| `hedgehog-thanks-baked-bg.png.unused` | 市松模様が焼き込まれていた版。差し替え済みの記録として残す |
+
+### 紙吹雪をやめた理由
+
+画面いっぱいに敷く1枚（`background-size: cover`）だったので、
+`opacity` を 0.34 まで落として中央をマスクで抜いても、
+パソコンの画面では左右の余白が大きな水の形で埋まった。
+
+お礼のページは、読ませたいものがいちばん少ないページで、
+「ありがとう」の1行と「もう1個つくる」のボタンしかない。
+そこを飾りで埋めるのは順番が逆になる。
+
+配らないことで、お礼のページは 288KB 軽くなった。
+素材は残っているので、置きどころが見つかれば戻せる
+（`src/components/PageDecor.tsx` に、どこに書いてあったかの目印がある）。
 
 ## 気をつけること
 

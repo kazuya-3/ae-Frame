@@ -1321,6 +1321,56 @@ try {
   }
 
   /*
+    開いただけで重いものを落とさないこと。
+
+    AI の実行環境（transformers + onnxruntime）は 850KB ある。
+    切り抜きが色キーで足りなかったときにだけ要るもので、
+    ふつうに開いただけ・応援ページを見ただけでは要らない。
+
+    ここは一度こわれていた。ビルドの設定で「AI を1つの塊にまとめる」と
+    書いたところ、動的 import 用の小さな補助関数まで同じ塊に入り、
+    入口がその塊を静的に参照する形になって、**どのページでも** 850KB を
+    先に落としていた。ページは正しく動くので、見ても分からない。
+    測って初めて分かる種類のこわれかたなので、ここで見張る。
+  */
+  console.log('\n■ 開いただけで重いものを落とさない');
+  {
+    for (const [name, hash] of [
+      ['つくる', ''],
+      ['応援', '#/support'],
+      ['お礼', '#/support/thanks'],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      const got = [];
+      page.on('requestfinished', async (r) => {
+        try {
+          const f = new URL(r.url()).pathname.split('/').pop();
+          const s = await r.sizes();
+          got.push([f, s.responseBodySize || 0]);
+        } catch {}
+      });
+      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(900);
+
+      const heavy = got.filter(([, s]) => s > 400 * 1024);
+      check(
+        `${name}：400KB を超えるものを先に落とさない`,
+        heavy.length === 0,
+        heavy.map(([f, s]) => `${f} ${Math.round(s / 1024)}KB`).join(' / '),
+      );
+
+      const total = got.reduce((s, r) => s + r[1], 0);
+      // 飾りのいちばん多い応援ページでも 1MB を超えない
+      check(
+        `${name}：最初に落ちてくる合計が 1MB 未満`,
+        total < 1024 * 1024,
+        `${(total / 1024 / 1024).toFixed(2)}MB`,
+      );
+      await page.close();
+    }
+  }
+
+  /*
     どの幅でも、横にはみ出さないこと。
     スマホは 390px を基準にしているが、実際にはもっと狭い端末も、
     折りたたみを開いた広い端末もある。
@@ -1352,6 +1402,76 @@ try {
   }
 
   /*
+    飾りが主役にならないこと。
+
+    ここは何度か踏んでいる。素材が届くたびに濃く・大きく置いてしまい、
+    パソコンの画面で見ると、道具の画面ではなく広告の画面になっていた。
+    見た目の good / bad は測れないが、そうなる手前の条件なら測れる。
+
+    ・画面いっぱいに敷く画像を置かない（お礼のページ）
+      → 地の生成りとグリッドが消え、飾りだけの画面になる入口がこれ
+    ・端の飾りは、画面の面積のうち少しだけ
+    ・動きを減らす設定の人には動かさない
+  */
+  console.log('\n■ 飾りが主役にならないこと');
+  {
+    for (const [name, hash] of [
+      ['応援', '#/support'],
+      ['お礼', '#/support/thanks'],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
+
+      const layers = await page.evaluate(() => {
+        const vw = window.innerWidth * window.innerHeight;
+        return [...document.querySelectorAll('.decor > *')].map((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return {
+            cls: el.className,
+            // グラデーションは url() を持たない。画像の層だけを見たい
+            image: /url\(/.test(s.backgroundImage),
+            share: +((r.width * r.height) / vw).toFixed(2),
+            opacity: +s.opacity,
+          };
+        });
+      });
+
+      // 画像を敷いた層のうち、画面をほぼ覆うもの
+      const full = layers.filter((l) => l.image && l.share > 0.6);
+      // 覆う1枚は「地」だけ許す。それも薄いこと（生成りが透けていること）
+      const tooStrong = full.filter((l) => !/decor__bg/.test(l.cls) || l.opacity > 0.25);
+      check(
+        `${name}：画面を覆う飾りは、薄い地の1枚まで`,
+        tooStrong.length === 0,
+        tooStrong.map((l) => `${l.cls} ${l.share} opacity:${l.opacity}`).join(' / '),
+      );
+
+      // 端の飾り（地ではないもの）は、面積のうちわずかであること
+      const edge = layers.filter((l) => l.image && !/decor__bg/.test(l.cls));
+      const fat = edge.filter((l) => l.share > 0.2);
+      check(
+        `${name}：端の飾りは画面の2割まで`,
+        fat.length === 0,
+        fat.map((l) => `${l.cls} ${l.share}`).join(' / '),
+      );
+
+      await page.close();
+    }
+
+    // お礼のページは、地を画像で持たない（CSS のグラデーションで描く）
+    const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+    const asked = [];
+    page.on('request', (r) => asked.push(r.url().split('/').pop()));
+    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    const heavy = asked.filter((f) => /celebration|support-bg|fruit/.test(f));
+    check('お礼のページは背景の画像を取りに行かない', heavy.length === 0, heavy.join(','));
+    await page.close();
+  }
+
+  /*
     動きを減らす設定にしている人には、飾りを動かさない。
   */
   console.log('\n■ 動きを減らす設定');
@@ -1362,11 +1482,12 @@ try {
     });
     await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    const anim = await page.evaluate(() => {
-      const el = document.querySelector('.decor__celebration');
-      return el ? getComputedStyle(el).animationName : 'none';
-    });
-    check('紙吹雪をアニメーションさせない', anim === 'none', anim);
+    const moving = await page.evaluate(() =>
+      [...document.querySelectorAll('.decor > *')]
+        .filter((el) => getComputedStyle(el).animationName !== 'none')
+        .map((el) => el.className),
+    );
+    check('飾りを動かさない', moving.length === 0, moving.join(','));
     await page.close();
   }
 

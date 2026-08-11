@@ -44,7 +44,12 @@ export const SUPPORT_ASSETS = {
   supportBg: 'support-bg.webp',
   water: 'support-water-decoration.webp',
   fruit: 'support-fruit-decoration.webp',
-  celebration: 'support-celebration.webp',
+  /*
+    紙吹雪（support-celebration）は、実画面に置いてみて「使わない」と決めた。
+    理由は assets-src/support/README.md に残してある。要約すると、
+    画面いっぱいに敷く1枚で、お礼のページの短い文とボタンより目立ってしまった。
+    素材は捨てていないので、置きどころが見つかれば戻せる。
+  */
   /** マスコットは <img>。順に試しても無駄打ちにならないので候補を持てる */
   hedgehogSupport: ['hedgehog-support.webp', 'hedgehog-support.png'],
   hedgehogThanks: ['hedgehog-thanks.webp', 'hedgehog-thanks.png'],
@@ -74,10 +79,14 @@ export function PageDecor({ variant }: { variant: DecorVariant }) {
       <div className="decor__bg" style={thanks ? undefined : bg(SUPPORT_ASSETS.supportBg)} />
       {/* z-index 2 : 水・泡・ガラス */}
       <div className="decor__water" style={bg(SUPPORT_ASSETS.water)} />
-      {/* z-index 3 : 葡萄・葉・蔓 */}
-      <div className="decor__fruit" style={bg(SUPPORT_ASSETS.fruit)} />
-      {/* z-index 6 : 完了ページだけの紙吹雪。本文の上に重ねる */}
-      {thanks && <div className="decor__celebration" style={bg(SUPPORT_ASSETS.celebration)} />}
+      {/*
+        z-index 3 : 葡萄・葉・蔓。応援のページだけ。
+
+        お礼のページには置かない。あちらは短い文とボタン1つを読ませる場所で、
+        角にもう1枚足すと、読ませたいものの周りが飾りで埋まる。
+        取りに行かなくなるぶん、お礼のページは 250KB 軽くなる。
+      */}
+      {!thanks && <div className="decor__fruit" style={bg(SUPPORT_ASSETS.fruit)} />}
     </div>
   );
 }

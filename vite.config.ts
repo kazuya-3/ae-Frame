@@ -27,19 +27,36 @@ export default defineConfig({
         alias: { '@huggingface/transformers': '/src/lib/transformers-stub.ts' },
       }
     : {},
+  /*
+    ここには manualChunks があった。
+    「@huggingface/transformers と onnxruntime を 'ai' という塊にまとめて、
+    必要になるまで読み込ませない」という意図で書いたもの。
+
+    実際には逆のことが起きていた。
+
+    まとめ先の 'ai' に、Vite が動的 import のために使う小さな補助関数
+    （200バイトほど）まで一緒に入ってしまい、その補助関数は入口の側から
+    ふつうに import される。結果、入口が 875KB の塊を静的に参照する形になり、
+    index.html に modulepreload まで付いて、**どのページを開いても**
+    AI の実行環境が丸ごと落ちてきていた。
+
+    切り抜きの画面に一度も行かない応援ページやお礼ページでも、
+    855KB を先に払っていたことになる。飾りの画像を全部足しても 690KB なので、
+    ここが最大の1件だった。
+
+      つくる    1.11MB → 0.28MB
+      応援      1.67MB → 0.83MB
+      お礼      1.54MB → 0.71MB
+
+    外したことで、動的 import はそのまま素直に別の塊になる
+    （lib/ai.ts と transformers.web が別々に出る）。
+    まとめる指示を書かないほうが、意図したとおりに分かれる。
+
+    ※ AI の切り抜きを実際に走らせたときだけ落ちてくることは、
+      tests/run.mjs の「AIへの切り替え」で見ている。
+  */
   build: {
     target: 'es2022',
-    rollupOptions: demo
-      ? {}
-      : {
-          output: {
-            manualChunks(id) {
-              // AIモデル用ランタイムは重いので、必要になるまで読み込ませない
-              if (id.includes('@huggingface/transformers')) return 'ai';
-              if (id.includes('onnxruntime')) return 'ai';
-            },
-          },
-        },
   },
   optimizeDeps: {
     exclude: ['@huggingface/transformers'],

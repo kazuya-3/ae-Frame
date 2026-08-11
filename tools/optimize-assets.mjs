@@ -56,7 +56,24 @@ await page.goto('about:blank');
 
 mkdirSync(OUT, { recursive: true });
 
-const files = readdirSync(SRC).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+/*
+  配るものと、配らないものを分ける。
+
+  ・見本（bfl04-ui-reference）はデザインを決めるときに見るだけのもの。
+    サイトには一切出さないので、変換もしない。
+  ・差し替え前の記録（.unused）も同じ。
+  ・紙吹雪の下書き（support-celebration-draft）は、実画面に置いてから
+    「使わない」と決めた。素材は残すが、配らないので変換もしない。
+    経緯は assets-src/support/README.md にある。
+
+  配らないと決めたものをここに書いておくと、
+  public/ に置いたまま誰も参照しないファイルが残らずに済む。
+*/
+const SKIP = [/-reference\./i, /\.unused$/i, /-draft\./i];
+
+const files = readdirSync(SRC).filter(
+  (f) => /\.(png|jpe?g|webp)$/i.test(f) && !SKIP.some((re) => re.test(f)),
+);
 let before = 0;
 let after = 0;
 
@@ -108,8 +125,9 @@ for (const file of files) {
   after += out.length;
   const cut = Math.round((1 - out.length / inSize) * 100);
   console.log(
-    `  ${file.padEnd(34)} ${String(result.from.join('×')).padStart(9)} → ${result.to.join('×')}` +
-      `   ${kb(inSize).padStart(7)} → ${kb(out.length).padStart(6)}  (-${cut}%)  とうめい ${result.clear}%`,
+    `  ${file.padEnd(32)} ${String(result.from.join('×')).padStart(9)} → ${result.to.join('×')}` +
+      `  ${kb(inSize).padStart(7)} → ${kb(out.length).padStart(6)}  (-${String(cut).padStart(2)}%)` +
+      `  とうめい ${String(result.clear).padStart(5)}%`,
   );
 }
 

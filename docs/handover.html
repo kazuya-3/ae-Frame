@@ -170,6 +170,14 @@
     letter-spacing: -0.005em;
   }
 
+  /* h3 の下の小見出し。太さで差をつけ、大きさは本文のまま */
+  h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 1.6rem 0 0.5rem;
+    color: var(--ink-2, inherit);
+  }
+
   p {
     margin: 0 0 1.1rem;
   }
@@ -516,23 +524,63 @@
       <li>実ブラウザでの通し検証 144項目、CI で毎回全通し</li>
     </ul>
 
-    <h3>Sprint 1（公開前の仕上げ・2026-08-11）</h3>
+    <h3>Sprint 1・2（公開前の仕上げ・2026-08-11）</h3>
+
+    <p>
+      2回に分けて、素材の重さ・SNSでの見えかた・BFL の飾りの置きかたを直しました。
+      数字はすべて実ブラウザで、<strong>GitHub Pages と同じ <code>/ae-Frame/</code> の下に置いて</strong>
+      測ったものです。
+    </p>
+
     <div class="scroller">
       <table>
         <thead>
-          <tr><th>ページ</th><th>転送量 Before</th><th>After</th><th>404 Before → After</th></tr>
+          <tr>
+            <th>ページ</th>
+            <th>最初</th>
+            <th>Sprint 1 後</th>
+            <th>Sprint 2 後</th>
+            <th>404</th>
+          </tr>
         </thead>
         <tbody>
-          <tr><td>つくる</td><td class="num">1.11 MB</td><td class="num">1.11 MB</td><td class="num">0 → 0</td></tr>
-          <tr><td>応援</td><td class="num">6.62 MB</td><td class="num"><strong>1.42 MB</strong></td><td class="num">4 → 1</td></tr>
-          <tr><td>お礼</td><td class="num">5.74 MB</td><td class="num"><strong>1.53 MB</strong></td><td class="num">7 → 2</td></tr>
+          <tr>
+            <td>つくる</td>
+            <td class="num">1.11 MB</td>
+            <td class="num">1.11 MB</td>
+            <td class="num"><strong>0.28 MB</strong></td>
+            <td class="num">0</td>
+          </tr>
+          <tr>
+            <td>応援</td>
+            <td class="num">6.62 MB</td>
+            <td class="num">1.42 MB</td>
+            <td class="num"><strong>0.83 MB</strong></td>
+            <td class="num">0</td>
+          </tr>
+          <tr>
+            <td>お礼</td>
+            <td class="num">5.74 MB</td>
+            <td class="num">1.53 MB</td>
+            <td class="num"><strong>0.71 MB</strong></td>
+            <td class="num">0</td>
+          </tr>
         </tbody>
       </table>
     </div>
+
+    <div class="callout">
+      <p>
+        <strong>いちばん効いた1件は、画像ではなくビルドの設定でした。</strong>
+        素材の話をしに行って、素材ではないものが最大の原因でした。詳しくは CASE 17。
+      </p>
+    </div>
+
+    <h4>Sprint 1（軽量化・OG・整理）</h4>
     <ul class="plain">
       <li>
-        素材4枚を長辺1200px・webp に（<strong>8,278KB → 594KB / −93%</strong>）。
-        透過は保たれていて、PC・スマホの両方で見比べても劣化は分かりません
+        素材を長辺1200px・webp に。透過は保たれていて、PC・スマホの両方で見比べても
+        劣化は分かりません
       </li>
       <li>
         元画像は <code>assets-src/support/</code> へ退避。原寸のまま残し、配るのは webp のほう。
@@ -540,11 +588,110 @@
       </li>
       <li>SNSメタタグ14個を実装（og 9 / twitter 4 / canonical）。絶対URLかどうかも検証している</li>
       <li>お礼ページの背景は<strong>画像を作らず CSS</strong> で実装（0KB・素材1枚ぶん不要に）</li>
-      <li>本番へ配信される未使用ファイルを0件に（1.53MB ぶん）</li>
-      <li>候補探索の無駄な404を0件に（残る404は「まだ作っていない飾り2枚」だけ）</li>
+      <li>候補探索の無駄な404を0件に</li>
     </ul>
 
+    <h4>Sprint 2（BFL の飾りを置く・OG を置く）</h4>
+    <ul class="plain">
+      <li>
+        新しい素材3枚を配置（葡萄・水の書き直し・地）。合計
+        <strong>10,121KB → 852KB（−92%）</strong>
+      </li>
+      <li>
+        <strong>市松模様の焼き込みが解消しました</strong>（水の素材が とうめい 0% → 84.8%）。
+        CSS 側の応急処置（<code>brightness</code> → <code>multiply</code>）を外せたので、
+        絵は描かれたとおりの色で出ます
+      </li>
+      <li>
+        <code>og-image.png</code> を配置。<strong>宣言（1200×630）と実寸の一致を実測で確認</strong>
+        （ここが食い違うと、SNS側で切り取られかたが変わります）
+      </li>
+      <li>
+        <strong>AI の実行環境（855KB）が、どのページを開いても落ちていた問題を修正</strong>（CASE 17）
+      </li>
+      <li>404 を3ページとも0件に。検証を 144 → 155 項目に</li>
+    </ul>
+
+    <h4>飾りの置きかた（方針）</h4>
+    <div class="callout">
+      <p>
+        <strong>
+          「BLUE FRUIT LAB の世界観をサイト全面へ敷く」のではなく、
+          「静かで機能的な ae-Frame の余白へ、研究標本の気配だけを薄く置く」。
+        </strong>
+      </p>
+      <p>
+        守るもの：生成り〜白の地／薄いグリッド／細い黒線／赤い操作アクセント／大きな余白／操作性優先。
+        避けるもの：<strong>全画面装飾</strong>、<strong>UIより装飾が目立つ状態</strong>、
+        サイバーUI化、ネオン広告化、キラキラ過多、背景画像の大量追加。
+      </p>
+    </div>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>画面</th><th>置いたもの</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>つくる</td>
+            <td>
+              <strong>装飾なし。</strong>方眼（<code>body::before</code> / opacity 0.035）だけ。
+              ここは<strong>透過の結果を目で確かめる画面</strong>なので、背景に色があると判断の邪魔になる
+            </td>
+          </tr>
+          <tr>
+            <td>応援</td>
+            <td>地（opacity 0.18）＋ 左上に葡萄 ＋ 右下に水。<strong>3枚まで</strong></td>
+          </tr>
+          <tr>
+            <td>お礼</td>
+            <td><strong>背景画像なし。</strong>CSS の <code>radial-gradient</code> 2本（0KB）＋ 右下に水1枚だけ</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      実画面に置いてから直したことが2つあります。
+      <strong>地の濃さを 0.5 から 0.18 へ</strong>（0.5 ではパソコンの画面がまるごと
+      水色の紙になり、生成りとグリッドという地の本体が消えていました）。
+      <strong>葡萄をお礼ページから外した</strong>（短い文とボタン1つを読ませる場所に、
+      角の飾りをもう1枚足すと読ませたいものの周りが埋まる。−250KB）。
+    </p>
+
+    <h4>採用しなかった素材：紙吹雪（<code>support-celebration</code>）</h4>
+    <p>
+      画面いっぱいに敷く1枚だったので、薄くして中央をマスクで抜いても、
+      パソコンでは左右の余白が大きな水の形で埋まりました。お礼ページは
+      読ませたいものがいちばん少ないページ（「ありがとう」の1行と、ボタン1つ）で、
+      <strong>そこを飾りで埋めるのは順番が逆</strong>です。
+      喜んでいる絵はマスコットがすでに担っています。
+    </p>
+    <p>
+      <strong>素材は捨てていません。</strong>
+      <code>assets-src/support/support-celebration-draft.png</code> に残してあり、
+      <code>PageDecor.tsx</code> と <code>styles.css</code> に「どこに書いてあったか」の
+      目印があります。置きどころが決まれば戻せます。配らないことで、お礼ページは
+      288KB 軽くなりました。
+    </p>
+
+    <p>
+      見た目の良し悪しは測れませんが、<strong>そうなる手前の条件</strong>は測れます。
+      検証に足しました：画面を覆う画像の層は薄い地の1枚まで（opacity 0.25以下）／
+      端の飾りは画面の面積の2割まで／お礼ページは背景の画像を取りに行かない／
+      動きを減らす設定の人には飾りを動かさない。
+      地の opacity を 0.5 に戻すと、これは実際に落ちます（確認ずみ）。
+    </p>
+
     <h3>残っていること</h3>
+
+    <p>
+      <strong>公開を止める問題はありません。</strong>
+      Sprint 2 で <code>og-image.png</code> と素材の書き出し直しが片づいたので、
+      残っているのは人の手が要るもの（Stripe の設定と本番決済の1回）が中心です。
+    </p>
+
     <div class="scroller">
       <table>
         <thead>
@@ -557,27 +704,43 @@
             <td>人（Stripe ダッシュボード）</td>
           </tr>
           <tr>
-            <td class="num">S</td>
-            <td>
-              <code>og-image.png</code>（1200×630・透過なし）を <code>public/</code> に置く
-              <br /><span style="color: var(--ink-3)">タグ側は実装ずみ。ファイルを置けば効く</span>
-            </td>
-            <td>人（画像制作）</td>
-          </tr>
-          <tr>
-            <td class="num">A</td>
-            <td>市松が焼き込まれた素材の書き出し直し</td>
-            <td>人（書き出し）</td>
-          </tr>
-          <tr>
             <td class="num">A</td>
             <td>本番300円で1回だけ決済 → 領収書メールと入金記録の確認</td>
             <td>人</td>
           </tr>
           <tr>
+            <td class="num">A</td>
+            <td>
+              <code>hedgehog-thanks</code> をハリネズミ単体で作り直す
+              <br /><span style="color: var(--ink-3)">いまは葡萄と1枚に同居している。見た目のみで、急ぎではない</span>
+            </td>
+            <td>人（画像制作）</td>
+          </tr>
+          <tr>
             <td class="num">B</td>
-            <td>未使用素材の削除（<code>.unused</code> の1.53MB）</td>
-            <td>コード</td>
+            <td>
+              <code>icon-512-maskable.png</code> を通常用と分ける
+              <br /><span style="color: var(--ink-3)">Android のホーム画面では外周が丸く切られるため</span>
+            </td>
+            <td>人（画像制作）</td>
+          </tr>
+          <tr>
+            <td class="num">C</td>
+            <td>
+              <code>og-image.png</code> の JPEG 化（934KB → 150KB 前後）
+              <br /><span style="color: var(--ink-3)">読むのは SNS のクローラだけ。利用者には配られない</span>
+            </td>
+            <td>人（判断）</td>
+          </tr>
+          <tr>
+            <td class="num">C</td>
+            <td><code>favicon.ico</code>（古いブラウザ・一部の検索クローラ向け）</td>
+            <td>人（画像制作）</td>
+          </tr>
+          <tr>
+            <td class="num">C</td>
+            <td>紙吹雪（<code>support-celebration</code>）の置きどころを決める。決めなければ不要</td>
+            <td>人（判断）</td>
           </tr>
         </tbody>
       </table>
@@ -1430,6 +1593,63 @@ npm run build:demo   # HTML1枚に全部入りの「お試し版」を dist-demo
             新しいほうを <code>.saver__*</code> に改名し、
             「つかいかたも画面ぜんぶをおおうか」を検証に足した。
           </span>
+        </div>
+      </div>
+    </article>
+    <article class="case">
+      <div class="case__head">
+        <span class="case__id">CASE 17</span>
+        <span class="case__title">どのページを開いても、AI の実行環境が落ちてきていた</span>
+      </div>
+      <div class="case__body">
+        <div class="case__row">
+          <span class="case__label">きっかけ</span>
+          <span>
+            素材の重さを測っていて、飾りを全部足しても 690KB なのに
+            ページの合計が 1.1MB を切らないことに気づいた。1件ずつ並べたら、
+            <strong>855KB の <code>ai-*.js</code> が3ページとも先頭に出てきた</strong>。
+            切り抜きの画面へ一度も行っていない、応援ページやお礼ページでも。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">原因</span>
+          <span>
+            <code>vite.config.ts</code> に
+            「<code>@huggingface/transformers</code> と <code>onnxruntime</code> を
+            <code>ai</code> という塊にまとめて、必要になるまで読み込ませない」という
+            <code>manualChunks</code> を書いていた。
+            ところが<strong>その塊に、Vite が動的 import のために使う 200バイトほどの
+            補助関数まで一緒に入った</strong>。補助関数のほうは入口の側からふつうに
+            <code>import</code> されるので、入口が 855KB の塊を<strong>静的に</strong>
+            参照する形になり、<code>index.html</code> に <code>modulepreload</code> まで付いた。
+            <strong>まとめる指示が、まとめたくないものを引き寄せていた。</strong>
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">なぜ気づけなかったか</span>
+          <span>
+            <strong>画面は正しく動く。</strong>余分に落ちてくるだけで、見た目も操作も何も変わらない。
+            切り抜きも通る。検証も全部通る。
+            <strong>見ても分からない種類のこわれかたで、測って初めて分かる。</strong>
+            しかも「AI は必要になるまで読み込まない」と自分で書いたコメントが
+            すぐそこにあるので、読み返しても正しく見える。
+          </span>
+        </div>
+        <div class="case__row">
+          <span class="case__label">対処</span>
+          <span>
+            <code>manualChunks</code> を消した。動的 <code>import</code> は、
+            まとめる指示を書かないほうが意図したとおりに分かれる
+            （<code>lib/ai.ts</code> と <code>transformers.web</code> が別々に出る）。
+            あわせて検証に「開いただけで重いものを落とさない」を足した
+            ——1件400KBを超えるものを落とさない／最初に落ちてくる合計が1MB未満。
+            同じことが起きたら、次は測らなくても落ちる。
+          </span>
+        </div>
+        <div class="evidence">
+          つくる 1.11MB → <strong>0.28MB</strong> &nbsp;／&nbsp;
+          応援 1.67MB → <strong>0.83MB</strong> &nbsp;／&nbsp;
+          お礼 1.54MB → <strong>0.71MB</strong>
         </div>
       </div>
     </article>
