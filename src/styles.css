@@ -1082,6 +1082,63 @@ input[type='range']:active::-webkit-slider-thumb {
   margin: 0 auto 14px;
 }
 
+/* ---------- ひょっこり出るハリネズミ ---------- */
+
+/*
+  つくる側の画面に置く、唯一の絵。
+
+  ずっと出しているものは1つも無い。何かが起きた瞬間だけ出て、
+  用が済むと消える（写真を選んだ／AIが終わった／シートを閉じた）。
+  だから「飾りが判断の邪魔をする」ことが起きない。
+
+  ステップ2（背景をけす）のプレビューの横には置いていない。
+  あそこは、とうめいになったかを目で判定する画面なので。
+*/
+.sprite-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.sprite-line--center {
+  justify-content: center;
+  text-align: left;
+  margin-top: 10px;
+}
+
+/* つかいかたシートの冒頭。ここだけ少し強めに言う */
+.sprite-line--lead {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.92rem;
+  margin: 4px 0 2px;
+}
+
+.sprite {
+  flex: none;
+  /* 元絵に余白があるので、はみ出しても崩れないようにしておく */
+  object-fit: contain;
+  /* 出るときだけ、ふわっと。動きを減らす設定では止める */
+  animation: sprite-in 0.5s var(--ease-spring) both;
+}
+
+@keyframes sprite-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite {
+    animation: none;
+  }
+}
+
 .howto {
   list-style: none;
   padding: 0;

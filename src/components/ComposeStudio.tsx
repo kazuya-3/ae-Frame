@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canvasToBlob, createCanvas, downloadBlob, get2d, timestampName } from '../lib/image';
 import { play } from '../lib/sound';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
+import { Sprite } from './Sprite';
 import {
   IconArrowLeft,
   IconDownload,
@@ -810,6 +811,16 @@ export function ComposeStudio({
               <br />
               見あたらないときは、上の「携帯に入ってこないときは」から保存できます。
             </Note>
+            {/*
+              ここがこの道具のゴール。3ステップぶん付き合ってもらった相手に、
+              最後にひとこと返す場所が無かった。
+              案内の中ではなく外に置く。緑の枠の中に絵を入れると、
+              「見あたらないときは」の一文が読みにくくなる。
+            */}
+            <p className="sprite-line sprite-line--center">
+              <Sprite name="saved" size={80} />
+              <span>できました！おつかれさまでした。</span>
+            </p>
           </div>
         )}
 

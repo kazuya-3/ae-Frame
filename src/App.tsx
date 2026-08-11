@@ -19,6 +19,7 @@ import { autoCropToSubject } from './lib/cutout';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
+import { Sprite } from './components/Sprite';
 import { TipQuietLink } from './components/TipJar';
 import {
   IconArrowRight,
@@ -247,12 +248,22 @@ export default function App({ active = true }: { active?: boolean }) {
               />
             </div>
           ) : (
-            <DropZone
-              title="写真をえらぶ"
-              sub="タップして選ぶ／ここにドラッグ／貼り付け（Ctrl+V）でもOK"
-              icon={<IconPhoto size={34} />}
-              onFile={loadPhoto}
-            />
+            <div className="stack">
+              <DropZone
+                title="写真をえらぶ"
+                sub="タップして選ぶ／ここにドラッグ／貼り付け（Ctrl+V）でもOK"
+                icon={<IconPhoto size={34} />}
+                onFile={loadPhoto}
+              />
+              {/*
+                まだ何も選んでいないとき、ここは画面でいちばん空いている場所。
+                写真が入ったら消えるので、作業の邪魔にならない。
+              */}
+              <p className="sprite-line">
+                <Sprite name="empty" size={72} />
+                <span>写真をえらぶと、ここから始まります</span>
+              </p>
+            </div>
           )}
         </div>
       )}
@@ -351,6 +362,11 @@ export default function App({ active = true }: { active?: boolean }) {
               <IconX size={20} />
             </Button>
           </div>
+          {/* 説明を読ませる前に、案内役がひとこと。ここは他に見るものが無い */}
+          <p className="sprite-line sprite-line--lead">
+            <Sprite name="help" size={80} />
+            <span>3つだけです。だいたい1分で終わります。</span>
+          </p>
           <ol className="howto">
             <li>
               <span className="howto__num">1</span>

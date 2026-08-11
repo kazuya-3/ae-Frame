@@ -1321,6 +1321,47 @@ try {
   }
 
   /*
+    つくる側のハリネズミは「飾り」ではなく「場面」であること。
+
+    この道具の画面には、これまで絵を一切置いてこなかった。
+    とくにステップ2（背景をけす）は、とうめいになったかを目で判定する画面で、
+    横に色のついた絵があると判断が鈍る。市松の下じきをテーマに
+    追随させなかったのと同じ理由。
+
+    絵を足すと、この線がなし崩しになりやすい。
+    「出っぱなしになっていないか」を機械で見張る。
+  */
+  console.log('\n■ つくる側のハリネズミは、場面のときだけ');
+  {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(500);
+
+    const count = () => page.locator('.sprite').count();
+
+    // まだ何も選んでいない：空っぽの枠にだけ出る
+    check('写真をえらぶ前は、1匹だけ出る', (await count()) === 1, String(await count()));
+
+    // 写真を選んだら、その場は用済み
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(600);
+    check('写真をえらんだら消える', (await count()) === 0, String(await count()));
+
+    // ステップ2（背景をけす）には出さない
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(250);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'lineart.png'));
+    await page.waitForTimeout(4000);
+    check('背景をけす画面には出さない', (await count()) === 0, String(await count()));
+
+    await page.close();
+  }
+
+  /*
     開いただけで重いものを落とさないこと。
 
     AI の実行環境（transformers + onnxruntime）は 850KB ある。

@@ -54,6 +54,12 @@ const MAX_EDGE = 1200;
 const MAX_EDGE_BY_FILE = {
   'hedgehog-support': 560,
   'hedgehog-thanks': 560,
+  // ひょっこり出るほうは、もっと小さい枠に入る（80〜120px）
+  'hedgehog-empty': 420,
+  'hedgehog-waiting': 420,
+  'hedgehog-saved': 420,
+  'hedgehog-help': 420,
+  'hedgehog-plain': 420,
 };
 /** webp の品質。0.82 で、飾りとしては元と見分けがつかなかった。 */
 const QUALITY = 0.82;
@@ -76,11 +82,13 @@ mkdirSync(OUT, { recursive: true });
     サイトには一切出さないので、変換もしない。
   ・差し替え前の記録（.unused）も同じ。
   ・下書き（-draft）も配らない。
+  ・予備（hedgehog-plain）は、いまどの場面にも置いていない。
+    置き場所が決まったらここから外す。
 
   配らないと決めたものをここに書いておくと、
   public/ に置いたまま誰も参照しないファイルが残らずに済む。
 */
-const SKIP = [/-reference\./i, /\.unused$/i, /-draft\./i];
+const SKIP = [/-reference\./i, /\.unused$/i, /-draft\./i, /^hedgehog-plain\./i];
 
 const files = readdirSync(SRC).filter(
   (f) => /\.(png|jpe?g|webp)$/i.test(f) && !SKIP.some((re) => re.test(f)),

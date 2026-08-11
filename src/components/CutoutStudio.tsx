@@ -32,6 +32,7 @@ import {
 } from '../lib/image';
 import { play } from '../lib/sound';
 import { Button, Disclosure, Note, Progress, Segmented, Slider, Toggle } from './ui';
+import { Sprite } from './Sprite';
 import {
   IconBrush,
   IconCheck,
@@ -581,6 +582,15 @@ export function CutoutStudio({
             <Progress value={status.progress} label={status.label} />
             {settings.mode === 'ai' && (
               <>
+                {/*
+                  AI の読み込みは数十MB あって、回線によっては本当に待たされる。
+                  待っているあいだ、この画面には進捗バーしか無い。
+                  待たされていることを隠さずに、待ち時間を場面にする。
+                */}
+                <p className="sprite-line">
+                  <Sprite name="waiting" size={76} />
+                  <span>コーヒーでも飲みながら、少しだけお待ちください。</span>
+                </p>
                 <Note>
                   はじめの1回だけ、AIの読み込みに少し時間がかかります（数十MB）。
                   2回目からはすぐ終わります。
