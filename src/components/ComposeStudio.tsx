@@ -28,6 +28,33 @@ import { TipAfterSave } from './TipJar';
 /** 書き出しサイズ。SNSのアイコンとしては十分で、スマホでも重くならない。 */
 const EXPORT_SIZE = 1080;
 
+/*
+  アイコンが実際に出るところの大きさ。
+
+  ── なぜこれが要るのか ──
+
+  アイコンフレームは、ほぼ必ず「小さくて丸い」状態で見られる。
+  なのにこの画面のプレビューは 350px ある。そこには決定的な抜けがあって、
+  **細い線のフレームは、40px になると消える。**
+  装飾の多いフレームは、ただの色の塊になる。
+  350px を眺めているあいだ、それは一度も分からない。
+
+  だから、出る大きさそのままで並べて見せる。縮小した絵ではなく、実寸。
+
+  ── なぜ他社の画面を真似ないのか ──
+
+  TikTok や LINE の画面を再現すると、相手のデザインが変わった時点で古くなるし、
+  他社のUIを模倣することになる。だから丸と大きさと地の色だけの中立な見本にして、
+  どこの話かはラベルで示す。こうしておけば、どのSNSにも当てはまる。
+
+  数字は目安。実機と見比べて詰める前提の値。
+*/
+const SCENES = [
+  { id: 'profile', label: 'プロフィール', size: 96 },
+  { id: 'post', label: '投稿', size: 48 },
+  { id: 'comment', label: 'コメント欄', size: 40 },
+] as const;
+
 type Transform = {
   x: number;
   y: number;
@@ -102,7 +129,18 @@ export function ComposeStudio({
   const [busy, setBusy] = useState(false);
   const [canShare, setCanShare] = useState(false);
 
+  /*
+    小さいときの見えかたを、明るい地と暗い地の両方で見られるようにする。
+
+    暗い地が要るのは、コメント欄が暗いから。
+    暗いフレームを暗い地に置くと消える。ステップ2に「下じき」を付けたのと同じ話で、
+    透過した絵は、置かれる地の色によって見えかたが変わる。
+  */
+  const [sceneDark, setSceneDark] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
+  const sceneRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     dist: number;
@@ -291,6 +329,24 @@ export function ComposeStudio({
         canvas.height = size;
       }
       paintRef.current(get2d(canvas), size, true);
+
+      /*
+        シーンの見本も、同じ1フレームの中で描く。
+        別に予約すると、本体と1フレームずれて「さっきの絵」が残る。
+
+        いちばん大きくて 96px なので、3枚足しても描く手間はほとんど増えない。
+        目印（overlay）は出さない。小さすぎて、切り取り線が絵を潰してしまう。
+      */
+      for (const [i, scene] of SCENES.entries()) {
+        const c = sceneRefs.current[i];
+        if (!c) continue;
+        const px = Math.max(1, Math.round(scene.size * dpr));
+        if (c.width !== px) {
+          c.width = px;
+          c.height = px;
+        }
+        paintRef.current(get2d(c), px, false);
+      }
     });
   }, []);
 
@@ -629,6 +685,44 @@ export function ComposeStudio({
             {target === 'photo' ? '写真をうごかしています' : 'フレームをうごかしています'}
           </span>
         )}
+      </div>
+
+      {/*
+        小さいときの見えかた。
+
+        置き場所は、大きいプレビューのすぐ下。ここが見比べる場所だから。
+        保存ボタンのそばに置くと、調整が全部終わったあとになってしまい、
+        「直そう」と思っても戻る道が長い。
+      */}
+      <div className="scenes" data-dark={sceneDark}>
+        <div className="scenes__head">
+          <span className="scenes__title">小さいときの見えかた</span>
+          <button
+            type="button"
+            className="scenes__swap"
+            onClick={() => {
+              play('tap');
+              setSceneDark((d) => !d);
+            }}
+          >
+            地の色：{sceneDark ? 'くらい' : 'あかるい'}
+          </button>
+        </div>
+        <div className="scenes__row">
+          {SCENES.map((scene, i) => (
+            <div className="scenes__item" key={scene.id}>
+              <canvas
+                className="scenes__canvas"
+                ref={(el) => {
+                  sceneRefs.current[i] = el;
+                }}
+                style={{ width: scene.size, height: scene.size }}
+                aria-hidden="true"
+              />
+              <span className="scenes__label">{scene.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="spacer" />

@@ -1738,6 +1738,101 @@ try {
     await page.close();
   }
 
+  /*
+    小さいときの見えかた。
+
+    この機能の値打ちは「実寸で出していること」ただ1つ。
+    見た目を整えようとして全部同じ大きさに揃えたり、拡大して見せたりすると、
+    その瞬間に何の情報も無くなる（大きいプレビューの縮小コピーになるだけ）。
+
+    だから、出ている大きさそのものを測って見張る。
+  */
+  console.log('\n■ 小さいときの見えかた');
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1600);
+
+    const shot = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.scenes__canvas')].map((c) => {
+          const r = c.getBoundingClientRect();
+          const g = c.getContext('2d');
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          let ink = 0;
+          let sum = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 8) ink++;
+            // 位置で重みを変えて足す。色が同じでも配置が変われば値が動く
+            sum += (d[i] + d[i + 1] * 2 + d[i + 2] * 3) * ((i % 97) + 1);
+          }
+          return {
+            css: Math.round(r.width),
+            buf: c.width,
+            // 何か描かれているか（真っ白のままではないか）
+            inked: +((ink / (d.length / 4)) * 100).toFixed(1),
+            // 絵そのものの指紋。中身が変われば必ず変わる
+            sig: sum % 1000000007,
+          };
+        }),
+      );
+
+    const before = await shot();
+    check('3つのシーンが出ている', before.length === 3, String(before.length));
+
+    // 実寸であること。SCENES の 96 / 48 / 40 に一致する
+    check(
+      '出ている大きさが実寸（96 / 48 / 40px）',
+      before.map((s) => s.css).join(',') === '96,48,40',
+      before.map((s) => s.css).join(','),
+    );
+
+    // 大きさが違うこと自体が情報。同じにされたら意味がない
+    check(
+      '3つとも大きさが違う',
+      new Set(before.map((s) => s.css)).size === 3,
+      before.map((s) => s.css).join(','),
+    );
+
+    // 端末の解像度ぶんの画素を持っていること（ぼやけていないか）
+    check(
+      '解像度ぶんの画素で描いている',
+      before.every((s) => s.buf >= s.css),
+      before.map((s) => `${s.buf}/${s.css}`).join(' '),
+    );
+
+    check(
+      'ちゃんと絵が描かれている',
+      before.every((s) => s.inked > 5),
+      before.map((s) => `${s.inked}%`).join(' '),
+    );
+
+    // 地の色を切り替えられること（コメント欄が暗いので、ここが要る）
+    const strip = page.locator('.scenes');
+    check('はじめは明るい地', (await strip.getAttribute('data-dark')) === 'false');
+    await page.getByRole('button', { name: /地の色/ }).click();
+    await page.waitForTimeout(400);
+    check('押すと暗い地になる', (await strip.getAttribute('data-dark')) === 'true');
+
+    // 動かしたら、小さいほうも一緒に変わること（1フレーム遅れて古い絵が残らないか）
+    /*
+      はじめ「不透明な画素の割合」で見ていたが、写真が円を埋めきるので
+      どう動かしても 100% のままで、何も測れていなかった。
+      絵の指紋（位置で重みを変えた合計）に替えて、中身の変化そのものを見る。
+    */
+    const sigBefore = (await shot())[2].sig;
+    await page.getByRole('slider', { name: /の大きさ/ }).fill('220');
+    await page.waitForTimeout(700);
+    const sigAfter = (await shot())[2].sig;
+    check(
+      '本体を動かすと、小さいほうも一緒に変わる',
+      sigAfter !== sigBefore,
+      `${sigBefore} → ${sigAfter}`,
+    );
+
+    await page.close();
+  }
+
   console.log('\n■ 書き出し');
   {
     const { page } = await openFrame(browser, 'neon.png');

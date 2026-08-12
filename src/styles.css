@@ -1159,6 +1159,109 @@ input[type='range']:active::-webkit-slider-thumb {
   margin: 0 auto 14px;
 }
 
+/* ---------- 小さいときの見えかた ---------- */
+
+/*
+  アイコンは、ほぼ必ず「小さくて丸い」状態で見られる。
+  そこを実寸で見せるための帯。縮小した絵ではなく、出る大きさそのまま。
+
+  地の色を切り替えられるのは、コメント欄が暗いから。
+  暗いフレームを暗い地に置くと消える。透過した絵は、置かれる地で見えかたが変わる。
+*/
+.scenes {
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px 12px;
+  margin-top: 12px;
+  background: var(--paper-2);
+  transition: background 0.2s;
+}
+
+.scenes[data-dark='true'] {
+  background: #14141a;
+}
+
+.scenes__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.scenes__title {
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.scenes[data-dark='true'] .scenes__title {
+  color: #f3f1e9;
+}
+
+.scenes__swap {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--ink-faint);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 30px;
+}
+
+.scenes[data-dark='true'] .scenes__swap {
+  color: #b5b4bf;
+  border-color: #4c4c59;
+}
+
+.scenes__swap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+  下ぞろえにする。大きさの差そのものが情報なので、
+  中央ぞろえにすると「小さい」ことが伝わりにくい。
+*/
+.scenes__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(14px, 6vw, 34px);
+}
+
+.scenes__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* SNS は必ず丸く切る。「まるく切りぬく」を切っていても、出るときは丸い */
+.scenes__canvas {
+  display: block;
+  border-radius: 50%;
+  /* 地と同じ色のフレームでも輪郭が分かるように、ごく薄い縁だけ置く */
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.scenes[data-dark='true'] .scenes__canvas {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+
+.scenes__label {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.scenes[data-dark='true'] .scenes__label {
+  color: #a5a4b0;
+}
+
 /* ---------- ひょっこり出るハリネズミ ---------- */
 
 /*
