@@ -8,7 +8,14 @@
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -133,6 +140,55 @@ async function waitFor(fn, timeout = 10000, interval = 150) {
   return false;
 }
 
+/*
+  文字と地の明るさの比（WCAG のコントラスト比）。
+
+  色の名前で見張ると、色を変えるたびに検証も直すことになり、
+  そのうち「検証のほうを合わせる」になる。比で見張れば、
+  選びかたを間違えたときだけ落ちる。
+
+  地は、その要素自身が透明なら親をさかのぼって探す。
+  文字側に透明度が付いていたら、地に重ねた見えかたの色に直してから測る。
+*/
+async function contrastOf(page, fgSel, bgSel) {
+  return page.evaluate(
+    ([fgSel, bgSel]) => {
+      const parse = (s) => (s.match(/[\d.]+/g) || []).map(Number);
+
+      /* 透明でない地に当たるまでさかのぼる */
+      const solidBg = (el) => {
+        for (let n = el; n; n = n.parentElement) {
+          const c = parse(getComputedStyle(n).backgroundColor);
+          if (c.length >= 3 && (c[3] === undefined || c[3] > 0.99)) return c.slice(0, 3);
+        }
+        return [255, 255, 255];
+      };
+
+      const lum = ([r, g, b]) => {
+        const f = (v) => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+      };
+
+      const fgEl = document.querySelector(fgSel);
+      const bgEl = bgSel ? document.querySelector(bgSel) : fgEl;
+      if (!fgEl || !bgEl) return 0;
+
+      const bg = solidBg(bgEl);
+      const fgRaw = parse(getComputedStyle(fgEl).color);
+      const a = fgRaw[3] === undefined ? 1 : fgRaw[3];
+      /* 文字が半透明なら、地に重ねた見えかたの色で測る */
+      const fg = [0, 1, 2].map((i) => fgRaw[i] * a + bg[i] * (1 - a));
+
+      const [hi, lo] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    },
+    [fgSel, bgSel],
+  );
+}
+
 /* ---------------- 画面操作のヘルパー ---------------- */
 
 async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts = {}) {
@@ -150,7 +206,6 @@ async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts
   };
   await page.route('**huggingface.co/**', blockAi);
   await page.route('**cdn.jsdelivr.net/**', blockAi);
-
 
   await page.goto(origin, { waitUntil: 'networkidle' });
   await page
@@ -717,20 +772,32 @@ try {
     await page.mouse.up();
     await page.waitForTimeout(350);
     const dragged = await snap();
-    check('ドラッグで写真が動く', diff(dragged, base) > CHANGED, `ずれ ${diff(dragged, base).toFixed(2)}`);
+    check(
+      'ドラッグで写真が動く',
+      diff(dragged, base) > CHANGED,
+      `ずれ ${diff(dragged, base).toFixed(2)}`,
+    );
 
     // 大きさスライダー
     const sizeSlider = page.getByRole('slider', { name: /の大きさ/ });
     await sizeSlider.fill('180');
     await page.waitForTimeout(350);
     const scaled = await snap();
-    check('大きさスライダーが効く', diff(scaled, dragged) > CHANGED, `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`);
+    check(
+      '大きさスライダーが効く',
+      diff(scaled, dragged) > CHANGED,
+      `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`,
+    );
 
     // 左右反転
     await page.getByRole('button', { name: '左右を反転する' }).click();
     await page.waitForTimeout(350);
     const flipped = await snap();
-    check('左右反転が効く', diff(flipped, scaled) > CHANGED, `ずれ ${diff(flipped, scaled).toFixed(2)}`);
+    check(
+      '左右反転が効く',
+      diff(flipped, scaled) > CHANGED,
+      `ずれ ${diff(flipped, scaled).toFixed(2)}`,
+    );
 
     /*
       矢印キーでの微調整。1回ぶんは 4px と、わざと小さい。
@@ -748,7 +815,11 @@ try {
     for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowLeft');
     await page.waitForTimeout(350);
     const byShift = diff(await snap(), nudged);
-    check('Shift＋矢印はもっと大きく動く', byShift > byArrow, `ずれ ${byShift.toFixed(2)} > ${byArrow.toFixed(2)}`);
+    check(
+      'Shift＋矢印はもっと大きく動く',
+      byShift > byArrow,
+      `ずれ ${byShift.toFixed(2)} > ${byArrow.toFixed(2)}`,
+    );
 
     /*
       すきまの色。写真を小さくすると、丸の内側に何も無い場所ができる。
@@ -903,7 +974,11 @@ try {
       return opaque / (px.length / 4);
     });
     // まるは回しても面積が変わらない。四角のまま回っていたら角のぶん増える。
-    check('まるはかたむけても面積が変わらない', tilted > 0.05 && tilted < 0.95, `占有 ${(tilted * 100).toFixed(1)}%`);
+    check(
+      'まるはかたむけても面積が変わらない',
+      tilted > 0.05 && tilted < 0.95,
+      `占有 ${(tilted * 100).toFixed(1)}%`,
+    );
     await page.close();
   }
 
@@ -994,7 +1069,10 @@ try {
       .getByRole('button', { name: 'はじめる' })
       .click()
       .catch(() => {});
-    await page.getByRole('button', { name: /つかいかた|ヘルプ|使いかた/ }).first().click();
+    await page
+      .getByRole('button', { name: /つかいかた|ヘルプ|使いかた/ })
+      .first()
+      .click();
     const opened = await page
       .locator('.sheet-backdrop')
       .waitFor({ state: 'visible', timeout: 10000 })
@@ -1006,9 +1084,18 @@ try {
     if (opened) {
       const r = await page.evaluate(() => {
         const b = document.querySelector('.sheet-backdrop').getBoundingClientRect();
-        return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), vw: window.innerWidth };
+        return {
+          x: Math.round(b.x),
+          y: Math.round(b.y),
+          w: Math.round(b.width),
+          vw: window.innerWidth,
+        };
       });
-      check('つかいかたも画面ぜんぶをおおう', r.x === 0 && r.y === 0 && r.w >= r.vw, `${r.w} / ${r.vw}`);
+      check(
+        'つかいかたも画面ぜんぶをおおう',
+        r.x === 0 && r.y === 0 && r.w >= r.vw,
+        `${r.w} / ${r.vw}`,
+      );
     }
     await page.close();
   }
@@ -1019,7 +1106,10 @@ try {
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1300);
 
-    check('逃げ道の入り口がいつも出ている', await page.getByRole('button', { name: '携帯に入ってこないときは' }).isVisible());
+    check(
+      '逃げ道の入り口がいつも出ている',
+      await page.getByRole('button', { name: '携帯に入ってこないときは' }).isVisible(),
+    );
 
     await page.getByRole('button', { name: '携帯に入ってこないときは' }).click();
     const img = page.locator('.saver__image');
@@ -1055,9 +1145,17 @@ try {
       );
 
       const src = await img.getAttribute('src');
-      check('画像は書き出したものそのもの', String(src).startsWith('blob:'), String(src).slice(0, 24));
+      check(
+        '画像は書き出したものそのもの',
+        String(src).startsWith('blob:'),
+        String(src).slice(0, 24),
+      );
       const size = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
-      check('書き出しサイズで入っている', size.w === 1080 && size.h === 1080, `${size.w}×${size.h}`);
+      check(
+        '書き出しサイズで入っている',
+        size.w === 1080 && size.h === 1080,
+        `${size.w}×${size.h}`,
+      );
       const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
       await page.getByRole('button', { name: /ファイルとしてダウンロード/ }).click();
       check('逃げ道からも保存できる', !!(await dl));
@@ -1130,7 +1228,10 @@ try {
         !/300円|500円|1,000円/.test(await page.locator('.tip').innerText()),
     );
 
-    await page.getByRole('button', { name: /制作活動を応援する/ }).first().click();
+    await page
+      .getByRole('button', { name: /制作活動を応援する/ })
+      .first()
+      .click();
     await page.waitForTimeout(500);
     check('そこから応援ページへ移動できる', /#\/support$/.test(page.url()), page.url().slice(-24));
 
@@ -1172,7 +1273,11 @@ try {
 
     const cta = page.locator('.support__cta');
     check('応援ページが開く', (await page.locator('.support').count()) === 1);
-    check('はじめは 500円 がえらばれている', /500円で応援する/.test(await cta.innerText()), (await cta.innerText()).replace(/\s+/g, ' '));
+    check(
+      'はじめは 500円 がえらばれている',
+      /500円で応援する/.test(await cta.innerText()),
+      (await cta.innerText()).replace(/\s+/g, ' '),
+    );
     check(
       'えらばれているものが読み上げにも出る',
       (await page.getByRole('radio', { checked: true }).innerText()).includes('500円'),
@@ -1182,7 +1287,10 @@ try {
     const pick = async (name) => {
       await page.getByRole('radio', { name: new RegExp(name) }).click();
       await page.waitForTimeout(250);
-      return { label: (await cta.innerText()).replace(/\s+/g, ' '), href: await cta.getAttribute('href') };
+      return {
+        label: (await cta.innerText()).replace(/\s+/g, ' '),
+        href: await cta.getAttribute('href'),
+      };
     };
 
     /*
@@ -1227,12 +1335,18 @@ try {
     await page.getByRole('radio', { name: /300円/ }).click();
     await page.getByRole('radio', { name: /1,000円/ }).click();
     await page.waitForTimeout(500);
-    check('カードを押しただけでは決済へ飛ばない', page.url() === before && opened === 0, `新しいタブ ${opened} 枚`);
+    check(
+      'カードを押しただけでは決済へ飛ばない',
+      page.url() === before && opened === 0,
+      `新しいタブ ${opened} 枚`,
+    );
 
-    check('主CTAだけが決済ページへの入口', await cta.getAttribute('target') === '_blank');
+    check('主CTAだけが決済ページへの入口', (await cta.getAttribute('target')) === '_blank');
     check(
       'カード番号の入力欄をこのサイトに作らない',
-      (await page.locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]').count()) === 0,
+      (await page
+        .locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]')
+        .count()) === 0,
     );
 
     // 390px で横にはみ出さない
@@ -1240,7 +1354,11 @@ try {
       w: document.documentElement.scrollWidth,
       v: window.innerWidth,
     }));
-    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+    check(
+      '390px で横スクロールが出ない',
+      overflow.w <= overflow.v + 1,
+      `${overflow.w} / ${overflow.v}`,
+    );
 
     /*
       素材の画像がまだ置かれていなくても、ページはそのまま使えること。
@@ -1252,10 +1370,16 @@ try {
     );
 
     // Web Share が無い端末（この Chromium がそれ）でも、リンクは配れる
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write'])
+      .catch(() => {});
     await page.getByRole('button', { name: /リンクをコピー/ }).click();
     await page.waitForTimeout(400);
-    check('共有が使えなくてもリンクをコピーできる', (await page.getByText('コピーしました').count()) >= 1);
+    check(
+      '共有が使えなくてもリンクをコピーできる',
+      (await page.getByText('コピーしました').count()) >= 1,
+    );
 
     check('スクリプトのエラーが出ない', errors.length === 0, errors[0] ?? '');
     // 素材を置いたら 0 になる。置く前でもページが使えることは、上で確かめている。
@@ -1274,17 +1398,31 @@ try {
     await page.waitForTimeout(600);
 
     check('お礼のページが開く', (await page.getByText('応援ありがとう！').count()) >= 1);
-    check('3つめのステップが光っている', (await page.locator(".steps--static .steps__item[data-state='current'] .steps__label").innerText()).includes('完了'));
+    check(
+      '3つめのステップが光っている',
+      (
+        await page
+          .locator(".steps--static .steps__item[data-state='current'] .steps__label")
+          .innerText()
+      ).includes('完了'),
+    );
 
     const overflow = await page.evaluate(() => ({
       w: document.documentElement.scrollWidth,
       v: window.innerWidth,
     }));
-    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+    check(
+      '390px で横スクロールが出ない',
+      overflow.w <= overflow.v + 1,
+      `${overflow.w} / ${overflow.v}`,
+    );
 
     await page.getByRole('button', { name: /もう1個つくる/ }).click();
     await page.waitForTimeout(600);
-    check('「もう1個つくる」で作る画面へ戻れる', (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1);
+    check(
+      '「もう1個つくる」で作る画面へ戻れる',
+      (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1,
+    );
     await page.close();
   }
 
@@ -1321,7 +1459,10 @@ try {
     check('og:url がある', !!meta.url, String(meta.url));
     check('og:image がある', !!meta.image, String(meta.image));
     check('twitter:card は大きい画像', meta.card === 'summary_large_image', String(meta.card));
-    check('twitter の title / description / image がある', !!(meta.tTitle && meta.tDesc && meta.tImage));
+    check(
+      'twitter の title / description / image がある',
+      !!(meta.tTitle && meta.tDesc && meta.tImage),
+    );
     check('canonical がある', !!meta.canonical);
 
     /*
@@ -1365,7 +1506,11 @@ try {
     // ?thanks=1 で来たら、以後ふつうに動くようハッシュの形へ直しておく
     await page.goto(TIPS_BASE + '?thanks=1', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    check('?thanks=1 はハッシュの形に直る', /#\/support\/thanks$/.test(page.url()), page.url().slice(-30));
+    check(
+      '?thanks=1 はハッシュの形に直る',
+      /#\/support\/thanks$/.test(page.url()),
+      page.url().slice(-30),
+    );
 
     // 応援ページ側も同じ扱い
     await page.goto(TIPS_BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
@@ -1406,25 +1551,41 @@ try {
     await box.fill('42');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('打った数字がつまみに入る', (await slider.inputValue()) === '42', await slider.inputValue());
+    check(
+      '打った数字がつまみに入る',
+      (await slider.inputValue()) === '42',
+      await slider.inputValue(),
+    );
     check('変えたら「もどす」が出る', (await reset().count()) === 1, String(await reset().count()));
 
     // 範囲の外は、範囲の内側に収める（max は 60）
     await box.fill('999');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('大きすぎる数字は上限で止まる', (await slider.inputValue()) === '60', await slider.inputValue());
+    check(
+      '大きすぎる数字は上限で止まる',
+      (await slider.inputValue()) === '60',
+      await slider.inputValue(),
+    );
 
     await box.fill('-5');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('小さすぎる数字は下限で止まる', (await slider.inputValue()) === '1', await slider.inputValue());
+    check(
+      '小さすぎる数字は下限で止まる',
+      (await slider.inputValue()) === '1',
+      await slider.inputValue(),
+    );
 
     // 数字でないものを打っても壊れない（1 のまま）
     await box.fill('あ');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('数字でないものは無視する', (await slider.inputValue()) === '1', await slider.inputValue());
+    check(
+      '数字でないものは無視する',
+      (await slider.inputValue()) === '1',
+      await slider.inputValue(),
+    );
 
     /*
       もどす → 開いたときの値へ。
@@ -1434,7 +1595,11 @@ try {
     await box.fill('37');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('戻す前は、開いたときと違う値', (await slider.inputValue()) !== opened, await slider.inputValue());
+    check(
+      '戻す前は、開いたときと違う値',
+      (await slider.inputValue()) !== opened,
+      await slider.inputValue(),
+    );
     await reset().click();
     await page.waitForTimeout(600);
     check(
@@ -1558,7 +1723,8 @@ try {
           const doc = document.documentElement;
           // 文字やボタンが箱からはみ出していないかも、いっしょに見る
           const over = [...document.querySelectorAll('.support *')].filter(
-            (el) => el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflowX === 'visible',
+            (el) =>
+              el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflowX === 'visible',
           ).length;
           return { w: doc.scrollWidth, v: window.innerWidth, over };
         });
@@ -1617,9 +1783,7 @@ try {
       );
 
       // 端の飾り（地でも輪でもないもの）は、面積のうちわずかであること
-      const edge = layers.filter(
-        (l) => l.image && !/decor__bg|decor__celebration/.test(l.cls),
-      );
+      const edge = layers.filter((l) => l.image && !/decor__bg|decor__celebration/.test(l.cls));
       const fat = edge.filter((l) => l.share > 0.2);
       check(
         `${name}：端の飾りは画面の2割まで`,
@@ -1868,6 +2032,34 @@ try {
     await swap.click();
     await page.waitForTimeout(400);
     check('押すと暗い地になる', (await strip.getAttribute('data-bg')) === 'dark');
+
+    /*
+      暗い地で、ラベルが沈んでいないこと。
+
+      目で見て気づけなかった種類の壊れかた。
+      `.scenes[data-bg='dark'], .scenes[data-bg='photo'] .scenes__label` と
+      まとめて書いてあり、コンマの左が「.scenes 自身」で切れていたので、
+      くらい地のときだけ子の指定が当たらず、var(--ink-soft) のままだった。
+
+      たちが悪いのは、端末の設定で症状が変わるところ。
+      --ink-soft は OS が暗いと #a5a4b0（比 7.5、たまたま読める）、
+      OS が明るいと #5f5f6b（比 2.9、#14141a の上でほぼ沈む）。
+      直す側が暗い設定で見ていれば、一生気づかない。
+
+      色の名前ではなく、地との比そのものを見張る。
+      これなら色を変えても、選びかたを間違えたときだけ落ちる。
+    */
+    check(
+      '暗い地でも、ラベルが地から浮いている',
+      (await contrastOf(page, '.scenes__label', '.scenes')) >= 4.5,
+      `比 ${(await contrastOf(page, '.scenes__label', '.scenes')).toFixed(1)}`,
+    );
+    check(
+      '暗い地でも、地の切り替えボタンが読める',
+      (await contrastOf(page, '.scenes__swap', '.scenes')) >= 4.5,
+      `比 ${(await contrastOf(page, '.scenes__swap', '.scenes')).toFixed(1)}`,
+    );
+
     await swap.click();
     await page.waitForTimeout(500);
     check('もう一度押すと写真の上になる', (await strip.getAttribute('data-bg')) === 'photo');
@@ -1887,6 +2079,25 @@ try {
       return hi - lo;
     });
     check('地に模様がある（平らな色ではない）', spread > 10, `明暗の幅 ${Math.round(spread)}`);
+
+    /*
+      写真の上では、文字の後ろに影が要る。
+
+      地は、この人が選んだ写真そのもの。何が写っているかは分からないので、
+      「明るい色にすれば読める」が成り立たない。白い服や空が来れば
+      明るい文字ほど消える。地をぼかせば済む話ではある —— が、
+      ぼかした瞬間にこの帯の目的（模様のある地で輪郭が立つか）が失われる。
+      だから文字の側で解決してあることを見張る。
+    */
+    const shadowed = await page.evaluate(() =>
+      ['.scenes__title', '.scenes__label', '.scenes__swap'].every((sel) => {
+        const el = document.querySelector(sel);
+        const s = el && getComputedStyle(el).textShadow;
+        return !!s && s !== 'none';
+      }),
+    );
+    check('写真の上では、文字の後ろに影が敷いてある', shadowed);
+
     await swap.click();
     await page.waitForTimeout(400);
     check('もう一度押すと明るい地に戻る', (await strip.getAttribute('data-bg')) === 'light');
