@@ -54,16 +54,33 @@ export function SupportPage() {
             <Mascot variant="support" alt="ピンクのハートをかかえたハリネズミ" />
           </div>
 
+          {/*
+            受け付けを止めているあいだは、募集の文言を一切出さない。
+
+            リンクを消しただけでは足りない。このページは URL を直に開けるので、
+            「新しいフレームの制作に活用します」という文章だけが残る。
+            それは「これから作るものへの資金集め」の証拠として、そのまま生きている。
+            止めるなら、押すところだけでなく**言っていることも**止める。
+          */}
           <div className="support__lead">
-            <h2 className="support__title">
-              制作活動を応援してくれると
-              <br />
-              とっても嬉しいです！
-            </h2>
-            <p className="support__sub">
-              いただいた応援は、新しいアイコンフレームの制作や、
-              このツールの改善に大切に活用させていただきます。
-            </p>
+            {plans.length === 0 ? (
+              <>
+                <h2 className="support__title">いつも使ってくれてありがとう</h2>
+                <p className="support__sub">このツールは、これからも無料で使えます。</p>
+              </>
+            ) : (
+              <>
+                <h2 className="support__title">
+                  制作活動を応援してくれると
+                  <br />
+                  とっても嬉しいです！
+                </h2>
+                <p className="support__sub">
+                  いただいた応援は、新しいアイコンフレームの制作や、
+                  このツールの改善に大切に活用させていただきます。
+                </p>
+              </>
+            )}
           </div>
         </div>
 
@@ -169,7 +186,9 @@ export function SupportPage() {
         )}
 
         {/* ---------------- 応援の使いみち ---------------- */}
-        <section className="support__next" aria-labelledby="support-next-heading">
+        {/* 受け付けを止めているあいだは出さない（上のコメントと同じ理由） */}
+        {plans.length > 0 && (
+          <section className="support__next" aria-labelledby="support-next-heading">
           <h3 className="support__next-title" id="support-next-heading">
             応援が、次のフレームになります。
           </h3>
@@ -177,7 +196,8 @@ export function SupportPage() {
             透明な水、ガラスになる果実、液体金属。次に何をつくるかは、まだ決めていません。
             いただいた応援は、新しい表現を試すための制作に大切に使わせていただきます。
           </p>
-        </section>
+          </section>
+        )}
 
         {/* ---------------- 広める ---------------- */}
         <section className="support__share" aria-labelledby="support-share-heading">
