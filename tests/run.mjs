@@ -19,41 +19,47 @@ const root = join(here, '..');
 const FIXTURES = build();
 const PORT = Number(process.env.PORT ?? 4180);
 const BASE = `http://127.0.0.1:${PORT}/`;
-/** 応援のリンクを1つも設定していない版。同じサーバーの別の場所に置く。 */
-const NO_TIPS_DIR = join(root, 'dist-notips');
-const NO_TIPS_BASE = `${BASE}__notips/`;
+/*
+  応援のリンクを**設定した**版。同じサーバーの別の場所に置く。
+
+  2026-08-13 に Stripe の照会を受けて、本番の設定は空にした。
+  つまり「設定していない状態」が既定になったので、臨時に作るほうが逆になった。
+  応援まわりの検証は消していない。戻すときに、壊れていないことをすぐ確かめられる。
+*/
+const TIPS_DIR = join(root, 'dist-tips');
+const TIPS_BASE = `${BASE}__tips/`;
 
 /*
-  「設定していないときは、応援の案内がどこにも出ない」を確かめるための版を作る。
+  「設定してあるときは、応援の案内がちゃんと出る」を確かめるための版を作る。
 
-  はじめは、配信される JS の中の URL 文字列を空に差し替えて確かめようとした。
-  これは通らない。ビルドの時点で `TIP_CUSTOM_URL.trim() !== ''` が
-  定数の true に畳み込まれてしまい、文字列を変えても分岐が動かないため。
-  （bundle には `.some(...)||!0` と出ていた）
+  bundle の中の文字列を差し替えて確かめることはできない。ビルドの時点で
+  `TIP_CUSTOM_URL.trim() !== ''` が定数に畳み込まれてしまい、
+  あとから文字列を変えても分岐が動かないため（`.some(...)||!0` と出ていた）。
 
-  なので、設定を空にした tip-config.ts で本当にもう1本ビルドする。
+  なので、URL を入れた tip-config.ts で本当にもう1本ビルドする。
   ビルドが終わったら、元のファイルを必ず戻す。
 */
-function buildWithoutTips() {
+function buildWithTips() {
   const config = join(root, 'src', 'tip-config.ts');
   const backup = join(root, 'src', 'tip-config.ts.bak');
   copyFileSync(config, backup);
   try {
-    const blanked = readFileSync(config, 'utf8').replace(
-      /url:\s*'https:\/\/buy\.stripe\.com\/[^']*'/g,
-      "url: ''",
-    ).replace(
-      /export const TIP_CUSTOM_URL = '[^']*';/,
-      "export const TIP_CUSTOM_URL = '';",
-    );
-    writeFileSync(config, blanked);
+    // 検証だけのための、実在しない URL。決済まで進める検証はしていない
+    let n = 0;
+    const filled = readFileSync(config, 'utf8')
+      .replace(/url: ''/g, () => `url: 'https://buy.stripe.com/test_dummy${++n}'`)
+      .replace(
+        /export const TIP_CUSTOM_URL = '';/,
+        "export const TIP_CUSTOM_URL = 'https://buy.stripe.com/test_dummy_custom';",
+      );
+    writeFileSync(config, filled);
     const r = spawnSync(
       'npx',
-      ['vite', 'build', '--outDir', NO_TIPS_DIR, '--emptyOutDir', '--logLevel', 'error'],
+      ['vite', 'build', '--outDir', TIPS_DIR, '--emptyOutDir', '--logLevel', 'error'],
       { cwd: root, encoding: 'utf8' },
     );
     if (r.status !== 0) {
-      console.log('  （応援なし版のビルドに失敗）', r.stderr?.slice(0, 300));
+      console.log('  （応援あり版のビルドに失敗）', r.stderr?.slice(0, 300));
       return false;
     }
     return true;
@@ -84,7 +90,7 @@ function serve() {
       `
       const http=require('http'),fs=require('fs'),path=require('path');
       const root=${JSON.stringify(join(root, 'dist'))};
-      const noTips=${JSON.stringify(NO_TIPS_DIR)};
+      const withTips=${JSON.stringify(TIPS_DIR)};
       const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png',
         '.svg':'image/svg+xml','.wasm':'application/wasm','.webmanifest':'application/manifest+json'};
       http.createServer((req,res)=>{
@@ -100,9 +106,9 @@ function serve() {
             + '<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" src="/"></iframe>');
         }
         let url=decodeURIComponent(req.url.split('?')[0]);
-        // 応援のリンクを設定していない版は、同じサーバーの別の場所から配る
+        // 応援のリンクを設定した版は、同じサーバーの別の場所から配る
         let base=root;
-        if(url.startsWith('/__notips/')) { base=noTips; url=url.slice('/__notips'.length); }
+        if(url.startsWith('/__tips/')) { base=withTips; url=url.slice('/__tips'.length); }
         let p=path.join(base, url);
         if(!p.startsWith(base)) { res.writeHead(403); return res.end(); }
         if(fs.existsSync(p)&&fs.statSync(p).isDirectory()) p=path.join(p,'index.html');
@@ -1044,15 +1050,14 @@ try {
     `TIP_CUSTOM_URL.trim() !== ''` が定数の true に畳み込まれるので、
     URL を空にしても分岐は動かない（実際そこで一度、通らない検証を書いた）。
   */
-  console.log('\n■ 応援（設定していないとき）');
+  console.log('\n■ 応援（設定していないとき＝いまの本番）');
   {
-    const built = buildWithoutTips();
-    check('設定を空にした版がビルドできる', built);
-    if (!built) throw new Error('応援なし版をビルドできませんでした');
+    // 応援「あり」の版は、このあとの節で使う。先に作っておく
+    const built = buildWithTips();
+    check('URL を入れた版がビルドできる', built);
+    if (!built) throw new Error('応援あり版をビルドできませんでした');
 
-    const { page } = await openFrame(browser, 'lineart.png', 'photo-color.png', {
-      origin: NO_TIPS_BASE,
-    });
+    const { page } = await openFrame(browser, 'lineart.png');
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1200);
     check('保存前に応援の案内は出ない', (await page.locator('.tip').count()) === 0);
@@ -1073,9 +1078,11 @@ try {
     「そこで金額の話を始めない」こと。保存できた直後の画面は
     本来「できた！」を味わう場所なので、会計の画面にしない。
   */
-  console.log('\n■ 応援（設定してあるとき）');
+  console.log('\n■ 応援（設定してあるとき＝戻したあと）');
   {
-    const { page } = await openFrame(browser, 'lineart.png');
+    const { page } = await openFrame(browser, 'lineart.png', 'photo-color.png', {
+      origin: TIPS_BASE,
+    });
     check('フッターに応援の入り口が出る', (await page.locator('.tip__quiet').count()) >= 1);
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1200);
@@ -1129,7 +1136,7 @@ try {
     page.on('requestfailed', (r) => {
       if (!/assets\/support\//.test(r.url())) errors.push(`${r.url()} が読めない`);
     });
-    await page.goto(BASE + '#/support', { waitUntil: 'networkidle' });
+    await page.goto(TIPS_BASE + '#/support', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
 
     const cta = page.locator('.support__cta');
@@ -1147,21 +1154,37 @@ try {
       return { label: (await cta.innerText()).replace(/\s+/g, ' '), href: await cta.getAttribute('href') };
     };
 
-    const p300 = await pick('300円');
-    check('300円でボタンの文字が変わる', /300円で応援する/.test(p300.label), p300.label);
-    check('300円のリンクにつながる', p300.href === 'https://buy.stripe.com/bJe7sE4b32r1d3EfYW3VC00', String(p300.href));
+    /*
+      リンク先は、本物の URL を書き写して照らし合わせていた。
+      設定を空にした（Stripe の照会で止めた）ときに、ここが4件まとめて落ちた。
 
-    const p500 = await pick('500円');
-    check('500円でボタンの文字が変わる', /500円で応援する/.test(p500.label), p500.label);
-    check('500円のリンクにつながる', p500.href === 'https://buy.stripe.com/00w7sEazrd5F0gSaEC3VC01', String(p500.href));
+      本当に守りたいのは「選んだカードと、飛ぶ先が食い違わないこと」で、
+      URL の中身そのものではない。書き写した値を持たない形に直す。
+      こうしておけば、URL を入れ替えても検証は書き換えずに済む。
+    */
+    const seen = new Map();
+    for (const [name, label] of [
+      ['300円', /300円で応援する/],
+      ['500円', /500円で応援する/],
+      ['1,000円', /1,000円で応援する/],
+      ['自由入力', /好きな金額で応援する/],
+    ]) {
+      const r = await pick(name);
+      check(`${name}でボタンの文字が変わる`, label.test(r.label), r.label);
+      check(
+        `${name}のリンクが決済ページを向いている`,
+        typeof r.href === 'string' && r.href.startsWith('https://buy.stripe.com/'),
+        String(r.href),
+      );
+      seen.set(name, r.href);
+    }
 
-    const p1000 = await pick('1,000円');
-    check('1,000円でボタンの文字が変わる', /1,000円で応援する/.test(p1000.label), p1000.label);
-    check('1,000円のリンクにつながる', p1000.href === 'https://buy.stripe.com/cNidR2gXP4z90gSbIG3VC02', String(p1000.href));
-
-    const free = await pick('自由入力');
-    check('自由入力でボタンの文字が変わる', /好きな金額で応援する/.test(free.label), free.label);
-    check('自由入力のリンクにつながる', free.href === 'https://buy.stripe.com/dRm00cbDv0iTe7I5ki3VC03', String(free.href));
+    // 4つとも別の飛び先であること（取り違えていたら、ここで落ちる）
+    check(
+      'えらんだ金額ごとに、飛び先が別になっている',
+      new Set(seen.values()).size === seen.size,
+      [...seen.entries()].map(([k, v]) => `${k}→${String(v).slice(-12)}`).join(' '),
+    );
 
     /*
       カードを押しただけで決済ページへ飛ばないこと。
@@ -1216,7 +1239,7 @@ try {
   console.log('\n■ お礼のページ');
   {
     const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.goto(TIPS_BASE + '#/support/thanks', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
 
     check('お礼のページが開く', (await page.getByText('応援ありがとう！').count()) >= 1);
@@ -1303,18 +1326,18 @@ try {
       ['ハッシュが落ちても（?thanks=1）', '?thanks=1'],
     ];
     for (const [name, suffix] of arrivals) {
-      await page.goto(BASE + suffix, { waitUntil: 'networkidle' });
+      await page.goto(TIPS_BASE + suffix, { waitUntil: 'networkidle' });
       await page.waitForTimeout(500);
       check(`${name}お礼のページが出る`, (await page.getByText('応援ありがとう！').count()) >= 1);
     }
 
     // ?thanks=1 で来たら、以後ふつうに動くようハッシュの形へ直しておく
-    await page.goto(BASE + '?thanks=1', { waitUntil: 'networkidle' });
+    await page.goto(TIPS_BASE + '?thanks=1', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     check('?thanks=1 はハッシュの形に直る', /#\/support\/thanks$/.test(page.url()), page.url().slice(-30));
 
     // 応援ページ側も同じ扱い
-    await page.goto(BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
+    await page.goto(TIPS_BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
     check('応援ページも余計な文字を無視する', (await page.locator('.support .plan').count()) >= 3);
     await page.close();
@@ -1407,7 +1430,7 @@ try {
   console.log('\n■ つくる側のハリネズミは、場面のときだけ');
   {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.goto(TIPS_BASE, { waitUntil: 'networkidle' });
     await page
       .getByRole('button', { name: 'はじめる' })
       .click()
@@ -1463,7 +1486,7 @@ try {
           got.push([f, s.responseBodySize || 0]);
         } catch {}
       });
-      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+      await page.goto(TIPS_BASE + hash, { waitUntil: 'networkidle' });
       await page.waitForTimeout(900);
 
       const heavy = got.filter(([, s]) => s > 400 * 1024);
