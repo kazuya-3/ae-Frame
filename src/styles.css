@@ -1252,18 +1252,23 @@ input[type='range']:active::-webkit-slider-thumb {
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16);
 }
 
-/* ふつうの（フレームの無い）アイコンに見立てた丸 */
+/*
+  ふつうの（フレームの無い）アイコンに見立てた見本。
+
+  地の色も絵もキャンバス側で描いている。ここで背景色を指定しないのは、
+  中身のある絵の下に別の色を敷いても意味がないから。
+  飾りの輪も付けない。輪を持っているのが自分だけ、という状態でないと
+  「フレームがあると目立つか」が比べられない。
+  境目を示す線は、自分と同じ太さで1本だけ。
+*/
 .scenes__peer {
   flex: none;
-  width: 40px;
-  height: 40px;
+  display: block;
   border-radius: 50%;
-  background: var(--paper-3);
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
 }
 
 .scenes[data-dark='true'] .scenes__peer {
-  background: #2a2a34;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1);
 }
 

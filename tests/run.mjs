@@ -8,7 +8,14 @@
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -150,7 +157,6 @@ async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts
   };
   await page.route('**huggingface.co/**', blockAi);
   await page.route('**cdn.jsdelivr.net/**', blockAi);
-
 
   await page.goto(origin, { waitUntil: 'networkidle' });
   await page
@@ -717,20 +723,32 @@ try {
     await page.mouse.up();
     await page.waitForTimeout(350);
     const dragged = await snap();
-    check('ドラッグで写真が動く', diff(dragged, base) > CHANGED, `ずれ ${diff(dragged, base).toFixed(2)}`);
+    check(
+      'ドラッグで写真が動く',
+      diff(dragged, base) > CHANGED,
+      `ずれ ${diff(dragged, base).toFixed(2)}`,
+    );
 
     // 大きさスライダー
     const sizeSlider = page.getByRole('slider', { name: /の大きさ/ });
     await sizeSlider.fill('180');
     await page.waitForTimeout(350);
     const scaled = await snap();
-    check('大きさスライダーが効く', diff(scaled, dragged) > CHANGED, `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`);
+    check(
+      '大きさスライダーが効く',
+      diff(scaled, dragged) > CHANGED,
+      `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`,
+    );
 
     // 左右反転
     await page.getByRole('button', { name: '左右を反転する' }).click();
     await page.waitForTimeout(350);
     const flipped = await snap();
-    check('左右反転が効く', diff(flipped, scaled) > CHANGED, `ずれ ${diff(flipped, scaled).toFixed(2)}`);
+    check(
+      '左右反転が効く',
+      diff(flipped, scaled) > CHANGED,
+      `ずれ ${diff(flipped, scaled).toFixed(2)}`,
+    );
 
     /*
       矢印キーでの微調整。1回ぶんは 4px と、わざと小さい。
@@ -748,7 +766,11 @@ try {
     for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowLeft');
     await page.waitForTimeout(350);
     const byShift = diff(await snap(), nudged);
-    check('Shift＋矢印はもっと大きく動く', byShift > byArrow, `ずれ ${byShift.toFixed(2)} > ${byArrow.toFixed(2)}`);
+    check(
+      'Shift＋矢印はもっと大きく動く',
+      byShift > byArrow,
+      `ずれ ${byShift.toFixed(2)} > ${byArrow.toFixed(2)}`,
+    );
 
     /*
       すきまの色。写真を小さくすると、丸の内側に何も無い場所ができる。
@@ -903,7 +925,11 @@ try {
       return opaque / (px.length / 4);
     });
     // まるは回しても面積が変わらない。四角のまま回っていたら角のぶん増える。
-    check('まるはかたむけても面積が変わらない', tilted > 0.05 && tilted < 0.95, `占有 ${(tilted * 100).toFixed(1)}%`);
+    check(
+      'まるはかたむけても面積が変わらない',
+      tilted > 0.05 && tilted < 0.95,
+      `占有 ${(tilted * 100).toFixed(1)}%`,
+    );
     await page.close();
   }
 
@@ -994,7 +1020,10 @@ try {
       .getByRole('button', { name: 'はじめる' })
       .click()
       .catch(() => {});
-    await page.getByRole('button', { name: /つかいかた|ヘルプ|使いかた/ }).first().click();
+    await page
+      .getByRole('button', { name: /つかいかた|ヘルプ|使いかた/ })
+      .first()
+      .click();
     const opened = await page
       .locator('.sheet-backdrop')
       .waitFor({ state: 'visible', timeout: 10000 })
@@ -1006,9 +1035,18 @@ try {
     if (opened) {
       const r = await page.evaluate(() => {
         const b = document.querySelector('.sheet-backdrop').getBoundingClientRect();
-        return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), vw: window.innerWidth };
+        return {
+          x: Math.round(b.x),
+          y: Math.round(b.y),
+          w: Math.round(b.width),
+          vw: window.innerWidth,
+        };
       });
-      check('つかいかたも画面ぜんぶをおおう', r.x === 0 && r.y === 0 && r.w >= r.vw, `${r.w} / ${r.vw}`);
+      check(
+        'つかいかたも画面ぜんぶをおおう',
+        r.x === 0 && r.y === 0 && r.w >= r.vw,
+        `${r.w} / ${r.vw}`,
+      );
     }
     await page.close();
   }
@@ -1019,7 +1057,10 @@ try {
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1300);
 
-    check('逃げ道の入り口がいつも出ている', await page.getByRole('button', { name: '携帯に入ってこないときは' }).isVisible());
+    check(
+      '逃げ道の入り口がいつも出ている',
+      await page.getByRole('button', { name: '携帯に入ってこないときは' }).isVisible(),
+    );
 
     await page.getByRole('button', { name: '携帯に入ってこないときは' }).click();
     const img = page.locator('.saver__image');
@@ -1055,9 +1096,17 @@ try {
       );
 
       const src = await img.getAttribute('src');
-      check('画像は書き出したものそのもの', String(src).startsWith('blob:'), String(src).slice(0, 24));
+      check(
+        '画像は書き出したものそのもの',
+        String(src).startsWith('blob:'),
+        String(src).slice(0, 24),
+      );
       const size = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
-      check('書き出しサイズで入っている', size.w === 1080 && size.h === 1080, `${size.w}×${size.h}`);
+      check(
+        '書き出しサイズで入っている',
+        size.w === 1080 && size.h === 1080,
+        `${size.w}×${size.h}`,
+      );
       const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
       await page.getByRole('button', { name: /ファイルとしてダウンロード/ }).click();
       check('逃げ道からも保存できる', !!(await dl));
@@ -1130,7 +1179,10 @@ try {
         !/300円|500円|1,000円/.test(await page.locator('.tip').innerText()),
     );
 
-    await page.getByRole('button', { name: /制作活動を応援する/ }).first().click();
+    await page
+      .getByRole('button', { name: /制作活動を応援する/ })
+      .first()
+      .click();
     await page.waitForTimeout(500);
     check('そこから応援ページへ移動できる', /#\/support$/.test(page.url()), page.url().slice(-24));
 
@@ -1172,7 +1224,11 @@ try {
 
     const cta = page.locator('.support__cta');
     check('応援ページが開く', (await page.locator('.support').count()) === 1);
-    check('はじめは 500円 がえらばれている', /500円で応援する/.test(await cta.innerText()), (await cta.innerText()).replace(/\s+/g, ' '));
+    check(
+      'はじめは 500円 がえらばれている',
+      /500円で応援する/.test(await cta.innerText()),
+      (await cta.innerText()).replace(/\s+/g, ' '),
+    );
     check(
       'えらばれているものが読み上げにも出る',
       (await page.getByRole('radio', { checked: true }).innerText()).includes('500円'),
@@ -1182,7 +1238,10 @@ try {
     const pick = async (name) => {
       await page.getByRole('radio', { name: new RegExp(name) }).click();
       await page.waitForTimeout(250);
-      return { label: (await cta.innerText()).replace(/\s+/g, ' '), href: await cta.getAttribute('href') };
+      return {
+        label: (await cta.innerText()).replace(/\s+/g, ' '),
+        href: await cta.getAttribute('href'),
+      };
     };
 
     /*
@@ -1227,12 +1286,18 @@ try {
     await page.getByRole('radio', { name: /300円/ }).click();
     await page.getByRole('radio', { name: /1,000円/ }).click();
     await page.waitForTimeout(500);
-    check('カードを押しただけでは決済へ飛ばない', page.url() === before && opened === 0, `新しいタブ ${opened} 枚`);
+    check(
+      'カードを押しただけでは決済へ飛ばない',
+      page.url() === before && opened === 0,
+      `新しいタブ ${opened} 枚`,
+    );
 
-    check('主CTAだけが決済ページへの入口', await cta.getAttribute('target') === '_blank');
+    check('主CTAだけが決済ページへの入口', (await cta.getAttribute('target')) === '_blank');
     check(
       'カード番号の入力欄をこのサイトに作らない',
-      (await page.locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]').count()) === 0,
+      (await page
+        .locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]')
+        .count()) === 0,
     );
 
     // 390px で横にはみ出さない
@@ -1240,7 +1305,11 @@ try {
       w: document.documentElement.scrollWidth,
       v: window.innerWidth,
     }));
-    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+    check(
+      '390px で横スクロールが出ない',
+      overflow.w <= overflow.v + 1,
+      `${overflow.w} / ${overflow.v}`,
+    );
 
     /*
       素材の画像がまだ置かれていなくても、ページはそのまま使えること。
@@ -1252,10 +1321,16 @@ try {
     );
 
     // Web Share が無い端末（この Chromium がそれ）でも、リンクは配れる
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+    await page
+      .context()
+      .grantPermissions(['clipboard-read', 'clipboard-write'])
+      .catch(() => {});
     await page.getByRole('button', { name: /リンクをコピー/ }).click();
     await page.waitForTimeout(400);
-    check('共有が使えなくてもリンクをコピーできる', (await page.getByText('コピーしました').count()) >= 1);
+    check(
+      '共有が使えなくてもリンクをコピーできる',
+      (await page.getByText('コピーしました').count()) >= 1,
+    );
 
     check('スクリプトのエラーが出ない', errors.length === 0, errors[0] ?? '');
     // 素材を置いたら 0 になる。置く前でもページが使えることは、上で確かめている。
@@ -1274,17 +1349,31 @@ try {
     await page.waitForTimeout(600);
 
     check('お礼のページが開く', (await page.getByText('応援ありがとう！').count()) >= 1);
-    check('3つめのステップが光っている', (await page.locator(".steps--static .steps__item[data-state='current'] .steps__label").innerText()).includes('完了'));
+    check(
+      '3つめのステップが光っている',
+      (
+        await page
+          .locator(".steps--static .steps__item[data-state='current'] .steps__label")
+          .innerText()
+      ).includes('完了'),
+    );
 
     const overflow = await page.evaluate(() => ({
       w: document.documentElement.scrollWidth,
       v: window.innerWidth,
     }));
-    check('390px で横スクロールが出ない', overflow.w <= overflow.v + 1, `${overflow.w} / ${overflow.v}`);
+    check(
+      '390px で横スクロールが出ない',
+      overflow.w <= overflow.v + 1,
+      `${overflow.w} / ${overflow.v}`,
+    );
 
     await page.getByRole('button', { name: /もう1個つくる/ }).click();
     await page.waitForTimeout(600);
-    check('「もう1個つくる」で作る画面へ戻れる', (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1);
+    check(
+      '「もう1個つくる」で作る画面へ戻れる',
+      (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1,
+    );
     await page.close();
   }
 
@@ -1321,7 +1410,10 @@ try {
     check('og:url がある', !!meta.url, String(meta.url));
     check('og:image がある', !!meta.image, String(meta.image));
     check('twitter:card は大きい画像', meta.card === 'summary_large_image', String(meta.card));
-    check('twitter の title / description / image がある', !!(meta.tTitle && meta.tDesc && meta.tImage));
+    check(
+      'twitter の title / description / image がある',
+      !!(meta.tTitle && meta.tDesc && meta.tImage),
+    );
     check('canonical がある', !!meta.canonical);
 
     /*
@@ -1365,7 +1457,11 @@ try {
     // ?thanks=1 で来たら、以後ふつうに動くようハッシュの形へ直しておく
     await page.goto(TIPS_BASE + '?thanks=1', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    check('?thanks=1 はハッシュの形に直る', /#\/support\/thanks$/.test(page.url()), page.url().slice(-30));
+    check(
+      '?thanks=1 はハッシュの形に直る',
+      /#\/support\/thanks$/.test(page.url()),
+      page.url().slice(-30),
+    );
 
     // 応援ページ側も同じ扱い
     await page.goto(TIPS_BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
@@ -1406,25 +1502,41 @@ try {
     await box.fill('42');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('打った数字がつまみに入る', (await slider.inputValue()) === '42', await slider.inputValue());
+    check(
+      '打った数字がつまみに入る',
+      (await slider.inputValue()) === '42',
+      await slider.inputValue(),
+    );
     check('変えたら「もどす」が出る', (await reset().count()) === 1, String(await reset().count()));
 
     // 範囲の外は、範囲の内側に収める（max は 60）
     await box.fill('999');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('大きすぎる数字は上限で止まる', (await slider.inputValue()) === '60', await slider.inputValue());
+    check(
+      '大きすぎる数字は上限で止まる',
+      (await slider.inputValue()) === '60',
+      await slider.inputValue(),
+    );
 
     await box.fill('-5');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('小さすぎる数字は下限で止まる', (await slider.inputValue()) === '1', await slider.inputValue());
+    check(
+      '小さすぎる数字は下限で止まる',
+      (await slider.inputValue()) === '1',
+      await slider.inputValue(),
+    );
 
     // 数字でないものを打っても壊れない（1 のまま）
     await box.fill('あ');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('数字でないものは無視する', (await slider.inputValue()) === '1', await slider.inputValue());
+    check(
+      '数字でないものは無視する',
+      (await slider.inputValue()) === '1',
+      await slider.inputValue(),
+    );
 
     /*
       もどす → 開いたときの値へ。
@@ -1434,7 +1546,11 @@ try {
     await box.fill('37');
     await box.press('Enter');
     await page.waitForTimeout(400);
-    check('戻す前は、開いたときと違う値', (await slider.inputValue()) !== opened, await slider.inputValue());
+    check(
+      '戻す前は、開いたときと違う値',
+      (await slider.inputValue()) !== opened,
+      await slider.inputValue(),
+    );
     await reset().click();
     await page.waitForTimeout(600);
     check(
@@ -1558,7 +1674,8 @@ try {
           const doc = document.documentElement;
           // 文字やボタンが箱からはみ出していないかも、いっしょに見る
           const over = [...document.querySelectorAll('.support *')].filter(
-            (el) => el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflowX === 'visible',
+            (el) =>
+              el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflowX === 'visible',
           ).length;
           return { w: doc.scrollWidth, v: window.innerWidth, over };
         });
@@ -1617,9 +1734,7 @@ try {
       );
 
       // 端の飾り（地でも輪でもないもの）は、面積のうちわずかであること
-      const edge = layers.filter(
-        (l) => l.image && !/decor__bg|decor__celebration/.test(l.cls),
-      );
+      const edge = layers.filter((l) => l.image && !/decor__bg|decor__celebration/.test(l.cls));
       const fat = edge.filter((l) => l.share > 0.2);
       check(
         `${name}：端の飾りは画面の2割まで`,
@@ -1887,6 +2002,45 @@ try {
       return +((ink / (d.length / 4)) * 100).toFixed(1);
     });
     check('並んだときの自分にも、ちゃんと絵が描かれている', meInk > 5, `${meInk}%`);
+
+    /*
+      隣にも、ちゃんと絵が描いてあること。
+
+      はじめ隣は無地の丸だった。丸が並んでいても目には「余白に点がある」
+      としか映らず、肝心の「この中で自分は埋もれるか、浮きすぎるか」が
+      判定できない。相手が無地だと自分のアイコンは必ず勝ってしまうので、
+      見比べる意味そのものが無くなる。
+
+      無地に戻されたら落ちるように、中身そのものを測る。
+    */
+    const peers = await page.evaluate(() =>
+      [...document.querySelectorAll('.scenes__peer')].map((c) => {
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let lo = 255;
+        let hi = 0;
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 8) continue;
+          const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+          // 位置で重みを変えて足す。色が同じでも配置が変われば値が動く
+          sum += (d[i] + d[i + 1] * 2 + d[i + 2] * 3) * ((i % 97) + 1);
+        }
+        return { spread: hi - lo, sig: sum % 1000000007 };
+      }),
+    );
+    check('隣は3人ぶんある', peers.length === 3, String(peers.length));
+    check(
+      '隣が無地ではない（絵が描いてある）',
+      peers.every((p) => p.spread > 40),
+      peers.map((p) => Math.round(p.spread)).join(' / '),
+    );
+    check(
+      '隣どうしが同じ絵ではない',
+      new Set(peers.map((p) => p.sig)).size === peers.length,
+      `${new Set(peers.map((p) => p.sig)).size} 種類`,
+    );
 
     // 地の色を切り替えられること（コメント欄が暗いので、ここが要る）
     const strip = page.locator('.scenes');

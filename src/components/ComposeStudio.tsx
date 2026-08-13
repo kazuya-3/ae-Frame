@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canvasToBlob, createCanvas, downloadBlob, get2d, timestampName } from '../lib/image';
 import { play } from '../lib/sound';
+import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -156,6 +157,8 @@ export function ComposeStudio({
   const sceneRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   /** 「隣に並んだとき」の自分のアイコン（コメント欄の大きさ） */
   const rowRef = useRef<HTMLCanvasElement>(null);
+  /** 隣に並ぶ見本のアイコン。中身は変わらないので、大きさが変わったときだけ描く */
+  const peerRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     dist: number;
@@ -378,6 +381,23 @@ export function ComposeStudio({
           row.height = px;
         }
         paintRef.current(get2d(row), px, false);
+      }
+
+      /*
+        隣に並ぶ見本。
+
+        中身が変わらない絵なので、画素の数が変わったときだけ描き直す
+        （はじめて出たとき、端末の解像度が変わったとき）。
+        毎フレーム描き直しても軽いが、動かないものを動く場所に置かない。
+      */
+      for (let i = 0; i < PEER_LOOKS.length; i++) {
+        const el = peerRefs.current[i];
+        if (!el) continue;
+        const px = Math.max(1, Math.round(ROW_SIZE * dpr));
+        if (el.width === px) continue;
+        el.width = px;
+        el.height = px;
+        drawPeerIcon(get2d(el), px, PEER_LOOKS[i]);
       }
     });
   }, []);
@@ -761,14 +781,42 @@ export function ComposeStudio({
           実際のコメント欄では、アイコンは1つだけでは見られていない。
           上下に他の人のアイコンが並ぶ。その中で自分のフレームが埋もれないか、
           あるいは浮きすぎないかは、単独で眺めても分からない。
-          隣は、ふつうの（フレームの無い）アイコンに見立てた無地の丸。
-          他社の画面を真似ず、比べたいことだけを出す。
+
+          隣は、ふつうの（フレームの無い）アイコンに見立てた見本。
+          はじめ無地の丸を置いていたが、それでは比べものにならなかった。
+          実際のコメント欄で隣に並ぶのは無地ではなく、何かが描いてあって
+          色がついている。相手が無地だと、自分のアイコンは必ず勝ってしまう。
+
+          他社の画面は再現しない。丸と大きさと、隣に何かが居ることだけ。
         */}
         <div className="scenes__strip" aria-hidden="true">
-          <span className="scenes__peer" />
-          <canvas className="scenes__me" ref={rowRef} style={{ width: ROW_SIZE, height: ROW_SIZE }} />
-          <span className="scenes__peer" />
-          <span className="scenes__peer scenes__peer--last" />
+          <canvas
+            className="scenes__peer"
+            ref={(el) => {
+              peerRefs.current[0] = el;
+            }}
+            style={{ width: ROW_SIZE, height: ROW_SIZE }}
+          />
+          <canvas
+            className="scenes__me"
+            ref={rowRef}
+            style={{ width: ROW_SIZE, height: ROW_SIZE }}
+          />
+          <canvas
+            className="scenes__peer"
+            ref={(el) => {
+              peerRefs.current[1] = el;
+            }}
+            style={{ width: ROW_SIZE, height: ROW_SIZE }}
+          />
+          {/* いちばん端は薄くして、まだ続きがあることだけ示す */}
+          <canvas
+            className="scenes__peer scenes__peer--last"
+            ref={(el) => {
+              peerRefs.current[2] = el;
+            }}
+            style={{ width: ROW_SIZE, height: ROW_SIZE }}
+          />
         </div>
         <p className="scenes__strip-label">コメント欄で、他の人と並んだとき</p>
       </div>
