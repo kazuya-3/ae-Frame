@@ -1196,7 +1196,7 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 .scenes[data-dark='true'] .scenes__title {
-  color: #f3f1e9;
+  color: #f8f6ef;
 }
 
 .scenes__swap {
@@ -1213,8 +1213,8 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 .scenes[data-dark='true'] .scenes__swap {
-  color: #b5b4bf;
-  border-color: #4c4c59;
+  color: #e7e4da;
+  border-color: #75747f;
 }
 
 .scenes__swap:focus-visible {
@@ -1223,68 +1223,138 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 /*
-  隣に並んだとき。
+  他の人と並んだとき。
 
-  自分のアイコンだけ本物を描き、隣は無地の丸にする。
-  他社の画面を真似ず、比べたいこと（埋もれるか／浮きすぎるか）だけを出す。
+  コメント欄は縦に流れるので、縦に積む。
+  ただし本当に効くのは向きより「文字の場所があること」のほう。
+  丸しか並んでいないと、自分のアイコンは実際より目立って見える。
 */
-.scenes__strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.scenes__more {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--ink-faint);
 }
 
-.scenes[data-dark='true'] .scenes__strip {
+.scenes[data-dark='true'] .scenes__more {
   border-top-color: #3a3a46;
 }
 
-.scenes__me {
-  flex: none;
-  display: block;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+.scenes__more-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 36px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
 }
 
-.scenes[data-dark='true'] .scenes__me {
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16);
+.scenes[data-dark='true'] .scenes__more-btn {
+  color: #e4e1d8;
+}
+
+.scenes__more-btn:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.scenes__more-chev {
+  flex: none;
+  transition: transform 0.28s var(--ease-spring);
+}
+
+.scenes__more-btn[aria-expanded='true'] .scenes__more-chev {
+  transform: rotate(180deg);
+}
+
+.feed {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feed__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* いちばん下は薄くして、まだ続きがあることだけ示す */
+.feed__row[data-last='true'] {
+  opacity: 0.45;
 }
 
 /*
-  ふつうの（フレームの無い）アイコンに見立てた見本。
+  アイコン。
 
   地の色も絵もキャンバス側で描いている。ここで背景色を指定しないのは、
   中身のある絵の下に別の色を敷いても意味がないから。
   飾りの輪も付けない。輪を持っているのが自分だけ、という状態でないと
   「フレームがあると目立つか」が比べられない。
-  境目を示す線は、自分と同じ太さで1本だけ。
+  境目を示す線は、自分も見本も同じ太さで1本だけ。
 */
-.scenes__peer {
+.feed__icon {
   flex: none;
   display: block;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.1);
 }
 
-.scenes[data-dark='true'] .scenes__peer {
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1);
+.scenes[data-dark='true'] .feed__icon {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12);
 }
 
-/* いちばん端は、続きがあることだけ示す */
-.scenes__peer--last {
-  opacity: 0.45;
+.feed__lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 6px;
+}
+
+/*
+  文字の場所。文字そのものは書かない。
+
+  名前や台詞を書いた時点で、それはどこかの画面の再現になる。
+  ここで要るのは「アイコンの隣で注意を奪い合うものがある」ことだけで、
+  何と書いてあるかは要らない。長さを揃えないのは、そのほうが本物に近いから。
+*/
+.feed__bar {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ink-faint);
+  opacity: 0.5;
+}
+
+.feed__bar--name {
+  height: 8px;
+  opacity: 0.75;
+}
+
+.scenes[data-dark='true'] .feed__bar {
+  background: #8d8c99;
 }
 
 .scenes__strip-label {
   font-size: 0.66rem;
   color: var(--ink-soft);
-  margin: 6px 0 0;
+  margin: 10px 0 0;
 }
 
+/* 暗い地では、明るさで格を下げない。字の大きさで下げる（大きさの列と同じ扱い） */
 .scenes[data-dark='true'] .scenes__strip-label {
-  color: #a5a4b0;
+  color: #e4e1d8;
 }
 
 /*
@@ -1323,8 +1393,15 @@ input[type='range']:active::-webkit-slider-thumb {
   white-space: nowrap;
 }
 
+/*
+  暗い地では、明るさで格を下げない。字の大きさで下げる。
+
+  ラベルは補足なので、明るい地では本文より一段落として置いている。
+  ところが暗い地では、その「一段落とす」がそのまま効いて沈んでしまう。
+  見出し（#f8f6ef）よりわずかに下、という置きかたにする。
+*/
 .scenes[data-dark='true'] .scenes__label {
-  color: #a5a4b0;
+  color: #e4e1d8;
 }
 
 /* ---------- ひょっこり出るハリネズミ ---------- */

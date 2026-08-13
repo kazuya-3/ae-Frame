@@ -1977,16 +1977,28 @@ try {
     );
 
     /*
-      隣に並んだとき。
+      他の人と並んだとき。
 
-      自分だけ本物を描き、隣はフレームの無いアイコンに見立てた無地の丸。
-      「自分の1つだけ」に戻されていないか（＝比べるものが無くなっていないか）を見る。
+      主役は大きさの比較なので、これは既定で畳んである。
+      畳んだまま中身が生きていないか（＝開いても空のままではないか）まで見る。
     */
-    check('自分のアイコンが1つ描かれている', (await page.locator('.scenes__me').count()) === 1);
-    check('隣に並ぶ丸がある', (await page.locator('.scenes__peer').count()) >= 2);
+    check(
+      'はじめは畳まれている',
+      (await page.locator('.feed').count()) === 0,
+      `列 ${await page.locator('.feed').count()} 個`,
+    );
+
+    const more = page.getByRole('button', { name: /他の人と並べてみる/ });
+    check('畳んでいても、問いは読める', (await more.count()) === 1);
+    await more.click();
+    await page.waitForTimeout(600);
+    check('押すと開く', (await page.locator('.feed').count()) === 1);
+
+    check('自分のアイコンが1つ描かれている', (await page.locator('.feed__icon--me').count()) === 1);
+    check('隣に並ぶ人がいる', (await page.locator('.feed__icon--peer').count()) >= 2);
     const rowSizes = await page.evaluate(() => {
-      const me = document.querySelector('.scenes__me').getBoundingClientRect();
-      const peer = document.querySelector('.scenes__peer').getBoundingClientRect();
+      const me = document.querySelector('.feed__icon--me').getBoundingClientRect();
+      const peer = document.querySelector('.feed__icon--peer').getBoundingClientRect();
       return [Math.round(me.width), Math.round(peer.width)];
     });
     check(
@@ -1995,13 +2007,66 @@ try {
       `自分 ${rowSizes[0]}px / 隣 ${rowSizes[1]}px`,
     );
     const meInk = await page.evaluate(() => {
-      const c = document.querySelector('.scenes__me');
+      const c = document.querySelector('.feed__icon--me');
       const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
       let ink = 0;
       for (let i = 3; i < d.length; i += 4) if (d[i] > 8) ink++;
       return +((ink / (d.length / 4)) * 100).toFixed(1);
     });
     check('並んだときの自分にも、ちゃんと絵が描かれている', meInk > 5, `${meInk}%`);
+
+    /*
+      縦に積まれていて、自分が挟まれていること。
+
+      横一列に戻されたら落ちる。コメント欄は縦に流れるので、
+      そこが合っていないと「並んだとき」を見ていることにならない。
+      さらに、自分が先頭だと上に誰も居らず、挟まれた状態にならない。
+    */
+    const geom = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.feed__row')];
+      const icons = rows.map((r) => r.querySelector('.feed__icon').getBoundingClientRect());
+      const meAt = rows.findIndex((r) => r.querySelector('.feed__icon--me'));
+      return {
+        n: rows.length,
+        meAt,
+        sameX: new Set(icons.map((b) => Math.round(b.left))).size === 1,
+        descending: icons.every((b, i) => i === 0 || b.top > icons[i - 1].top),
+      };
+    });
+    check('縦に積まれている', geom.sameX && geom.descending);
+    check(
+      '自分は先頭ではない（上にも下にも人がいる）',
+      geom.meAt > 0 && geom.meAt < geom.n - 1,
+      `${geom.n} 人中 ${geom.meAt + 1} 番目`,
+    );
+
+    /*
+      文字の場所があること。
+
+      丸しか並んでいないと、自分のアイコンは実際より目立って見える。
+      本物のコメント欄では、アイコンは文字と注意を奪い合っている。
+      「埋もれるか」を見たいのに、埋もれさせる当のものが無いのでは判定できない。
+      帯を消されたら落ちるように、行ごとに数える。
+    */
+    const bars = await page.evaluate(() =>
+      [...document.querySelectorAll('.feed__row')].map(
+        (r) => r.querySelectorAll('.feed__bar').length,
+      ),
+    );
+    check(
+      'どの行にも文字の場所がある',
+      bars.length > 0 && bars.every((n) => n >= 2),
+      bars.join(' / '),
+    );
+
+    /*
+      ただし、文字そのものは書かない。
+      名前や台詞を書いた時点で、どこかの画面の再現になる。
+    */
+    const feedText = await page.evaluate(
+      () => document.querySelector('.feed').textContent.trim().length,
+    );
+    check('文字は書かれていない（無地の帯のまま）', feedText === 0, `${feedText} 文字`);
 
     /*
       隣にも、ちゃんと絵が描いてあること。
@@ -2014,7 +2079,7 @@ try {
       無地に戻されたら落ちるように、中身そのものを測る。
     */
     const peers = await page.evaluate(() =>
-      [...document.querySelectorAll('.scenes__peer')].map((c) => {
+      [...document.querySelectorAll('.feed__icon--peer')].map((c) => {
         const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
         let lo = 255;
         let hi = 0;
