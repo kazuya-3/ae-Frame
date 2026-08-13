@@ -773,14 +773,34 @@ try {
         }
         return clear / Math.max(1, inside);
       });
-    const gapBefore = await clearInsideCircle();
+    /*
+      はじめは「白」。とうめいのまま保存すると SNS 側で黒く塗られることがあるので、
+      選ばなかった人が損をする既定値にしない、という判断（ComposeStudio 参照）。
+      既定を変えたときに気づけるよう、ここで固定しておく。
+    */
+    const gapDefault = await clearInsideCircle();
+    check(
+      'はじめから、すきまが塗られている（既定は白）',
+      gapDefault < 0.001,
+      `とうめいな画素 ${(gapDefault * 100).toFixed(1)}%`,
+    );
+
+    await page.getByRole('button', { name: 'とうめい', exact: true }).click();
+    await page.waitForTimeout(350);
+    const gapClear = await clearInsideCircle();
+    check(
+      'とうめいを選ぶと、すきまが空く',
+      gapClear > 0.05,
+      `とうめいな画素 ${(gapClear * 100).toFixed(1)}%`,
+    );
+
     await page.getByRole('button', { name: '白', exact: true }).click();
     await page.waitForTimeout(350);
-    const gapAfter = await clearInsideCircle();
+    const gapWhite = await clearInsideCircle();
     check(
-      'すきまの色が効く（とうめい→白で不透明になる）',
-      gapBefore > 0.05 && gapAfter < 0.001,
-      `すきま ${(gapBefore * 100).toFixed(1)}% → ${(gapAfter * 100).toFixed(1)}%`,
+      '白に戻すと、また塗られる',
+      gapWhite < 0.001,
+      `とうめいな画素 ${(gapWhite * 100).toFixed(1)}%`,
     );
     await page.close();
   }
@@ -797,6 +817,17 @@ try {
 
     // フレームの内側におさまる大きさにして、角が見える状態を作る
     await page.getByRole('slider', { name: /の大きさ/ }).fill('60');
+    await page.waitForTimeout(350);
+
+    /*
+      すきまの色を「とうめい」にしてから測る。
+
+      既定を白にしたので、そのままだと丸の内側が白で埋まり、
+      写真をどの形に切っても不透明な画素は 100% のまま動かない。
+      形が変わったことを見たいなら、切り落とした先が透けている必要がある。
+      （既定を変えたときに、この3件がまとめて落ちて気づいた）
+    */
+    await page.getByRole('button', { name: 'とうめい', exact: true }).click();
     await page.waitForTimeout(350);
 
     /*

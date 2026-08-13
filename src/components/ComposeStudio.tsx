@@ -120,7 +120,17 @@ export function ComposeStudio({
   const [frameT, setFrameT] = useState<Transform>(IDENTITY);
   const [target, setTarget] = useState<Target>('photo');
   const [round, setRound] = useState(true);
-  const [gap, setGap] = useState<Gap>('none');
+  /*
+    すきまの色は、はじめから「白」にしておく。
+
+    とうめいのまま保存すると、SNS 側で黒く塗られることがある。
+    そこは選べるようにしてあるが、**選ばなかった人が損をする既定値**にしては
+    いけない。困るほうを既定にしない、というだけの話。
+
+    写真が丸を埋めているあいだは、すきまが無いので何も変わらない。
+    効いてくるのは、写真を小さくしたときだけ。
+  */
+  const [gap, setGap] = useState<Gap>('white');
   const [shape, setShape] = useState<Shape>('fill');
   // 一度でも触ったら、操作の案内は引っ込める
   const [touched, setTouched] = useState(false);
