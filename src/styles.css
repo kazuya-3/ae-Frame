@@ -1223,6 +1223,66 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 /*
+  隣に並んだとき。
+
+  自分のアイコンだけ本物を描き、隣は無地の丸にする。
+  他社の画面を真似ず、比べたいこと（埋もれるか／浮きすぎるか）だけを出す。
+*/
+.scenes__strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ink-faint);
+}
+
+.scenes[data-dark='true'] .scenes__strip {
+  border-top-color: #3a3a46;
+}
+
+.scenes__me {
+  flex: none;
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.scenes[data-dark='true'] .scenes__me {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+
+/* ふつうの（フレームの無い）アイコンに見立てた丸 */
+.scenes__peer {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--paper-3);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.scenes[data-dark='true'] .scenes__peer {
+  background: #2a2a34;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+/* いちばん端は、続きがあることだけ示す */
+.scenes__peer--last {
+  opacity: 0.45;
+}
+
+.scenes__strip-label {
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+}
+
+.scenes[data-dark='true'] .scenes__strip-label {
+  color: #a5a4b0;
+}
+
+/*
   下ぞろえにする。大きさの差そのものが情報なので、
   中央ぞろえにすると「小さい」ことが伝わりにくい。
 */

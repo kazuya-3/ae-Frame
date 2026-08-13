@@ -1861,6 +1861,33 @@ try {
       before.map((s) => `${s.inked}%`).join(' '),
     );
 
+    /*
+      隣に並んだとき。
+
+      自分だけ本物を描き、隣はフレームの無いアイコンに見立てた無地の丸。
+      「自分の1つだけ」に戻されていないか（＝比べるものが無くなっていないか）を見る。
+    */
+    check('自分のアイコンが1つ描かれている', (await page.locator('.scenes__me').count()) === 1);
+    check('隣に並ぶ丸がある', (await page.locator('.scenes__peer').count()) >= 2);
+    const rowSizes = await page.evaluate(() => {
+      const me = document.querySelector('.scenes__me').getBoundingClientRect();
+      const peer = document.querySelector('.scenes__peer').getBoundingClientRect();
+      return [Math.round(me.width), Math.round(peer.width)];
+    });
+    check(
+      '自分も隣も、コメント欄と同じ 40px',
+      rowSizes[0] === 40 && rowSizes[1] === 40,
+      `自分 ${rowSizes[0]}px / 隣 ${rowSizes[1]}px`,
+    );
+    const meInk = await page.evaluate(() => {
+      const c = document.querySelector('.scenes__me');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let ink = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 8) ink++;
+      return +((ink / (d.length / 4)) * 100).toFixed(1);
+    });
+    check('並んだときの自分にも、ちゃんと絵が描かれている', meInk > 5, `${meInk}%`);
+
     // 地の色を切り替えられること（コメント欄が暗いので、ここが要る）
     const strip = page.locator('.scenes');
     check('はじめは明るい地', (await strip.getAttribute('data-dark')) === 'false');

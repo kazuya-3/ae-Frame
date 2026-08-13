@@ -49,6 +49,9 @@ const EXPORT_SIZE = 1080;
 
   数字は目安。実機と見比べて詰める前提の値。
 */
+/** 隣に並べて見るときの大きさ。コメント欄と同じ */
+const ROW_SIZE = 40;
+
 const SCENES = [
   { id: 'profile', label: 'プロフィール', size: 96 },
   { id: 'post', label: '投稿', size: 48 },
@@ -151,6 +154,8 @@ export function ComposeStudio({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
   const sceneRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  /** 「隣に並んだとき」の自分のアイコン（コメント欄の大きさ） */
+  const rowRef = useRef<HTMLCanvasElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     dist: number;
@@ -356,6 +361,23 @@ export function ComposeStudio({
           c.height = px;
         }
         paintRef.current(get2d(c), px, false);
+      }
+
+      /*
+        「隣に並んだとき」の自分。コメント欄と同じ 40px。
+
+        実際のコメント欄で、アイコンが単独で見られることはない。
+        上下に他の人のアイコンが並んでいて、その中で埋もれるかどうかは、
+        1つだけ見ていても分からない。
+      */
+      const row = rowRef.current;
+      if (row) {
+        const px = Math.max(1, Math.round(ROW_SIZE * dpr));
+        if (row.width !== px) {
+          row.width = px;
+          row.height = px;
+        }
+        paintRef.current(get2d(row), px, false);
       }
     });
   }, []);
@@ -733,6 +755,22 @@ export function ComposeStudio({
             </div>
           ))}
         </div>
+
+        {/*
+          隣に並んだとき。
+          実際のコメント欄では、アイコンは1つだけでは見られていない。
+          上下に他の人のアイコンが並ぶ。その中で自分のフレームが埋もれないか、
+          あるいは浮きすぎないかは、単独で眺めても分からない。
+          隣は、ふつうの（フレームの無い）アイコンに見立てた無地の丸。
+          他社の画面を真似ず、比べたいことだけを出す。
+        */}
+        <div className="scenes__strip" aria-hidden="true">
+          <span className="scenes__peer" />
+          <canvas className="scenes__me" ref={rowRef} style={{ width: ROW_SIZE, height: ROW_SIZE }} />
+          <span className="scenes__peer" />
+          <span className="scenes__peer scenes__peer--last" />
+        </div>
+        <p className="scenes__strip-label">コメント欄で、他の人と並んだとき</p>
       </div>
 
       <div className="spacer" />
