@@ -1861,12 +1861,35 @@ try {
       before.map((s) => `${s.inked}%`).join(' '),
     );
 
-    // 地の色を切り替えられること（コメント欄が暗いので、ここが要る）
+    // 地を切り替えられること（コメント欄は暗く、しかも動画の上なので）
     const strip = page.locator('.scenes');
-    check('はじめは明るい地', (await strip.getAttribute('data-dark')) === 'false');
-    await page.getByRole('button', { name: /地の色/ }).click();
+    const swap = page.getByRole('button', { name: /^地：/ });
+    check('はじめは明るい地', (await strip.getAttribute('data-bg')) === 'light');
+    await swap.click();
     await page.waitForTimeout(400);
-    check('押すと暗い地になる', (await strip.getAttribute('data-dark')) === 'true');
+    check('押すと暗い地になる', (await strip.getAttribute('data-bg')) === 'dark');
+    await swap.click();
+    await page.waitForTimeout(500);
+    check('もう一度押すと写真の上になる', (await strip.getAttribute('data-bg')) === 'photo');
+    check('写真の地が描かれている', (await page.locator('.scenes__bg').count()) === 1);
+    // 敷いた写真が真っ黒・真っ白ではないこと（模様がある地であること）
+    const spread = await page.evaluate(() => {
+      const c = document.querySelector('.scenes__bg');
+      if (!c) return 0;
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let lo = 255;
+      let hi = 0;
+      for (let i = 0; i < d.length; i += 4 * 37) {
+        const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      return hi - lo;
+    });
+    check('地に模様がある（平らな色ではない）', spread > 10, `明暗の幅 ${Math.round(spread)}`);
+    await swap.click();
+    await page.waitForTimeout(400);
+    check('もう一度押すと明るい地に戻る', (await strip.getAttribute('data-bg')) === 'light');
 
     // 動かしたら、小さいほうも一緒に変わること（1フレーム遅れて古い絵が残らないか）
     /*

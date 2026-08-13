@@ -140,17 +140,29 @@ export function ComposeStudio({
   const [canShare, setCanShare] = useState(false);
 
   /*
-    小さいときの見えかたを、明るい地と暗い地の両方で見られるようにする。
+    小さいときの見えかたを、置かれる地ごとに見られるようにする。
 
     暗い地が要るのは、コメント欄が暗いから。
     暗いフレームを暗い地に置くと消える。ステップ2に「下じき」を付けたのと同じ話で、
     透過した絵は、置かれる地の色によって見えかたが変わる。
+
+    「写真の上」を足したのは、平らな色では足りないから。
+    実際のライブのコメント欄は、動画そのものの上に文字が乗っている。
+    人の肌、髪、服 —— 中間色で、模様があって、場所によって明るさが違う。
+    そこでフレームの輪郭が立つかどうかは、無地の上では絶対に分からない。
+
+    地に使うのは、この人がステップ1で選んだ写真。素材を1枚も増やさずに、
+    いちばん自分ごとに近い絵になる。
   */
-  const [sceneDark, setSceneDark] = useState(false);
+  const [sceneBg, setSceneBg] = useState<'light' | 'dark' | 'photo'>('light');
+  const NEXT_BG = { light: 'dark', dark: 'photo', photo: 'light' } as const;
+  const BG_LABEL = { light: 'あかるい', dark: 'くらい', photo: '写真の上' } as const;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
   const sceneRefs = useRef<(HTMLCanvasElement | null)[]>([]);
+  /** 「写真の上」のときに、帯の地として敷く写真 */
+  const sceneBgRef = useRef<HTMLCanvasElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     dist: number;
@@ -357,8 +369,38 @@ export function ComposeStudio({
         }
         paintRef.current(get2d(c), px, false);
       }
+
+      /*
+        「写真の上」の地。ステップ1で選んだ写真を、帯いっぱいに敷く。
+
+        ぼかさない。ぼかすと平らな色に近づいてしまい、
+        「模様のある地でも輪郭が立つか」という肝心のところが見えなくなる。
+
+        暗い膜だけかける。実際のコメント欄も、文字を読ませるために
+        映像の上へ半透明の膜を敷いている。そこは真似ではなく、同じ理屈。
+      */
+      const bg = sceneBgRef.current;
+      if (bg) {
+        const r = bg.getBoundingClientRect();
+        if (r.width >= 1) {
+          const bw = Math.max(1, Math.round(r.width * dpr));
+          const bh = Math.max(1, Math.round(r.height * dpr));
+          if (bg.width !== bw || bg.height !== bh) {
+            bg.width = bw;
+            bg.height = bh;
+          }
+          const g = get2d(bg);
+          const cover = Math.max(bw / photo.width, bh / photo.height);
+          const w = photo.width * cover;
+          const h = photo.height * cover;
+          g.clearRect(0, 0, bw, bh);
+          g.drawImage(photo, (bw - w) / 2, (bh - h) / 2, w, h);
+          g.fillStyle = 'rgba(0,0,0,0.42)';
+          g.fillRect(0, 0, bw, bh);
+        }
+      }
     });
-  }, []);
+  }, [photo]);
 
   // 中身が変わったら描き直す。
   // active が立った直後はまだ display:none のままなので、
@@ -369,6 +411,20 @@ export function ComposeStudio({
     const id = requestAnimationFrame(() => scheduleRender());
     return () => cancelAnimationFrame(id);
   }, [paint, active, scheduleRender]);
+
+  /*
+    地を切り替えたときも描き直す。
+
+    paint は地の種類を見ていないので、切り替えただけでは再描画が走らない。
+    しかも「写真の上」のキャンバスは、切り替えた瞬間に生まれる要素なので、
+    その場では幅がまだ 0 のことがある。次のフレームでもう一度描く。
+    （はじめ、地が真っ黒のままなのに気づかず、検証で拾った）
+  */
+  useEffect(() => {
+    scheduleRender();
+    const id = requestAnimationFrame(() => scheduleRender());
+    return () => cancelAnimationFrame(id);
+  }, [sceneBg, scheduleRender]);
 
   useEffect(() => {
     const onResize = () => scheduleRender();
@@ -704,18 +760,26 @@ export function ComposeStudio({
         保存ボタンのそばに置くと、調整が全部終わったあとになってしまい、
         「直そう」と思っても戻る道が長い。
       */}
-      <div className="scenes" data-dark={sceneDark}>
+      <div className="scenes" data-bg={sceneBg}>
+        {/* 「写真の上」のときだけ、地に写真を敷く */}
+        {sceneBg === 'photo' && (
+          <canvas className="scenes__bg" ref={sceneBgRef} aria-hidden="true" />
+        )}
         <div className="scenes__head">
           <span className="scenes__title">小さいときの見えかた</span>
+          {/*
+            3つを順に回す。ステップ2の「下じき」と同じ操作にしてある。
+            並べて置くより、押すところが1つで済む。
+          */}
           <button
             type="button"
             className="scenes__swap"
             onClick={() => {
               play('tap');
-              setSceneDark((d) => !d);
+              setSceneBg((b) => NEXT_BG[b]);
             }}
           >
-            地の色：{sceneDark ? 'くらい' : 'あかるい'}
+            地：{BG_LABEL[sceneBg]}
           </button>
         </div>
         <div className="scenes__row">
