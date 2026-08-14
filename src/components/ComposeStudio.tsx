@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { canvasToBlob, createCanvas, downloadBlob, get2d, timestampName } from '../lib/image';
 import { play } from '../lib/sound';
+import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -18,6 +19,7 @@ import {
   IconPlus,
   IconRefresh,
   IconRotate,
+  IconChevron,
   IconShare,
   IconTouch,
   IconWarn,
@@ -49,6 +51,45 @@ const EXPORT_SIZE = 1080;
 
   数字は目安。実機と見比べて詰める前提の値。
 */
+/** 隣に並べて見るときの大きさ。コメント欄と同じ */
+const ROW_SIZE = 40;
+
+/*
+  他の人と並んだとき。
+
+  ── なぜ縦なのか ──
+
+  はじめ横一列に並べていた。コメント欄は縦に流れるので、まずそこが合っていない。
+  ただ、それより効くずれがあった。
+
+  **丸しか並んでいないと、自分のアイコンは実際より目立って見える。**
+  本物のコメント欄で、アイコンは文字と注意を奪い合っている。
+  「埋もれるか」を見たいのに、埋もれさせる当のものが画面に無かった。
+  横並びは、自分に有利な条件で見せていたことになる。
+
+  だから文字の場所も置く。ただし文字は書かない。無地の帯にする。
+  名前や台詞を書いた時点で、それはどこかの画面の再現になる。
+  丸・大きさ・地だけ、という方針はここでも変えない。
+  帯の長さを揃えないのは、そのほうが本物の呼吸に近いから。
+
+  ── なぜ既定で畳むのか ──
+
+  主役は大きさの比較で、これは補足。開きっぱなしだと 200px 以上を常に使い、
+  主役より場所を取ってしまう。
+
+  ただし畳むと、押されなければ無かったのと同じになる。
+  だから見出しに問いをそのまま書く。開かない人にも、
+  「並んだときはどう見えるのか」という問いがあることだけは残す。
+*/
+const FEED = [
+  { peer: 0, name: 38, text: 76, last: false },
+  /* 自分。先頭に置かない。上にも下にも人が居てはじめて「並んだとき」になる */
+  { peer: null, name: 30, text: 58, last: false },
+  { peer: 1, name: 46, text: 88, last: false },
+  /* いちばん下は薄くして、まだ続きがあることだけ示す */
+  { peer: 2, name: 34, text: 64, last: true },
+] as const;
+
 const SCENES = [
   { id: 'profile', label: 'プロフィール', size: 96 },
   { id: 'post', label: '投稿', size: 48 },
@@ -158,11 +199,18 @@ export function ComposeStudio({
   const NEXT_BG = { light: 'dark', dark: 'photo', photo: 'light' } as const;
   const BG_LABEL = { light: 'あかるい', dark: 'くらい', photo: '写真の上' } as const;
 
+  /* 「他の人と並べてみる」を開いているか。既定は畳む（FEED のところに理由） */
+  const [feedOpen, setFeedOpen] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
   const sceneRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   /** 「写真の上」のときに、帯の地として敷く写真 */
   const sceneBgRef = useRef<HTMLCanvasElement>(null);
+  /** 「他の人と並んだとき」の自分のアイコン（コメント欄の大きさ） */
+  const rowRef = useRef<HTMLCanvasElement>(null);
+  /** 隣に並ぶ見本のアイコン。中身は変わらないので、大きさが変わったときだけ描く */
+  const peerRefs = useRef<(HTMLCanvasElement | null)[]>([]);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     dist: number;
@@ -399,6 +447,40 @@ export function ComposeStudio({
           g.fillRect(0, 0, bw, bh);
         }
       }
+
+      /*
+        「他の人と並んだとき」の自分。コメント欄と同じ 40px。
+
+        実際のコメント欄で、アイコンが単独で見られることはない。
+        上下に他の人のアイコンが並んでいて、その中で埋もれるかどうかは、
+        1つだけ見ていても分からない。
+      */
+      const row = rowRef.current;
+      if (row) {
+        const px = Math.max(1, Math.round(ROW_SIZE * dpr));
+        if (row.width !== px) {
+          row.width = px;
+          row.height = px;
+        }
+        paintRef.current(get2d(row), px, false);
+      }
+
+      /*
+        隣に並ぶ見本。
+
+        中身が変わらない絵なので、画素の数が変わったときだけ描き直す
+        （はじめて出たとき、端末の解像度が変わったとき）。
+        毎フレーム描き直しても軽いが、動かないものを動く場所に置かない。
+      */
+      for (let i = 0; i < PEER_LOOKS.length; i++) {
+        const el = peerRefs.current[i];
+        if (!el) continue;
+        const px = Math.max(1, Math.round(ROW_SIZE * dpr));
+        if (el.width === px) continue;
+        el.width = px;
+        el.height = px;
+        drawPeerIcon(get2d(el), px, PEER_LOOKS[i]);
+      }
     });
   }, [photo]);
 
@@ -413,18 +495,21 @@ export function ComposeStudio({
   }, [paint, active, scheduleRender]);
 
   /*
-    地を切り替えたときも描き直す。
+    地を切り替えたときと、畳んであるものを開いたとき、描き直す。
 
-    paint は地の種類を見ていないので、切り替えただけでは再描画が走らない。
-    しかも「写真の上」のキャンバスは、切り替えた瞬間に生まれる要素なので、
-    その場では幅がまだ 0 のことがある。次のフレームでもう一度描く。
-    （はじめ、地が真っ黒のままなのに気づかず、検証で拾った）
+    paint は地の種類も、開いているかどうかも見ていないので、
+    切り替えただけでは再描画が走らない。しかも「写真の上」の地も、
+    並べて見るアイコンも、そのとき初めて生まれる要素なので、
+    その場では幅がまだ 0 のことがある。だから次のフレームでもう一度描く。
+
+    2つは別々に書いていたが、同じ形の同じ話なので1つにまとめた。
+    （はじめ、地が真っ黒のままなのに気づかず、検証で拾った穴）
   */
   useEffect(() => {
     scheduleRender();
     const id = requestAnimationFrame(() => scheduleRender());
     return () => cancelAnimationFrame(id);
-  }, [sceneBg, scheduleRender]);
+  }, [sceneBg, feedOpen, scheduleRender]);
 
   useEffect(() => {
     const onResize = () => scheduleRender();
@@ -796,6 +881,64 @@ export function ComposeStudio({
               <span className="scenes__label">{scene.label}</span>
             </div>
           ))}
+        </div>
+
+        {/*
+          他の人と並んだとき。既定では畳んでおく（FEED のところに理由）。
+          見出しは「開くと何が分かるか」ではなく、問いそのものにしてある。
+          開かない人にも、その問いがあることだけは残るように。
+        */}
+        <div className="scenes__more">
+          <button
+            type="button"
+            className="scenes__more-btn"
+            aria-expanded={feedOpen}
+            onClick={() => {
+              play('tap');
+              setFeedOpen((v) => !v);
+            }}
+          >
+            <IconChevron className="scenes__more-chev" size={16} />
+            コメント欄で、他の人と並べてみる
+          </button>
+
+          {feedOpen && (
+            <>
+              <ul className="feed" aria-hidden="true">
+                {FEED.map((row, i) => (
+                  <li className="feed__row" key={i} data-last={row.last}>
+                    {row.peer === null ? (
+                      <canvas
+                        className="feed__icon feed__icon--me"
+                        ref={rowRef}
+                        style={{ width: ROW_SIZE, height: ROW_SIZE }}
+                      />
+                    ) : (
+                      <canvas
+                        className="feed__icon feed__icon--peer"
+                        ref={(el) => {
+                          peerRefs.current[row.peer] = el;
+                        }}
+                        style={{ width: ROW_SIZE, height: ROW_SIZE }}
+                      />
+                    )}
+                    {/*
+                      文字の場所。文字そのものは書かない。
+                      名前や台詞を書いた時点で、どこかの画面の再現になる。
+                    */}
+                    <span className="feed__lines">
+                      <span
+                        className="feed__bar feed__bar--name"
+                        style={{ width: `${row.name}%` }}
+                      />
+                      <span className="feed__bar" style={{ width: `${row.text}%` }} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="scenes__strip-label">上から2番目が、あなたのアイコンです</p>
+            </>
+          )}
         </div>
       </div>
 
