@@ -1816,6 +1816,17 @@ try {
     2. ステップ表示（1・2・3）より下から始まること
        輪のいちばん濃いところがちょうど「完了」に重なり、文字が泡に埋まっていた。
   */
+  /*
+    ここは応援を**設定してある**版で見る。
+
+    このかたまりの本命は「輪がステップ表示にかからない」で、
+    ぶつかる相手のステップは、受け付けを止めているあいだは出さなくなった。
+    止めた版で測ると相手が居らず、当たりようがないので素通りする。
+    素通りする検証は、通っていないのと同じ。
+
+    輪そのものの置きかたは応援の設定と関係ないので、
+    どちらの版で測っても同じ絵が出る。ぶつかる相手が居るほうで測る。
+  */
   console.log('\n■ お礼ページの水の輪');
   {
     const seen = [];
@@ -1824,7 +1835,7 @@ try {
       ['とても広い画面', 1920],
     ]) {
       const page = await browser.newPage({ viewport: { width: w, height: 900 } });
-      await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+      await page.goto(TIPS_BASE + '#/support/thanks', { waitUntil: 'networkidle' });
       await page.waitForTimeout(600);
       const m = await page.evaluate(() => {
         const el = document.querySelector('.decor__celebration');
@@ -2289,6 +2300,55 @@ try {
     const d = await dl;
     check('PNG が保存できる', !!d, d ? d.suggestedFilename() : '');
     await page.close();
+  }
+
+  /*
+    受け付けを止めているあいだ、決済の順路を見せないこと。
+
+    文言をいくら消しても、これが残っていると意味が無かった。
+    本文が「受け付けを止めています」と言っているすぐ上で、
+
+      支援をえらぶ → 決済する → 完了
+
+    という帯が動いていた。**決済の順路そのもの**が出ている。
+    しかも「支援」は「応援」より寄付に寄った語で、審査中に見せたいものではない。
+
+    条件分岐の向こうにあった文言と違って、これは実際に表示されていた。
+    検証も画面を見ていたのに捕まらなかったのは、止めた状態の応援ページで
+    「何が出ていないか」を一度も見ていなかったから。出ているものばかり
+    数えていて、出ていてはいけないものを数えていなかった。
+  */
+  console.log('\n■ 受け付けを止めているあいだの見えかた');
+  {
+    for (const [name, hash] of [
+      ['応援', '#/support'],
+      ['お礼', '#/support/thanks'],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(500);
+
+      check(
+        `${name}：決済の順路を出さない`,
+        (await page.locator('.steps--static').count()) === 0,
+        `${await page.locator('.steps--static').count()} 本`,
+      );
+
+      /*
+        つくる画面は隠れているだけで DOM には残っているので、.app は2つある。
+        innerText は隠れているものを外すので、body から取れば見えている分だけになる。
+      */
+      const text = await page.evaluate(() => document.body.innerText);
+      const words = ['支援をえらぶ', '決済する', '寄付', '募金'].filter((w) => text.includes(w));
+      check(`${name}：募っている言いかたが出ない`, words.length === 0, words.join(' / '));
+
+      check(
+        `${name}：決済リンクが1本も無い`,
+        (await page.locator('a[href*="stripe.com"]').count()) === 0,
+      );
+
+      await page.close();
+    }
   }
 
   /*
