@@ -1169,6 +1169,8 @@ input[type='range']:active::-webkit-slider-thumb {
   暗いフレームを暗い地に置くと消える。透過した絵は、置かれる地で見えかたが変わる。
 */
 .scenes {
+  position: relative;
+  overflow: hidden;
   border: var(--lw) solid var(--line);
   border-radius: var(--radius-sm);
   padding: 10px 12px 12px;
@@ -1177,8 +1179,34 @@ input[type='range']:active::-webkit-slider-thumb {
   transition: background 0.2s;
 }
 
-.scenes[data-dark='true'] {
+/*
+  暗い地と写真の地は、どちらも「暗いところに置かれたとき」の話なので
+  文字まわりの扱いは同じ。
+
+  ここから下、暗い側の指定は必ず2本セットで書く。
+  `.scenes[data-bg='dark'], .scenes[data-bg='photo'] .scenes__label` のように
+  まとめて書くと、コンマの左は「.scenes 自身」で切れてしまい、
+  暗い地のときだけ子の指定が当たらない。実際それで、
+  くらい地のラベルが暗いままになっていた（下の「文字の明るさ」参照）。
+*/
+.scenes[data-bg='dark'],
+.scenes[data-bg='photo'] {
   background: #14141a;
+}
+
+/* 「写真の上」の地。中身より後ろに敷く */
+.scenes__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.scenes__head,
+.scenes__row {
+  position: relative;
+  z-index: 1;
 }
 
 .scenes__head {
@@ -1195,8 +1223,9 @@ input[type='range']:active::-webkit-slider-thumb {
   color: var(--ink);
 }
 
-.scenes[data-dark='true'] .scenes__title {
-  color: #f3f1e9;
+.scenes[data-bg='dark'] .scenes__title,
+.scenes[data-bg='photo'] .scenes__title {
+  color: #f8f6ef;
 }
 
 .scenes__swap {
@@ -1212,9 +1241,10 @@ input[type='range']:active::-webkit-slider-thumb {
   min-height: 30px;
 }
 
-.scenes[data-dark='true'] .scenes__swap {
-  color: #b5b4bf;
-  border-color: #4c4c59;
+.scenes[data-bg='dark'] .scenes__swap,
+.scenes[data-bg='photo'] .scenes__swap {
+  color: #e7e4da;
+  border-color: #75747f;
 }
 
 .scenes__swap:focus-visible {
@@ -1248,7 +1278,8 @@ input[type='range']:active::-webkit-slider-thumb {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
 }
 
-.scenes[data-dark='true'] .scenes__canvas {
+.scenes[data-bg='dark'] .scenes__canvas,
+.scenes[data-bg='photo'] .scenes__canvas {
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16);
 }
 
@@ -1258,8 +1289,39 @@ input[type='range']:active::-webkit-slider-thumb {
   white-space: nowrap;
 }
 
-.scenes[data-dark='true'] .scenes__label {
-  color: #a5a4b0;
+/*
+  文字の明るさ。
+
+  ラベルは「補足」なので、明るい地では本文よりも一段落として置く。
+  ところが暗い地では、その「一段落とす」がそのまま効いてしまい、
+  #14141a の上に #a5a4b0 —— ほとんど沈んで読めなかった。
+  写真の上では、さらに模様が重なるので条件が悪い。
+
+  暗い側は、落とす方向を変える。真っ白まで上げずに、
+  見出し（#f8f6ef）よりわずかに下、という置きかたにする。
+  明るさで格を下げるのではなく、字の大きさで下げる。
+*/
+.scenes[data-bg='dark'] .scenes__label,
+.scenes[data-bg='photo'] .scenes__label {
+  color: #e4e1d8;
+}
+
+/*
+  写真の上だけ、文字の後ろに影を敷く。
+
+  地に使うのは、この人が選んだ写真そのもの。何が写っているかは分からないので、
+  「明るい色を置けば読める」が成り立たない。白い服や空が来れば、
+  明るい文字ほど消える。暗い膜はかけているが、それでも足りないところは出る。
+
+  ぼかしを地のほうに足すのではなく、文字の側で解決する。
+  地をぼかすと「模様のある地で輪郭が立つか」という、この帯の目的そのものが失われる。
+*/
+.scenes[data-bg='photo'] .scenes__title,
+.scenes[data-bg='photo'] .scenes__label,
+.scenes[data-bg='photo'] .scenes__swap {
+  text-shadow:
+    0 1px 3px rgb(0 0 0 / 0.85),
+    0 0 8px rgb(0 0 0 / 0.6);
 }
 
 /* ---------- ひょっこり出るハリネズミ ---------- */
