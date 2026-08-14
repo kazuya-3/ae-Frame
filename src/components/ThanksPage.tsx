@@ -39,32 +39,22 @@ export function ThanksPage() {
 
           <div className="support__lead">
             <h2 className="support__title support__title--big">応援ありがとう！</h2>
-            <p className="support__sub">
-              {hasTipLinks()
-                ? 'おかげさまで、制作活動を続けていけます！'
-                : 'お気持ち、しっかり受け取りました。'}
-            </p>
+            <p className="support__sub">お気持ち、しっかり受け取りました。</p>
           </div>
         </div>
 
         <div className="thanks__body">
           {/*
             すでに払ってくれた人が、あとからこのページを開くことがある。
-            お礼そのものは残す。ただし受け付けを止めているあいだは、
-            「制作活動を応援」「次の制作に使う」という言いかたをしない。
-            これから作るものへの資金集めに読めるため（tip-config.ts の経緯）。
+            お礼そのものは残す。ただし「制作活動を応援」「次の制作に使う」という
+            言いかたはしない。これから作るものへの資金集めに読めるため
+            （経緯は tip-config.ts と SupportPage.tsx）。
+
+            以前は受け付けているときだけ元の言いかたに戻る形にしていたが、
+            分岐の向こうに置いても文字列は配られる JS に入ったままだった。
+            どのみち二度と使えない文章なので、条件ごと消した。
           */}
-          <p>
-            {hasTipLinks()
-              ? 'このたびは ae-Frame の制作活動を応援していただき、本当にありがとうございます。'
-              : 'このたびは ae-Frame にお気持ちを送っていただき、本当にありがとうございます。'}
-          </p>
-          {hasTipLinks() && (
-            <p>
-              いただいた応援は、新しいアイコンフレームの制作や、このツールの改善に
-              大切に活用させていただきます。
-            </p>
-          )}
+          <p>このたびは ae-Frame にお気持ちを送っていただき、本当にありがとうございます。</p>
           <p>
             <b>本当にありがとうございます！</b>
           </p>
@@ -86,9 +76,7 @@ export function ThanksPage() {
           <IconArrowRight size={20} />
         </Button>
 
-        <Note>
-          決済の明細は Stripe からメールで届きます。このページには保存されていません。
-        </Note>
+        <Note>決済の明細は Stripe からメールで届きます。このページには保存されていません。</Note>
 
         <section className="support__share" aria-labelledby="thanks-share-heading">
           <h3 className="support__next-title" id="thanks-share-heading">

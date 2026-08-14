@@ -2290,6 +2290,61 @@ try {
     check('PNG が保存できる', !!d, d ? d.suggestedFilename() : '');
     await page.close();
   }
+
+  /*
+    資金集めに読める文言が、配るものに入っていないこと。
+
+    ── なぜブラウザではなくファイルを見るのか ──
+
+    2026-08-13 の照会のあと、募集の文言は条件分岐の向こうに置いた。
+    画面には出ないので、それで済んだと思っていた。済んでいなかった。
+
+    条件分岐が止めるのは**描画だけ**で、文字列は配られる JS に入ったまま
+    だった。審査を受けている当のアカウントで、引っかかった当の文言が
+    公開物から読み出せる状態だったことになる。
+
+    だからここは画面ではなく、**出来上がったファイルそのもの**を見る。
+    画面を見る検証では、この壊れかたは永久に捕まえられない。
+
+    ── 何を見張っているか ──
+
+    「これから作るもののために、先にお金を集める」と読める言いかた。
+    Stripe がチップに求めるのは、すでに提供したものへの任意の支払いであること。
+    将来の成果物に触れた瞬間、それは資金調達になる。
+
+    戻すときは、この一覧を消すのではなく、**この一覧に当たらない文章を書く**。
+  */
+  console.log('\n■ 資金集めに読める文言');
+  {
+    const banned = [
+      '次のフレームになります',
+      '新しいアイコンフレームの制作',
+      '新しい表現を試すための制作',
+      'まだ決めていません',
+      '制作活動を続けていけます',
+      '制作活動を応援していただき',
+    ];
+    const dist = join(root, 'dist');
+    const files = [
+      join(dist, 'index.html'),
+      ...readdirSync(join(dist, 'assets'))
+        .filter((f) => f.endsWith('.js') || f.endsWith('.css'))
+        .map((f) => join(dist, 'assets', f)),
+    ].filter((f) => existsSync(f));
+
+    check('配るファイルが見つかる', files.length > 0, `${files.length} 個`);
+
+    const hits = [];
+    for (const f of files) {
+      const text = readFileSync(f, 'utf8');
+      for (const word of banned) if (text.includes(word)) hits.push(`${word}`);
+    }
+    check(
+      '配るものに、資金集めに読める文言が入っていない',
+      hits.length === 0,
+      hits.length ? [...new Set(hits)].join(' / ') : `${banned.length} 語ぶん確認`,
+    );
+  }
 } finally {
   await browser.close();
   server.kill();
