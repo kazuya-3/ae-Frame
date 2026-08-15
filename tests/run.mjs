@@ -2303,6 +2303,120 @@ try {
   }
 
   /*
+    どこを切りぬくか。
+
+    ── 直したのは「選べなかった」こと ──
+
+    切りぬきは短いほうの辺にそろえるので、縦長の写真ではまん中の帯が残る。
+    全身の写真なら、残るのは胴体で顔は落ちる。そこまでは仕様として正しい。
+
+    問題は直す方法が無かったこと。窓は写真の中心に固定されていて、写真と
+    一緒に動いていた。指で動かしても窓の中身は1画素も変わらず、動くのは
+    切りぬかれた円のほう。フレームの穴からはみ出て、穴にすきまの色が出るだけ。
+    顔を丸に入れる手段が1つも無かった。
+
+    ── 何を見張るか ──
+
+    色の帯を4本置いた縦長の写真を使う。窓の中の色を読めば、
+    写真のどこが残っているかが機械的に分かる。「動かせること」だけでなく、
+    **端まで動かしても写真の外が入らないこと**まで見る。
+    そこが崩れると、丸の中に空白が出る。
+  */
+  console.log('\n■ どこを切りぬくか');
+  {
+    const { page } = await openFrame(browser, 'neon.png', 'photo-tall.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1500);
+
+    const labels = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.field__label')].map((e) => e.textContent),
+      );
+
+    check(
+      '切りぬかないうちは、つまみを出さない',
+      !(await labels()).some((l) => l.includes('どこを切りぬくか')),
+    );
+
+    await page.getByRole('button', { name: 'まる', exact: true }).click();
+    await page.waitForTimeout(600);
+
+    const after = await labels();
+    check(
+      'まるにすると、たてのつまみが出る',
+      after.some((l) => l.includes('どこを切りぬくか（たて）')),
+    );
+    /*
+      動かせるのは、長いほうの辺が余っている向きだけ。
+      縦長の写真で よこ のつまみを出すと、動かしても何も起きない目盛りになる。
+      動かないものを置くと、壊れていると思われる。
+    */
+    check(
+      '縦長の写真では、よこのつまみは出さない',
+      !after.some((l) => l.includes('どこを切りぬくか（よこ）')),
+    );
+
+    /* 丸の中を広めに読んで、出ている色を数える */
+    const inside = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const g = c.getContext('2d');
+        const r = Math.round(Math.min(c.width, c.height) * 0.18);
+        const cx = Math.round(c.width / 2);
+        const cy = Math.round(c.height / 2);
+        const d = g.getImageData(cx - r, cy - r, r * 2, r * 2).data;
+        const seen = new Set();
+        let clear = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 8) clear++;
+          else seen.add(`${d[i] >> 4},${d[i + 1] >> 4},${d[i + 2] >> 4}`);
+        }
+        return { colors: [...seen].sort().join(' '), clear };
+      });
+
+    const range = page.locator('input[type=range]').last();
+    const middle = await inside();
+
+    await range.fill('-100');
+    await page.waitForTimeout(600);
+    const top = await inside();
+
+    await range.fill('100');
+    await page.waitForTimeout(600);
+    const bottom = await inside();
+
+    check('つまみを動かすと、窓の中身が変わる', middle.colors !== top.colors);
+    check(
+      '上の端と下の端で、別のところが残る',
+      top.colors !== bottom.colors,
+      `${top.colors} ／ ${bottom.colors}`,
+    );
+
+    /*
+      端まで動かしても、写真の外が入らないこと。
+
+      つまみの ±1 は「窓が写真の端に着いたところ」に合わせてある。
+      ここを画素数で持つと、写真の大きさによっては行きすぎて、
+      丸の中に空白（とうめい）が出る。比で持っているのはそのため。
+    */
+    check(
+      '端まで動かしても、丸の中に空白が出ない',
+      top.clear === 0 && bottom.clear === 0,
+      `上 ${top.clear} 画素 ／ 下 ${bottom.clear} 画素`,
+    );
+
+    /* そのままに戻したら、つまみごと引っ込む */
+    await page.getByRole('button', { name: 'そのまま', exact: true }).click();
+    await page.waitForTimeout(500);
+    check(
+      'そのままに戻すと、つまみも引っ込む',
+      !(await labels()).some((l) => l.includes('どこを切りぬくか')),
+    );
+
+    await page.close();
+  }
+
+  /*
     受け付けを止めているあいだ、決済の順路を見せないこと。
 
     文言をいくら消しても、これが残っていると意味が無かった。

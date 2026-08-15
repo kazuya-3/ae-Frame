@@ -122,6 +122,44 @@ const GAP_FILL: Record<Gap, string | null> = {
  */
 type Shape = 'fill' | 'circle' | 'rounded' | 'square';
 
+/**
+ * 切りぬく窓を、写真のどこに置くか。−1〜1。0 がまん中。
+ *
+ * ── なぜ要るのか ──
+ *
+ * 切りぬきは短いほうの辺にそろえるので、縦長の写真なら**まん中の帯**が残る。
+ * 全身の写真なら、残るのは胴体で、顔は切り落とされる。
+ *
+ * ここまでは仕様として正しい。問題は、**それを直す方法が無かった**こと。
+ * 窓は写真の中心に固定されていて、写真と一緒に動く。指で動かしても、
+ * 窓の中身は1画素も変わらない。動くのは切りぬかれた円のほうで、
+ * フレームの穴からはみ出て、穴に「すきまの色」が出るだけだった。
+ *
+ * つまり、顔を丸に入れる手段が1つも無かった。
+ *
+ * ── なぜ画素ではなく比なのか ──
+ *
+ * ±1 が「窓が写真の端に着いたところ」になるようにしてある。
+ * こうすると、窓は絶対に写真の外へ出ない。空白が入る余地が無い。
+ *
+ * 副作用として、正方形の写真では動かせる幅が 0 になる。これは正しい。
+ * 正方形の写真のまん中の正方形は写真そのもので、選ぶものが無い。
+ */
+type Crop = { x: number; y: number };
+
+const CENTER: Crop = { x: 0, y: 0 };
+
+/**
+ * 窓の位置を、実際にずらす画素数に直す。
+ *
+ * 動かせる幅は「長いほうの辺 − 短いほうの辺」の半分しかない。
+ * 縦長なら たて だけ、横長なら よこ だけが動く。
+ */
+function cropOffset(w: number, h: number, crop: Crop) {
+  const s = Math.min(w, h);
+  return { x: ((w - s) / 2) * crop.x, y: ((h - s) / 2) * crop.y };
+}
+
 /** 形にそって写真を切り抜く。原点は写真の中心。 */
 function clipToShape(ctx: CanvasRenderingContext2D, w: number, h: number, shape: Shape) {
   if (shape === 'fill') return;
@@ -173,6 +211,8 @@ export function ComposeStudio({
   */
   const [gap, setGap] = useState<Gap>('white');
   const [shape, setShape] = useState<Shape>('fill');
+  /* 切りぬく窓を、写真のどこに置くか（型の説明に経緯を書いた）。既定はまん中 */
+  const [crop, setCrop] = useState<Crop>(CENTER);
   // 一度でも触ったら、操作の案内は引っ込める
   const [touched, setTouched] = useState(false);
   const [tipDismissed, setTipDismissed] = useState(false);
@@ -327,7 +367,13 @@ export function ComposeStudio({
         ctx.restore();
       }
 
-      const drawLayer = (img: ImageBitmap, base: number, tr: Transform, cut: Shape = 'fill') => {
+      const drawLayer = (
+        img: ImageBitmap,
+        base: number,
+        tr: Transform,
+        cut: Shape = 'fill',
+        cropAt: Crop = CENTER,
+      ) => {
         const w = img.width * base * tr.scale * k;
         const h = img.height * base * tr.scale * k;
         ctx.save();
@@ -336,11 +382,22 @@ export function ComposeStudio({
         if (tr.flipped) ctx.scale(-1, 1);
         // 切り抜きは回転のあとに掛ける。写真をかたむけたら、まるも一緒にかたむく。
         clipToShape(ctx, w, h, cut);
-        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        /*
+          窓は原点に置いたまま、**写真のほうをずらす**。
+
+          ここが以前との違い。前は写真も窓も原点にあったので、両者が
+          固く結ばれていて、窓の中身を選べなかった。写真だけを動かせば、
+          窓はフレームの穴に座ったまま、中身だけが変わる。
+
+          切りぬかない（そのまま）ときは窓が無いので、ずらす意味も無い。
+          動かすと「写真をうごかす」と同じことを2か所でやることになる。
+        */
+        const off = cut === 'fill' ? CENTER : cropOffset(w, h, cropAt);
+        ctx.drawImage(img, -w / 2 - off.x, -h / 2 - off.y, w, h);
         ctx.restore();
       };
 
-      drawLayer(photo, photoBase, photoT, shape);
+      drawLayer(photo, photoBase, photoT, shape, crop);
       drawLayer(frame, frameBase, frameT);
 
       if (withOverlay && round) {
@@ -364,7 +421,7 @@ export function ComposeStudio({
         ctx.restore();
       }
     },
-    [photo, frame, photoBase, frameBase, photoT, frameT, round, gap, shape],
+    [photo, frame, photoBase, frameBase, photoT, frameT, round, gap, shape, crop],
   );
 
   /*
@@ -1042,6 +1099,47 @@ export function ComposeStudio({
             下じきにする写真そのものを切りぬきます。写真を小さくしてフレームの内側に
             おさめるとき、四角い角がはみ出さなくなります。
           </p>
+
+          {/*
+            どこを切りぬくか。
+
+            切りぬきは短いほうの辺にそろえるので、縦長の写真ならまん中の帯が残る。
+            全身の写真なら、残るのは胴体で顔は落ちる。そこまでは仕様として正しいが、
+            **直す方法が無かった**。窓が写真に固く結ばれていて、指で動かしても
+            中身が1画素も変わらなかった（型 Crop の説明に経緯）。
+
+            動かせるのは、長いほうの辺が余っている向きだけ。
+            縦長なら たて、横長なら よこ。正方形なら選ぶものが無いので出さない。
+            動かない目盛りを置くと、壊れていると思われる。
+          */}
+          {shape !== 'fill' && photo.height > photo.width && (
+            <Slider
+              label="どこを切りぬくか（たて）"
+              value={Math.round(crop.y * 100)}
+              defaultValue={0}
+              min={-100}
+              max={100}
+              onChange={(v) => setCrop((c) => ({ ...c, y: v / 100 }))}
+              format={(v) =>
+                v === 0 ? 'まん中' : v < 0 ? `上から ${100 + v}%` : `下から ${100 - v}%`
+              }
+              note="マイナスで上、プラスで下。写真の外へは出ません。"
+            />
+          )}
+          {shape !== 'fill' && photo.width > photo.height && (
+            <Slider
+              label="どこを切りぬくか（よこ）"
+              value={Math.round(crop.x * 100)}
+              defaultValue={0}
+              min={-100}
+              max={100}
+              onChange={(v) => setCrop((c) => ({ ...c, x: v / 100 }))}
+              format={(v) =>
+                v === 0 ? 'まん中' : v < 0 ? `左から ${100 + v}%` : `右から ${100 - v}%`
+              }
+              note="マイナスで左、プラスで右。写真の外へは出ません。"
+            />
+          )}
         </div>
 
         <div className="field">
