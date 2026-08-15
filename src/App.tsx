@@ -20,7 +20,7 @@ import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
 import { Sprite } from './components/Sprite';
-import { TipQuietLink } from './components/TipJar';
+import { navigate } from './lib/route';
 import {
   IconArrowRight,
   IconFrame,
@@ -348,8 +348,14 @@ export default function App({ active = true }: { active?: boolean }) {
         <p>
           <IconLock size={14} /> 画像はこの端末の中だけで処理されます。どこにも送信されません。
         </p>
-        {/* 保存のあとの案内を閉じた人が、あとから探せる場所 */}
-        <TipQuietLink />
+        {/*
+          ここには応援ページへの静かな入口があった。
+          決済を外したので、行き先は「知らせるだけ」のページになっている。
+          お金の話はしないが、知ってもらえると助かるのは変わらないので残す。
+        */}
+        <button type="button" className="link-quiet" onClick={() => navigate('share')}>
+          このツールを人に知らせる
+        </button>
       </div>
 
       {help && active && (

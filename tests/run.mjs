@@ -7,19 +7,13 @@
  * 「四隅が透明か」「囲まれた白が残っているか」「グローが階調で残っているか」は
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
-import { spawn, spawnSync } from 'node:child_process';
-import {
-  copyFileSync,
-  existsSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
+import { checkDist, checkRepoSecrets } from '../tools/check-dist.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -27,54 +21,17 @@ const FIXTURES = build();
 const PORT = Number(process.env.PORT ?? 4180);
 const BASE = `http://127.0.0.1:${PORT}/`;
 /*
-  応援のリンクを**設定した**版。同じサーバーの別の場所に置く。
+  ここには「応援のリンクを設定した版」をもう1本ビルドする仕掛けがあった。
 
-  2026-08-13 に Stripe の照会を受けて、本番の設定は空にした。
-  つまり「設定していない状態」が既定になったので、臨時に作るほうが逆になった。
-  応援まわりの検証は消していない。戻すときに、壊れていないことをすぐ確かめられる。
+  応援（チップ）は、設定を空にすれば消える作りにしてあり、
+  本番は空・臨時ビルドは入り、という二重の状態を検証していた。
+
+  2026-08 の Stripe の審査を通したあと、決済まわりを丸ごと外した。
+  設定そのものが無いので、二重に持つ状態も無い。配るものは1本だけになった。
+
+  戻すときは、この仕掛けから作り直すことになる。
+  そのとき何を満たす必要があるかは docs/stripe-compliance.md に書いてある。
 */
-const TIPS_DIR = join(root, 'dist-tips');
-const TIPS_BASE = `${BASE}__tips/`;
-
-/*
-  「設定してあるときは、応援の案内がちゃんと出る」を確かめるための版を作る。
-
-  bundle の中の文字列を差し替えて確かめることはできない。ビルドの時点で
-  `TIP_CUSTOM_URL.trim() !== ''` が定数に畳み込まれてしまい、
-  あとから文字列を変えても分岐が動かないため（`.some(...)||!0` と出ていた）。
-
-  なので、URL を入れた tip-config.ts で本当にもう1本ビルドする。
-  ビルドが終わったら、元のファイルを必ず戻す。
-*/
-function buildWithTips() {
-  const config = join(root, 'src', 'tip-config.ts');
-  const backup = join(root, 'src', 'tip-config.ts.bak');
-  copyFileSync(config, backup);
-  try {
-    // 検証だけのための、実在しない URL。決済まで進める検証はしていない
-    let n = 0;
-    const filled = readFileSync(config, 'utf8')
-      .replace(/url: ''/g, () => `url: 'https://buy.stripe.com/test_dummy${++n}'`)
-      .replace(
-        /export const TIP_CUSTOM_URL = '';/,
-        "export const TIP_CUSTOM_URL = 'https://buy.stripe.com/test_dummy_custom';",
-      );
-    writeFileSync(config, filled);
-    const r = spawnSync(
-      'npx',
-      ['vite', 'build', '--outDir', TIPS_DIR, '--emptyOutDir', '--logLevel', 'error'],
-      { cwd: root, encoding: 'utf8' },
-    );
-    if (r.status !== 0) {
-      console.log('  （応援あり版のビルドに失敗）', r.stderr?.slice(0, 300));
-      return false;
-    }
-    return true;
-  } finally {
-    copyFileSync(backup, config);
-    rmSync(backup, { force: true });
-  }
-}
 
 const failures = [];
 let checks = 0;
@@ -97,7 +54,6 @@ function serve() {
       `
       const http=require('http'),fs=require('fs'),path=require('path');
       const root=${JSON.stringify(join(root, 'dist'))};
-      const withTips=${JSON.stringify(TIPS_DIR)};
       const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png',
         '.svg':'image/svg+xml','.wasm':'application/wasm','.webmanifest':'application/manifest+json'};
       http.createServer((req,res)=>{
@@ -113,11 +69,8 @@ function serve() {
             + '<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups" src="/"></iframe>');
         }
         let url=decodeURIComponent(req.url.split('?')[0]);
-        // 応援のリンクを設定した版は、同じサーバーの別の場所から配る
-        let base=root;
-        if(url.startsWith('/__tips/')) { base=withTips; url=url.slice('/__tips'.length); }
-        let p=path.join(base, url);
-        if(!p.startsWith(base)) { res.writeHead(403); return res.end(); }
+        let p=path.join(root, url);
+        if(!p.startsWith(root)) { res.writeHead(403); return res.end(); }
         if(fs.existsSync(p)&&fs.statSync(p).isDirectory()) p=path.join(p,'index.html');
         if(!fs.existsSync(p)) { res.writeHead(404); return res.end('not found'); }
         res.writeHead(200,{'Content-Type':types[path.extname(p)]||'application/octet-stream'});
@@ -1163,276 +1116,6 @@ try {
     await page.close();
   }
 
-  /*
-    応援の案内は、設定していないうちは一切出てはいけない。
-    そのまま公開しても、ただの無料ツールとして成り立つこと。
-  */
-  /*
-    応援のリンクを設定していないとき。
-
-    tip-config.ts の URL が空なら、応援の案内は画面のどこにも出てはいけない。
-    そのまま公開しても、ただの無料ツールとして成り立つこと。
-
-    いまは本番の Stripe リンクが入っているので、空の設定でもう1本ビルドして
-    そちらを開く。配信物の文字列を後から差し替える手も試したが、
-    それでは確かめられない。ビルド時に
-    `TIP_CUSTOM_URL.trim() !== ''` が定数の true に畳み込まれるので、
-    URL を空にしても分岐は動かない（実際そこで一度、通らない検証を書いた）。
-  */
-  console.log('\n■ 応援（設定していないとき＝いまの本番）');
-  {
-    // 応援「あり」の版は、このあとの節で使う。先に作っておく
-    const built = buildWithTips();
-    check('URL を入れた版がビルドできる', built);
-    if (!built) throw new Error('応援あり版をビルドできませんでした');
-
-    const { page } = await openFrame(browser, 'lineart.png');
-    await page.getByRole('button', { name: /これでOK/ }).click();
-    await page.waitForTimeout(1200);
-    check('保存前に応援の案内は出ない', (await page.locator('.tip').count()) === 0);
-    check('フッターにも応援の入り口は出ない', (await page.locator('.tip__quiet').count()) === 0);
-
-    const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
-    await page.getByRole('button', { name: /画像をほぞんする|ほぞん・シェアする/ }).click();
-    await dl;
-    await page.waitForTimeout(800);
-    check('保存後も、設定していなければ出ない', (await page.locator('.tip').count()) === 0);
-    await page.close();
-  }
-
-  /*
-    設定してあるとき。ここからが本番の並び。
-
-    大事なのは「保存できたあとにだけ出る」ことと、
-    「そこで金額の話を始めない」こと。保存できた直後の画面は
-    本来「できた！」を味わう場所なので、会計の画面にしない。
-  */
-  console.log('\n■ 応援（設定してあるとき＝戻したあと）');
-  {
-    const { page } = await openFrame(browser, 'lineart.png', 'photo-color.png', {
-      origin: TIPS_BASE,
-    });
-    check('フッターに応援の入り口が出る', (await page.locator('.tip__quiet').count()) >= 1);
-    await page.getByRole('button', { name: /これでOK/ }).click();
-    await page.waitForTimeout(1200);
-    check('保存前は応援の案内を出さない', (await page.locator('.tip--celebrate').count()) === 0);
-
-    const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
-    await page.getByRole('button', { name: /画像をほぞんする|ほぞん・シェアする/ }).click();
-    await dl;
-    await page.waitForTimeout(900);
-    check('保存できたら応援の案内が出る', (await page.locator('.tip--celebrate').count()) === 1);
-    check(
-      'ここでは金額を並べない',
-      (await page.locator('.tip .plan').count()) === 0 &&
-        !/300円|500円|1,000円/.test(await page.locator('.tip').innerText()),
-    );
-
-    await page
-      .getByRole('button', { name: /制作活動を応援する/ })
-      .first()
-      .click();
-    await page.waitForTimeout(500);
-    check('そこから応援ページへ移動できる', /#\/support$/.test(page.url()), page.url().slice(-24));
-
-    // 閉じたら、そのセッションではもう出さない（既存の約束）
-    await page.goBack();
-    await page.waitForTimeout(500);
-    await page.locator('.tip__close').click();
-    await page.waitForTimeout(400);
-    check('閉じたら引っ込む', (await page.locator('.tip--celebrate').count()) === 0);
-    await page.close();
-  }
-
-  /*
-    応援ページ。ここはお金の話をする唯一の場所。
-
-    いちばん守りたいのは「カードを選んだだけでは、どこへも飛ばない」こと。
-    指が当たっただけで決済ページに飛ぶのは、やってはいけない類の事故なので。
-  */
-  console.log('\n■ 応援ページ');
-  {
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    /*
-      飾りの素材が置かれていないうちは 404 が出る。これは想定どおりなので、
-      スクリプトの誤りとは分けて数える。ページが使えるかどうかは別に見ている。
-    */
-    const errors = [];
-    const missing = [];
-    const isAssetMiss = (t) => /assets\/support\//.test(t) || /404 \(Not Found\)/.test(t);
-    page.on('pageerror', (e) => errors.push(String(e.message)));
-    page.on('console', (m) => {
-      if (m.type() !== 'error') return;
-      (isAssetMiss(m.text()) ? missing : errors).push(m.text());
-    });
-    page.on('requestfailed', (r) => {
-      if (!/assets\/support\//.test(r.url())) errors.push(`${r.url()} が読めない`);
-    });
-    await page.goto(TIPS_BASE + '#/support', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(600);
-
-    const cta = page.locator('.support__cta');
-    check('応援ページが開く', (await page.locator('.support').count()) === 1);
-    check(
-      'はじめは 500円 がえらばれている',
-      /500円で応援する/.test(await cta.innerText()),
-      (await cta.innerText()).replace(/\s+/g, ' '),
-    );
-    check(
-      'えらばれているものが読み上げにも出る',
-      (await page.getByRole('radio', { checked: true }).innerText()).includes('500円'),
-    );
-
-    // 金額を変えると、押す前のボタンの文字も変わる
-    const pick = async (name) => {
-      await page.getByRole('radio', { name: new RegExp(name) }).click();
-      await page.waitForTimeout(250);
-      return {
-        label: (await cta.innerText()).replace(/\s+/g, ' '),
-        href: await cta.getAttribute('href'),
-      };
-    };
-
-    /*
-      リンク先は、本物の URL を書き写して照らし合わせていた。
-      設定を空にした（Stripe の照会で止めた）ときに、ここが4件まとめて落ちた。
-
-      本当に守りたいのは「選んだカードと、飛ぶ先が食い違わないこと」で、
-      URL の中身そのものではない。書き写した値を持たない形に直す。
-      こうしておけば、URL を入れ替えても検証は書き換えずに済む。
-    */
-    const seen = new Map();
-    for (const [name, label] of [
-      ['300円', /300円で応援する/],
-      ['500円', /500円で応援する/],
-      ['1,000円', /1,000円で応援する/],
-      ['自由入力', /好きな金額で応援する/],
-    ]) {
-      const r = await pick(name);
-      check(`${name}でボタンの文字が変わる`, label.test(r.label), r.label);
-      check(
-        `${name}のリンクが決済ページを向いている`,
-        typeof r.href === 'string' && r.href.startsWith('https://buy.stripe.com/'),
-        String(r.href),
-      );
-      seen.set(name, r.href);
-    }
-
-    // 4つとも別の飛び先であること（取り違えていたら、ここで落ちる）
-    check(
-      'えらんだ金額ごとに、飛び先が別になっている',
-      new Set(seen.values()).size === seen.size,
-      [...seen.entries()].map(([k, v]) => `${k}→${String(v).slice(-12)}`).join(' '),
-    );
-
-    /*
-      カードを押しただけで決済ページへ飛ばないこと。
-      新しいタブが開かないこと、URL が変わらないことの両方で見る。
-    */
-    const before = page.url();
-    let opened = 0;
-    page.context().on('page', () => opened++);
-    await page.getByRole('radio', { name: /300円/ }).click();
-    await page.getByRole('radio', { name: /1,000円/ }).click();
-    await page.waitForTimeout(500);
-    check(
-      'カードを押しただけでは決済へ飛ばない',
-      page.url() === before && opened === 0,
-      `新しいタブ ${opened} 枚`,
-    );
-
-    check('主CTAだけが決済ページへの入口', (await cta.getAttribute('target')) === '_blank');
-    check(
-      'カード番号の入力欄をこのサイトに作らない',
-      (await page
-        .locator('input[type=text], input[type=tel], input[type=number], input[autocomplete*=cc-]')
-        .count()) === 0,
-    );
-
-    // 390px で横にはみ出さない
-    const overflow = await page.evaluate(() => ({
-      w: document.documentElement.scrollWidth,
-      v: window.innerWidth,
-    }));
-    check(
-      '390px で横スクロールが出ない',
-      overflow.w <= overflow.v + 1,
-      `${overflow.w} / ${overflow.v}`,
-    );
-
-    /*
-      素材の画像がまだ置かれていなくても、ページはそのまま使えること。
-      いまはまさにその状態なので、ここで確かめられる。
-    */
-    check(
-      '画像が無くてもページは使える',
-      (await cta.isVisible()) && (await page.locator('.plan').count()) >= 3,
-    );
-
-    // Web Share が無い端末（この Chromium がそれ）でも、リンクは配れる
-    await page
-      .context()
-      .grantPermissions(['clipboard-read', 'clipboard-write'])
-      .catch(() => {});
-    await page.getByRole('button', { name: /リンクをコピー/ }).click();
-    await page.waitForTimeout(400);
-    check(
-      '共有が使えなくてもリンクをコピーできる',
-      (await page.getByText('コピーしました').count()) >= 1,
-    );
-
-    check('スクリプトのエラーが出ない', errors.length === 0, errors[0] ?? '');
-    // 素材を置いたら 0 になる。置く前でもページが使えることは、上で確かめている。
-    console.log(`  \x1b[2m素材がまだ無いための 404: ${missing.length} 件\x1b[0m`);
-    await page.close();
-  }
-
-  /*
-    お礼のページ。決済のあとに Stripe から戻ってくる場所。
-    ここを「ありがとうございました」で終わらせず、作る画面へ返す。
-  */
-  console.log('\n■ お礼のページ');
-  {
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    await page.goto(TIPS_BASE + '#/support/thanks', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(600);
-
-    check('お礼のページが開く', (await page.getByText('応援ありがとう！').count()) >= 1);
-    check(
-      '3つめのステップが光っている',
-      (
-        await page
-          .locator(".steps--static .steps__item[data-state='current'] .steps__label")
-          .innerText()
-      ).includes('完了'),
-    );
-
-    const overflow = await page.evaluate(() => ({
-      w: document.documentElement.scrollWidth,
-      v: window.innerWidth,
-    }));
-    check(
-      '390px で横スクロールが出ない',
-      overflow.w <= overflow.v + 1,
-      `${overflow.w} / ${overflow.v}`,
-    );
-
-    await page.getByRole('button', { name: /もう1個つくる/ }).click();
-    await page.waitForTimeout(600);
-    check(
-      '「もう1個つくる」で作る画面へ戻れる',
-      (await page.getByText('アイコンにする写真をえらぶ').count()) >= 1,
-    );
-    await page.close();
-  }
-
-  /*
-    SNS に貼られたときの見た目。
-
-    サイトの中に「X で伝える」「LINE で送る」を自分で置いているので、
-    貼られたときの絵が無いのは片手落ちになる。
-    タグそのものと、絶対URLで書けているか（相対では相手のサーバーが解決できない）を見る。
-  */
   console.log('\n■ SNSに貼られたときの見た目');
   {
     const page = await browser.newPage();
@@ -1487,48 +1170,6 @@ try {
     末尾のスラッシュが付いたりする。完全一致で見ていると、そのどれか1つで
     「お礼のページのはずが、つくる画面が出る」ことになる。
     決済した直後にそれが起きるのが、いちばん体験が悪い。
-  */
-  console.log('\n■ 決済から戻ってくる道');
-  {
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    const arrivals = [
-      ['session_id が足されても', '#/support/thanks?session_id=cs_live_a1b2c3'],
-      ['末尾にスラッシュが付いても', '#/support/thanks/'],
-      ['大文字で入力されても', '#/Support/Thanks'],
-      ['ハッシュが落ちても（?thanks=1）', '?thanks=1'],
-    ];
-    for (const [name, suffix] of arrivals) {
-      await page.goto(TIPS_BASE + suffix, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(500);
-      check(`${name}お礼のページが出る`, (await page.getByText('応援ありがとう！').count()) >= 1);
-    }
-
-    // ?thanks=1 で来たら、以後ふつうに動くようハッシュの形へ直しておく
-    await page.goto(TIPS_BASE + '?thanks=1', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(500);
-    check(
-      '?thanks=1 はハッシュの形に直る',
-      /#\/support\/thanks$/.test(page.url()),
-      page.url().slice(-30),
-    );
-
-    // 応援ページ側も同じ扱い
-    await page.goto(TIPS_BASE + '#/support?utm_source=tiktok', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(400);
-    check('応援ページも余計な文字を無視する', (await page.locator('.support .plan').count()) >= 3);
-    await page.close();
-  }
-
-  /*
-    数字を直接打てること、変えたものだけ「もどす」が出ること。
-
-    つまみだけだと、狙った値でぴたりと止められない。
-    「1にしたい」のに 1 と 2 のあいだで往復する、というのが実機で起きる。
-    幅の狭いスマホでは 1px の差が数値の 2〜3 になるので、なおさら。
-
-    「もどす」は、触った項目にだけ出す。触っていないものに付いていても
-    押すところが増えるだけで助けにならないし、出ていること自体が
-    「ここを触った」という印になる。
   */
   console.log('\n■ 数字を直接打つ／もどす');
   {
@@ -1626,7 +1267,7 @@ try {
   console.log('\n■ つくる側のハリネズミは、場面のときだけ');
   {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await page.goto(TIPS_BASE, { waitUntil: 'networkidle' });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
     await page
       .getByRole('button', { name: 'はじめる' })
       .click()
@@ -1670,8 +1311,7 @@ try {
   {
     for (const [name, hash] of [
       ['つくる', ''],
-      ['応援', '#/support'],
-      ['お礼', '#/support/thanks'],
+      ['知らせる', '#/share'],
     ]) {
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const got = [];
@@ -1682,7 +1322,7 @@ try {
           got.push([f, s.responseBodySize || 0]);
         } catch {}
       });
-      await page.goto(TIPS_BASE + hash, { waitUntil: 'networkidle' });
+      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
       await page.waitForTimeout(900);
 
       const heavy = got.filter(([, s]) => s > 400 * 1024);
@@ -1713,10 +1353,7 @@ try {
     for (const width of [320, 375, 390, 430, 768, 1280]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const bad = [];
-      for (const [name, hash] of [
-        ['応援', '#/support'],
-        ['お礼', '#/support/thanks'],
-      ]) {
+      for (const [name, hash] of [['知らせる', '#/share']]) {
         await page.goto(BASE + hash, { waitUntil: 'networkidle' });
         await page.waitForTimeout(400);
         const m = await page.evaluate(() => {
@@ -1749,10 +1386,7 @@ try {
   */
   console.log('\n■ 飾りが主役にならないこと');
   {
-    for (const [name, hash] of [
-      ['応援', '#/support'],
-      ['お礼', '#/support/thanks'],
-    ]) {
+    for (const [name, hash] of [['知らせる', '#/share']]) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
       await page.goto(BASE + hash, { waitUntil: 'networkidle' });
       await page.waitForTimeout(600);
@@ -1794,14 +1428,27 @@ try {
       await page.close();
     }
 
-    // お礼のページは、地を画像で持たない（CSS のグラデーションで描く）
+    /*
+      ここには「お礼のページは地の画像を取りに行かない」があった。
+
+      応援ページ（画像で地を敷く）とお礼ページ（CSS だけで描く）の2枚があり、
+      軽いほうが本当に軽いことを見ていた。決済を外してお礼ページごと
+      無くなったので、比べる相手が居ない。
+
+      いま飾りのあるページは「知らせる」1枚だけで、その重さは
+      「開いただけで重いものを落とさない」で見ている。二重に見張らない。
+
+      代わりに、もう使わない素材を取りに行っていないことだけ見る。
+      お礼まわりの2枚（水の輪・お礼のハリネズミ）は参照を外したので、
+      通信が発生したら外し漏れがある。
+    */
     const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
     const asked = [];
     page.on('request', (r) => asked.push(r.url().split('/').pop()));
-    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.goto(BASE + '#/share', { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
-    const heavy = asked.filter((f) => /support-bg|fruit/.test(f));
-    check('お礼のページは地の画像を取りに行かない', heavy.length === 0, heavy.join(','));
+    const gone = asked.filter((f) => /celebration|hedgehog-thanks/.test(f));
+    check('もう使わない素材を取りに行かない', gone.length === 0, gone.join(','));
     await page.close();
   }
 
@@ -1827,89 +1474,13 @@ try {
     輪そのものの置きかたは応援の設定と関係ないので、
     どちらの版で測っても同じ絵が出る。ぶつかる相手が居るほうで測る。
   */
-  console.log('\n■ お礼ページの水の輪');
-  {
-    const seen = [];
-    for (const [label, w] of [
-      ['ふつうの画面', 1280],
-      ['とても広い画面', 1920],
-    ]) {
-      const page = await browser.newPage({ viewport: { width: w, height: 900 } });
-      await page.goto(TIPS_BASE + '#/support/thanks', { waitUntil: 'networkidle' });
-      await page.waitForTimeout(600);
-      const m = await page.evaluate(() => {
-        const el = document.querySelector('.decor__celebration');
-        if (!el) return null;
-        const r = el.getBoundingClientRect();
-        /*
-          ステップ行は「.steps」だけで引くと、つくる側の（隠れている）ほうを
-          拾ってしまい、下端 0px として素通りする。応援まわりのものを名指しする。
-        */
-        const steps = document.querySelector('.steps--static');
-        // カードも同じ理由で名指しする（.card はつくる側にもある）
-        const card = document.querySelector('.card.support');
-        return {
-          width: Math.round(r.width),
-          top: Math.round(r.top),
-          stepsBottom: steps ? Math.round(steps.getBoundingClientRect().bottom) : null,
-          cardWidth: card ? Math.round(card.getBoundingClientRect().width) : null,
-        };
-      });
-      check(`${label}：輪が置かれている`, m !== null && m.stepsBottom !== null);
-      if (m && m.stepsBottom !== null) {
-        seen.push([label, m.width]);
-        /*
-          本文の列（カード）から左右へ出るぶんの上限。
-
-          360px は、いまの形（カード 512px に対して輪 844px）に
-          少しだけ余裕を足した値。ここを緩めた経緯を書いておく。
-
-          はじめは 200px にしていた。そのときの輪は列に寄せすぎていて、
-          中央がカードに隠れ、左右に水の塊が2つ浮いて見えた。
-          輪だと分からない大きさなら、輪として置く意味がない。
-          広げて薄くする（0.46 → 0.34）ほうを選んだ。
-
-          この数字は「画面いっぱいに戻さない」ための歯止めで、
-          本命の歯止めは下の「画面の広さで変わらない」のほう。
-        */
-        check(
-          `${label}：輪が本文の列からはみ出しすぎない`,
-          m.width <= m.cardWidth + 360,
-          `輪 ${m.width}px / カード ${m.cardWidth}px`,
-        );
-        check(
-          `${label}：輪がステップ表示にかからない`,
-          m.top >= m.stepsBottom,
-          `輪 ${m.top}px / ステップの下端 ${m.stepsBottom}px`,
-        );
-      }
-      await page.close();
-    }
-
-    /*
-      これがいちばん効く1件。
-
-      最初の失敗は「画面いっぱいに敷いた」ことだった。画面幅に連動していると、
-      広い画面ほど輪が大きくなり、余白へ散らばっていく。
-      幅が画面によって変わらなければ、その失敗は再現しない。
-    */
-    check(
-      '輪の大きさが画面の広さで変わらない',
-      seen.length === 2 && seen[0][1] === seen[1][1],
-      seen.map(([l, w]) => `${l} ${w}px`).join(' / '),
-    );
-  }
-
-  /*
-    動きを減らす設定にしている人には、飾りを動かさない。
-  */
   console.log('\n■ 動きを減らす設定');
   {
     const page = await browser.newPage({
       viewport: { width: 390, height: 900 },
       reducedMotion: 'reduce',
     });
-    await page.goto(BASE + '#/support/thanks', { waitUntil: 'networkidle' });
+    await page.goto(BASE + '#/share', { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     const moving = await page.evaluate(() =>
       [...document.querySelectorAll('.decor > *')]
@@ -2480,107 +2051,105 @@ try {
   }
 
   /*
-    受け付けを止めているあいだ、決済の順路を見せないこと。
+    お金に触れる要素が、画面のどこにも無いこと。
 
-    文言をいくら消しても、これが残っていると意味が無かった。
-    本文が「受け付けを止めています」と言っているすぐ上で、
+    ── いまの状態 ──
 
-      支援をえらぶ → 決済する → 完了
+    2026-08 の Stripe の審査を通したあと、決済まわりを丸ごと外した。
+    金額の選択も、決済への導線も、決済の順路も、応援ページもお礼ページも無い。
+    残っているのは「つくる」と「知らせる」の2つだけ。
 
-    という帯が動いていた。**決済の順路そのもの**が出ている。
-    しかも「支援」は「応援」より寄付に寄った語で、審査中に見せたいものではない。
+    ── なぜ画面から数えるのか ──
 
-    条件分岐の向こうにあった文言と違って、これは実際に表示されていた。
-    検証も画面を見ていたのに捕まらなかったのは、止めた状態の応援ページで
-    「何が出ていないか」を一度も見ていなかったから。出ているものばかり
-    数えていて、出ていてはいけないものを数えていなかった。
+    以前ここで一度しくじっている。文言を消してまわったのに、ページの
+    いちばん上に「支援をえらぶ → 決済する → 完了」という帯が残っていた。
+    公開後のスクリーンショットで見つかった。
+
+    検証も画面を見ていたのに捕まらなかったのは、**「何が出ていないか」を
+    一度も数えていなかった**から。出ているものばかり数えていた。
+    だからここは、出ていてはいけないものを名指しで数える。
   */
-  console.log('\n■ 受け付けを止めているあいだの見えかた');
+  console.log('\n■ お金に触れる要素が無いこと');
   {
     for (const [name, hash] of [
-      ['応援', '#/support'],
-      ['お礼', '#/support/thanks'],
+      ['つくる', ''],
+      ['知らせる', '#/share'],
     ]) {
       const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
       await page.goto(BASE + hash, { waitUntil: 'networkidle' });
       await page.waitForTimeout(500);
 
-      check(
-        `${name}：決済の順路を出さない`,
-        (await page.locator('.steps--static').count()) === 0,
-        `${await page.locator('.steps--static').count()} 本`,
-      );
+      check(`${name}：決済の順路を出さない`, (await page.locator('.steps--static').count()) === 0);
 
       /*
         つくる画面は隠れているだけで DOM には残っているので、.app は2つある。
         innerText は隠れているものを外すので、body から取れば見えている分だけになる。
       */
       const text = await page.evaluate(() => document.body.innerText);
-      const words = ['支援をえらぶ', '決済する', '寄付', '募金'].filter((w) => text.includes(w));
-      check(`${name}：募っている言いかたが出ない`, words.length === 0, words.join(' / '));
+      const words = ['支援をえらぶ', '決済する', '寄付', '募金', '応援する', '円'].filter((w) =>
+        text.includes(w),
+      );
+      check(`${name}：お金の言いかたが出ない`, words.length === 0, words.join(' / '));
 
       check(
         `${name}：決済リンクが1本も無い`,
         (await page.locator('a[href*="stripe.com"]').count()) === 0,
       );
-
       await page.close();
     }
   }
 
   /*
-    資金集めに読める文言が、配るものに入っていないこと。
+    古いURLで来た人が、迷子にならないこと。
 
-    ── なぜブラウザではなくファイルを見るのか ──
+    #/support と #/support/thanks は配ってしまったあとに消したURL。
+    ブックマークも、貼られたリンクも、こちらの都合では消えてくれない。
+    開いたときに「つくる画面」が出るのは、行き先を間違えたように見える。
 
-    2026-08-13 の照会のあと、募集の文言は条件分岐の向こうに置いた。
-    画面には出ないので、それで済んだと思っていた。済んでいなかった。
-
-    条件分岐が止めるのは**描画だけ**で、文字列は配られる JS に入ったまま
-    だった。審査を受けている当のアカウントで、引っかかった当の文言が
-    公開物から読み出せる状態だったことになる。
-
-    だからここは画面ではなく、**出来上がったファイルそのもの**を見る。
-    画面を見る検証では、この壊れかたは永久に捕まえられない。
-
-    ── 何を見張っているか ──
-
-    「これから作るもののために、先にお金を集める」と読める言いかた。
-    Stripe がチップに求めるのは、すでに提供したものへの任意の支払いであること。
-    将来の成果物に触れた瞬間、それは資金調達になる。
-
-    戻すときは、この一覧を消すのではなく、**この一覧に当たらない文章を書く**。
+    共有ページへ送ったうえで、**URL も置き換える**。置き換えないと、
+    次に「戻る」を押したときにまた古いURLへ戻り、送り返されて、
+    戻れないループになる。だから履歴は足さずに差し替える。
   */
-  console.log('\n■ 資金集めに読める文言');
+  console.log('\n■ 古いURLの行き先');
   {
-    const banned = [
-      '次のフレームになります',
-      '新しいアイコンフレームの制作',
-      '新しい表現を試すための制作',
-      'まだ決めていません',
-      '制作活動を続けていけます',
-      '制作活動を応援していただき',
-    ];
-    const dist = join(root, 'dist');
-    const files = [
-      join(dist, 'index.html'),
-      ...readdirSync(join(dist, 'assets'))
-        .filter((f) => f.endsWith('.js') || f.endsWith('.css'))
-        .map((f) => join(dist, 'assets', f)),
-    ].filter((f) => existsSync(f));
+    for (const [name, hash] of [
+      ['応援ページ', '#/support'],
+      ['お礼ページ', '#/support/thanks'],
+      ['決済からの戻り先', '?thanks=1'],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+      await page.goto(BASE + hash, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
 
-    check('配るファイルが見つかる', files.length > 0, `${files.length} 個`);
-
-    const hits = [];
-    for (const f of files) {
-      const text = readFileSync(f, 'utf8');
-      for (const word of banned) if (text.includes(word)) hits.push(`${word}`);
+      const seen = await page.evaluate(() => ({
+        hash: location.hash,
+        search: location.search,
+        share: !!document.querySelector('.support__share'),
+      }));
+      check(`${name}：知らせるページが開く`, seen.share);
+      check(
+        `${name}：URL も新しいものに置き換わる`,
+        seen.hash === '#/share' && seen.search === '',
+        `${seen.hash}${seen.search}`,
+      );
+      await page.close();
     }
-    check(
-      '配るものに、資金集めに読める文言が入っていない',
-      hits.length === 0,
-      hits.length ? [...new Set(hits)].join(' / ') : `${banned.length} 語ぶん確認`,
-    );
+  }
+
+  /*
+    配るものを、そのまま読んで確かめる。
+
+    中身は tools/check-dist.mjs にある。ここから呼ぶのは、
+    「npm test を通した」と言うときに、この点検も通っていてほしいから。
+    公開の直前にだけ単体で走らせることもできる（node tools/check-dist.mjs）。
+
+    一度しくじっているので画面ではなくファイルを読む。文言を消したつもりで
+    条件分岐の向こうに置いたとき、描画はされないのに文字列は配られる JS に
+    そのまま入っていた。画面を見る検証では永久に捕まえられない壊れかた。
+  */
+  console.log('\n■ 配るものの点検');
+  for (const r of [...checkDist(join(root, 'dist')), checkRepoSecrets()]) {
+    check(r.name, r.ok, r.detail);
   }
 } finally {
   await browser.close();

@@ -25,7 +25,6 @@ import {
   IconWarn,
   IconX,
 } from './Icons';
-import { TipAfterSave } from './TipJar';
 
 /** 書き出しサイズ。SNSのアイコンとしては十分で、スマホでも重くならない。 */
 const EXPORT_SIZE = 1080;
@@ -215,7 +214,6 @@ export function ComposeStudio({
   const [crop, setCrop] = useState<Crop>(CENTER);
   // 一度でも触ったら、操作の案内は引っ込める
   const [touched, setTouched] = useState(false);
-  const [tipDismissed, setTipDismissed] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [canShare, setCanShare] = useState(false);
@@ -1249,11 +1247,10 @@ export function ComposeStudio({
         )}
 
         {/*
-          応援の案内は、保存できた直後にだけ出す。
-          欲しいものが手に入る前にお願いするのは、ただのお願いになってしまう。
-          閉じたら、この画面を開いているあいだはもう出さない。
+          保存できた直後には、応援の案内（金額の入口）を出していた。
+          決済を外したので、出すものが無い。空いた場所は埋めない。
+          保存できた人にいちばん要るのは、次の作業への道であって、お願いではない。
         */}
-        {saved && !tipDismissed && <TipAfterSave onDismiss={() => setTipDismissed(true)} />}
 
         <Button variant="ghost" onClick={saveFrameOnly} sound="tap">
           とうめいにしたフレームだけを保存する

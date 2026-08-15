@@ -4,59 +4,72 @@
  * ルーティングのライブラリは入れていない。理由は2つ。
  *
  * 1. GitHub Pages には「どのURLでも index.html を返す」設定が無い。
- *    ふつうのパス（/support）で直リンクを配ると 404 になる。
- *    ハッシュ（#/support）なら、サーバーから見ればいつも同じ1枚なので必ず開ける。
- * 2. 画面は3つしかない。そのために依存を増やすのは割に合わない。
+ *    ふつうのパス（/share）で直リンクを配ると 404 になる。
+ *    ハッシュ（#/share）なら、サーバーから見ればいつも同じ1枚なので必ず開ける。
+ * 2. 画面は2つしかない。そのために依存を増やすのは割に合わない。
  *
  *
- * ── 決済から戻ってくるときのこと ──
+ * ── 応援ページを畳んだこと ──
  *
- * ここは自分たちだけで完結しない。Stripe の設定した戻り先が、
- * そのままの形でこちらに届くとは限らない。実際に起こること:
+ * 2026-08 の Stripe の審査を受けて、決済まわりを丸ごと外した。
+ * 残るのは「つくる」と「知らせる」だけで、お金に触れる画面は1つも無い。
  *
- *   ・戻り先に `?session_id={CHECKOUT_SESSION_ID}` が足される
- *     → #/support/thanks?session_id=cs_live_xxx のような形になる
- *   ・末尾にスラッシュが付く／大文字で入力される
- *   ・そもそもハッシュ（#より後ろ）が落ちる仕組みを通ることがある
+ *   #/support        → 応援ページ（金額を選ぶ）      … 削除
+ *   #/support/thanks → 決済のあとのお礼ページ        … 削除
+ *   #/share          → 知らせるだけのページ          … いまここ
  *
- * 完全一致で見ていると、このどれか1つで「お礼のページのはずが、
- * つくる画面が出る」ことになる。決済した直後にそれが起きるのは、
- * いちばん体験が悪い。だから
+ * ── それでも古いURLを受けるのはなぜか ──
  *
- *   ・ハッシュの中の ? 以降は捨てる
- *   ・ハッシュを持たない `?thanks=1` の形でも受ける
+ * 配ったもの、貼られたもの、ブラウザに残ったブックマークは、こちらの都合で
+ * 消えてくれない。#/support を開いた人に「つくる画面」が出るのは、
+ * 行き先を間違えたように見える。ましてや 404 は出せない（1枚しかないので
+ * 出しようがないが、意図しない画面が出るのは同じこと）。
  *
- * の両方を通す。後者は、Stripe 側に貼る戻り先として
- * ハッシュより安全な選択肢にもなる（ふつうのURLなので壊れようがない）。
+ * だから古い2つは、新しい共有ページへ静かに送る。
+ * 履歴も置き換える（残すと「戻る」で無い場所へ戻ってしまう）。
+ *
+ * 決済からの戻り先だった `?thanks=1` / `?support=1` も同じ扱いにする。
+ * 決済そのものが無いので、もう届くことはないはずだが、
+ * 届いたときに壊れないほうがよい。
  */
 import { useEffect, useState } from 'react';
 
-export type Route = 'maker' | 'support' | 'thanks';
+export type Route = 'maker' | 'share';
 
 export const ROUTE_HASH: Record<Route, string> = {
   maker: '#/',
-  support: '#/support',
-  thanks: '#/support/thanks',
+  share: '#/share',
 };
 
-/** 現在のURLから画面を決める。知らないものは、つくる画面に落とす。 */
-export function readRoute(
-  hash = window.location.hash,
-  search = window.location.search,
-): Route {
-  /*
-    ハッシュの中に付いてきた ? 以降（session_id など）は見ない。
-    末尾のスラッシュと大文字小文字も気にしない（人が手で打つこともある）。
-  */
-  const h = hash.split('?')[0].replace(/\/+$/, '').toLowerCase();
-  if (h === '#/support/thanks') return 'thanks';
-  if (h === '#/support') return 'support';
+/** 共有ページへ送る、古いハッシュ。決済まわりを外す前に配ってしまったもの */
+const LEGACY_HASH = ['#/support', '#/support/thanks'];
 
-  // ハッシュが落ちる経路のための受け口。?thanks=1 / ?support=1 でも開ける。
+/** 共有ページへ送る、古い問い合わせ文字列。決済からの戻り先だったもの */
+const LEGACY_QUERY = ['support', 'thanks'];
+
+/** ハッシュを見くらべる形にそろえる。人が手で打つことも、機械が足すこともある */
+function normalize(hash: string) {
+  // ハッシュの中に付いてくる ? 以降（session_id など）は見ない。
+  // 末尾のスラッシュと大文字小文字も気にしない。
+  return hash.split('?')[0].replace(/\/+$/, '').toLowerCase();
+}
+
+/** そのハッシュが、古い決済まわりのものか */
+export function isLegacyHash(hash: string) {
+  return LEGACY_HASH.includes(normalize(hash));
+}
+
+/** 現在のURLから画面を決める。知らないものは、つくる画面に落とす。 */
+export function readRoute(hash = window.location.hash, search = window.location.search): Route {
+  const h = normalize(hash);
+  if (h === '#/share') return 'share';
+  // 古い応援・お礼のURLは、共有ページとして開く
+  if (LEGACY_HASH.includes(h)) return 'share';
+
+  // ハッシュが落ちる経路のための受け口
   if (h === '' || h === '#' || h === '#/') {
     const q = new URLSearchParams(search);
-    if (q.has('thanks')) return 'thanks';
-    if (q.has('support')) return 'support';
+    if (LEGACY_QUERY.some((k) => q.has(k))) return 'share';
   }
 
   return 'maker';
@@ -72,17 +85,19 @@ export function useRoute(): Route {
   }, []);
 
   /*
-    ?thanks=1 で来た人は、そのままだと戻る・進むで画面が変わらない。
-    ハッシュの形に直しておくと、以後はふつうに動く。
-    決済の control 番号などを URL に残さない、という意味でもこうしておきたい。
+    古いURLで来た人を、新しいURLに置き換える。
+
+    履歴は「足す」のではなく「置き換える」。足すと、戻るボタンで
+    もう無いページへ戻ってしまい、そこからまた送り返されて、
+    戻れないループになる。
   */
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (!q.has('thanks') && !q.has('support')) return;
-    const to: Route = q.has('thanks') ? 'thanks' : 'support';
-    const { origin, pathname } = window.location;
-    window.history.replaceState(null, '', `${origin}${pathname}${ROUTE_HASH[to]}`);
-    setRoute(to);
+    const { origin, pathname, hash, search } = window.location;
+    const q = new URLSearchParams(search);
+    const stale = isLegacyHash(hash) || LEGACY_QUERY.some((k) => q.has(k));
+    if (!stale) return;
+    window.history.replaceState(null, '', `${origin}${pathname}${ROUTE_HASH.share}`);
+    setRoute('share');
   }, []);
 
   return route;
