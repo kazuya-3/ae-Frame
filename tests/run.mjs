@@ -2303,6 +2303,69 @@ try {
   }
 
   /*
+    つまみを触りながら、結果が見えること。
+
+    「どこを切りぬくか」を足して分かったことがある。つまみは画面の下のほうに
+    あるので、動かす → 見に上へ戻る → また下へ降りる、という往復が起きる。
+    顔が丸に入ったかは一目で分かるのに、その一目のたびにスクロールしていた。
+
+    つまみの置き場所を変えても、直るのは1つだけ。大きさもかたむきも同じ往復を
+    している。だからプレビューのほうを画面に貼り付けた。
+
+    見張るのは見た目ではなく、**同時に見えるかどうか**。
+    プレビューが全部出ていて、なおかつつまみ一式が台の下に収まる位置が
+    存在すること。画面の短い端末ほど厳しいので、そちらでも見る。
+  */
+  console.log('\n■ 見ながら調整できること');
+  {
+    for (const [name, w, h] of [
+      ['ふつうの端末', 390, 844],
+      ['短い端末', 390, 667],
+    ]) {
+      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      await page.route('**huggingface.co/**', (r) => r.abort());
+      await page.goto(BASE, { waitUntil: 'networkidle' });
+      await page
+        .getByRole('button', { name: 'はじめる' })
+        .click()
+        .catch(() => {});
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-tall.png'));
+      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+      await page.waitForTimeout(250);
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+      await page.waitForTimeout(4000);
+      await page.getByRole('button', { name: /これでOK/ }).click();
+      await page.waitForTimeout(1400);
+      await page.getByRole('button', { name: 'まる', exact: true }).click();
+      await page.waitForTimeout(500);
+
+      /* 台の下へ来るまで寄せる。人が指で合わせるのと同じこと */
+      const fit = await page.evaluate(() => {
+        const el = [...document.querySelectorAll('input[type=range]')].pop();
+        const field = el.closest('.field');
+        field.scrollIntoView({ block: 'center' });
+        const dock = document.querySelector('.stage-dock');
+        let d = dock.getBoundingClientRect();
+        let r = field.getBoundingClientRect();
+        if (r.top < d.bottom + 10) scrollBy(0, r.top - d.bottom - 10);
+        d = dock.getBoundingClientRect();
+        r = field.getBoundingClientRect();
+        const s = document.querySelector('.stage').getBoundingClientRect();
+        return {
+          knob: r.top >= d.bottom - 1 && r.bottom <= innerHeight + 1,
+          preview: s.top >= -1 && s.bottom <= innerHeight + 1,
+          spare: Math.round(innerHeight - d.bottom - r.height),
+        };
+      });
+
+      check(`${name}：つまみ一式が、台の下に収まる`, fit.knob, `あまり ${fit.spare}px`);
+      check(`${name}：そのときプレビューも全部見えている`, fit.preview);
+      await page.close();
+    }
+  }
+
+  /*
     どこを切りぬくか。
 
     ── 直したのは「選べなかった」こと ──

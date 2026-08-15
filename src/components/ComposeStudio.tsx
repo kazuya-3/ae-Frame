@@ -867,32 +867,45 @@ export function ComposeStudio({
         {round ? '暗いところは、まるく切りぬかれる部分です。' : ''}
       </p>
 
-      <div
-        className="stage"
-        tabIndex={0}
-        role="application"
-        aria-label={`${target === 'photo' ? '写真' : 'フレーム'}の位置あわせ。矢印キーで動かせます`}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerUp}
-        onWheel={onWheel}
-        onKeyDown={onKeyDown}
-      >
-        <canvas ref={canvasRef} />
+      {/*
+        プレビューを画面に貼り付けておくための台。
 
-        {/* 触るまでは、何ができるかを大きく出しておく。触ったら邪魔なので消す。 */}
-        {!touched ? (
-          <span className="stage__coach">
-            <IconMove size={20} />
-            指でうごかす／2本でひろげて大きさ
-          </span>
-        ) : (
-          <span className="stage__hint">
-            {target === 'photo' ? '写真をうごかしています' : 'フレームをうごかしています'}
-          </span>
-        )}
+        貼り付けるのは中の .stage だが、画面が短いと .stage は正方形のまま
+        幅を詰める。詰めたぶん左右に余白ができて、そこを下の中身が
+        流れていくのが見える（実際、短い画面で「写真のかたち」のボタンが
+        プレビューの横から覗いていた）。
+
+        だから台のほうを列いっぱいに広げて、不透明にする。
+        カードの左右の余白まで広げているのは、そこまで覆わないと端が漏れるから。
+      */}
+      <div className="stage-dock">
+        <div
+          className="stage"
+          tabIndex={0}
+          role="application"
+          aria-label={`${target === 'photo' ? '写真' : 'フレーム'}の位置あわせ。矢印キーで動かせます`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onPointerLeave={onPointerUp}
+          onWheel={onWheel}
+          onKeyDown={onKeyDown}
+        >
+          <canvas ref={canvasRef} />
+
+          {/* 触るまでは、何ができるかを大きく出しておく。触ったら邪魔なので消す。 */}
+          {!touched ? (
+            <span className="stage__coach">
+              <IconMove size={20} />
+              指でうごかす／2本でひろげて大きさ
+            </span>
+          ) : (
+            <span className="stage__hint">
+              {target === 'photo' ? '写真をうごかしています' : 'フレームをうごかしています'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/*
