@@ -1037,6 +1037,27 @@ try {
 
       const btn = page.getByRole('button', { name: /とうめいにしたフレームだけを保存する/ });
       check('共有できない端末では、保存ボタンが出る', (await btn.count()) === 1);
+
+      /*
+        とうめいが消える経路を、渡す前に伝えていること。
+
+        こちらが渡すのはアルファチャンネル付きの PNG そのもので、バイト列は加工されない。
+        壊れるのは受け取ったアプリの中。多くの SNS・メッセージアプリは受け取った画像を
+        JPEG に変換し、JPEG にアルファチャンネルは無いので、とうめいは白や黒で埋まる。
+
+        受け取り側は制御できないし、API も無い。できるのは渡す前に伝えることだけ。
+        しかも「消えることがあります」だけでは行き止まりなので、
+        **どうすれば消えないか**まで書いてあることを見る。
+      */
+      const warn = await page.evaluate(() => document.body.innerText);
+      check(
+        'とうめいが消えることを、渡す前に伝えている',
+        warn.includes('とうめいは、送りかたで消えます'),
+      );
+      check(
+        '消さない渡しかたまで書いてある',
+        warn.includes('「ファイル」として送る') || warn.includes('保存してから渡して'),
+      );
       const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
       await btn.click();
       const got = await dl;
