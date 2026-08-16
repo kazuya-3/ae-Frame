@@ -2184,6 +2184,93 @@ try {
       !(await labels()).some((l) => l.includes('どこを切りぬくか')),
     );
 
+    /*
+      指でも合わせられること。
+
+      つまみだけだと、動かす → 上へ見に行く → また下へ、という往復が起きる。
+      プレビューを貼り付けてそこは楽になったが、**プレビューの上で直接
+      合わせられる**のがいちばん短い。このアプリは「指1本で動かす」を
+      いちばん先に覚えてもらう作りなので、そこに乗せる。
+
+      見張るのは2つ。窓の中身が変わること、そして**写真そのものは動かないこと**。
+      後者を外すと、切りぬきを合わせたつもりで構図までずれる。
+    */
+    await page.getByRole('button', { name: 'まる', exact: true }).click();
+    await page.waitForTimeout(500);
+    check(
+      'かたちを選ぶと「切りぬく場所」が出る',
+      (await page.getByRole('button', { name: '切りぬく場所', exact: true }).count()) === 1,
+    );
+
+    await page.getByRole('button', { name: '切りぬく場所', exact: true }).click();
+    await page.waitForTimeout(300);
+
+    /*
+      1点だけ読むと、判定できないことがある。
+      直前の検証が窓を下端に置いたままなので、そこから少し動かしても
+      同じ帯の中に留まり、色が変わらない（実際それで一度、
+      動いているのに落ちる検証を書いた）。
+
+      いったんまん中に戻してから動かし、丸の中の色ぜんぶで見くらべる。
+    */
+    const readRange = () =>
+      page.evaluate(() => {
+        const el = [...document.querySelectorAll('input[type=range]')].pop();
+        return el ? Number(el.value) : null;
+      });
+
+    await page.locator('input[type=range]').last().fill('0');
+    await page.waitForTimeout(500);
+    const beforeDrag = (await inside()).colors;
+    const posBefore = await readRange();
+
+    const stage = page.locator('.stage');
+    await stage.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    const box = await stage.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let k = 1; k <= 8; k++) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + k * 12);
+      await page.waitForTimeout(20);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+
+    const afterDrag = (await inside()).colors;
+    const posAfter = await readRange();
+
+    check(
+      '指で動かすと、窓の中身が変わる',
+      beforeDrag !== afterDrag,
+      `${beforeDrag} → ${afterDrag}`,
+    );
+    check(
+      'つまみも一緒に動く（同じものを指している）',
+      posBefore !== null && posAfter !== null && posBefore !== posAfter,
+      `${posBefore} → ${posAfter}`,
+    );
+
+    /*
+      写真そのものは動かないこと。
+      ここが崩れると、切りぬきを合わせたつもりで構図までずれる。
+    */
+    await page.getByRole('button', { name: '写真', exact: true }).click();
+    await page.waitForTimeout(300);
+    const photoPos = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('input[type=range]')];
+      return el.length ? el[0].value : null;
+    });
+    check('切りぬきを動かしても、写真の大きさは変わらない', photoPos === '100', String(photoPos));
+
+    /* かたちを戻したら、指の相手も写真に戻る */
+    await page.getByRole('button', { name: 'そのまま', exact: true }).click();
+    await page.waitForTimeout(400);
+    check(
+      'そのままに戻すと、「切りぬく場所」も消える',
+      (await page.getByRole('button', { name: '切りぬく場所', exact: true }).count()) === 0,
+    );
+
     await page.close();
   }
 

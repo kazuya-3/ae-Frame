@@ -32,6 +32,7 @@
  * 経緯と条件は docs/stripe-compliance.md にある。
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { dirname, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -173,8 +174,41 @@ export function checkDist(distDir) {
     );
   }
 
+  /* 5. 重さ。実際に回線を流れる量（gzip したあと）で見る */
+  const gzipKb = (f) => gzipSync(readFileSync(f)).length / 1024;
+  for (const [kind, re, label] of [
+    ['js', /index-[^/]*\.js$/, '本体の JS'],
+    ['css', /index-[^/]*\.css$/, '本体の CSS'],
+  ]) {
+    const files = all.filter((f) => re.test(f));
+    if (!files.length) continue;
+    const kb = files.reduce((sum, f) => sum + gzipKb(f), 0);
+    const cap = WEIGHT_BUDGET_KB[kind];
+    add(`${label} が上限に収まっている`, kb <= cap, `${kb.toFixed(1)} KB / 上限 ${cap} KB（gzip）`);
+  }
+
   return results;
 }
+
+/*
+  配るものの重さの上限（gzip したあとの KB）。
+
+  ── なぜ gzip で見るのか ──
+
+  サーバーは gzip して送るので、利用者の回線を実際に流れるのはこちらの数字。
+  生のバイト数で見ていると、実感より2〜3倍大きい数を見張ることになり、
+  「まだ余裕がある／もう限界だ」の感覚がずれる。
+
+  ── なぜ上限を置くのか ──
+
+  このツールは「スマホしか持っていない人」が前提。1回の機能追加で
+  数KB ずつ増えるのは気づかないが、10回で見過ごせない量になる。
+  1回ごとに気づける場所を作っておく。
+
+  いまの実測に少し余裕を足した値にしてある。**超えたら、上限を上げる前に
+  まず中身を疑う**。上げるときは、なぜ必要かをコミットに書く。
+*/
+const WEIGHT_BUDGET_KB = { js: 95, css: 12 };
 
 /*
   禁止語を「登録している」ファイル。ここだけは当たって当たり前なので外す。

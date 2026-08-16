@@ -176,7 +176,17 @@ function clipToShape(ctx: CanvasRenderingContext2D, w: number, h: number, shape:
   ctx.clip();
 }
 
-type Target = 'photo' | 'frame';
+/*
+  指で動かす相手。
+
+  'crop' は「切りぬく窓の中身」。写真そのものではなく、窓に入る場所を選ぶ。
+  かたちを選んでいないときは窓が無いので、この選択肢は出さない。
+
+  't' と 'setT' は 'crop' のときも写真を指したままにしてある。
+  大きさとかたむきのつまみは「写真の大きさ」と書いてあるとおり写真に効く。
+  指で動かす相手だけが切り替わる、という形にすると覚えることが増えない。
+*/
+type Target = 'photo' | 'frame' | 'crop';
 
 const IDENTITY: Transform = { x: 0, y: 0, scale: 1, rotation: 0, flipped: false };
 
@@ -258,8 +268,8 @@ export function ComposeStudio({
   } | null>(null);
   const rafRef = useRef(0);
 
-  const t = target === 'photo' ? photoT : frameT;
-  const setT = target === 'photo' ? setPhotoT : setFrameT;
+  const t = target === 'frame' ? frameT : photoT;
+  const setT = target === 'frame' ? setFrameT : setPhotoT;
 
   /*
     「共有できるか」は navigator.share の有無だけでは分からない。
@@ -606,6 +616,27 @@ export function ComposeStudio({
     };
   };
 
+  /*
+    窓をずらす。画面上で動かした距離を、−1〜1 の比に直す。
+
+    動かせる幅は「長いほうの辺 − 短いほうの辺」の半分しかない。
+    そこを 1 として割るので、指の動きと窓の動きが 1対1 で対応する。
+    余地の無い向き（正方形の写真、短いほうの辺）は割る数が 0 になるので、
+    そこは動かさない。0 で割って NaN を入れると、絵が丸ごと消える。
+  */
+  const nudgeCrop = (dxDisplay: number, dyDisplay: number) => {
+    const ratio = displayToExport();
+    const w = photo.width * photoBase * photoT.scale;
+    const h = photo.height * photoBase * photoT.scale;
+    const s = Math.min(w, h);
+    const rangeX = (w - s) / 2;
+    const rangeY = (h - s) / 2;
+    setCrop((c) => ({
+      x: rangeX > 0 ? clamp(c.x - (dxDisplay * ratio) / rangeX, -1, 1) : c.x,
+      y: rangeY > 0 ? clamp(c.y - (dyDisplay * ratio) / rangeY, -1, 1) : c.y,
+    }));
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     const prev = pointers.current.get(e.pointerId);
     if (!prev) return;
@@ -630,6 +661,15 @@ export function ComposeStudio({
         }));
       }
       gesture.current = g;
+      return;
+    }
+
+    if (target === 'crop') {
+      /*
+        指で写真をずらす向きに合わせる。下へ引けば写真が下がり、
+        窓には上のほうが入る。窓を動かすのではなく写真を動かす感覚にする。
+      */
+      nudgeCrop(next.x - prev.x, next.y - prev.y);
       return;
     }
 
@@ -661,6 +701,11 @@ export function ComposeStudio({
     const move = (dx: number, dy: number) => {
       e.preventDefault();
       setTouched(true);
+      if (target === 'crop') {
+        // キーは画面上の距離で来るので、指と同じ処理に渡す
+        nudgeCrop(dx * step, dy * step);
+        return;
+      }
       setT((t0) => ({ ...t0, x: t0.x + dx * step, y: t0.y + dy * step }));
     };
     if (e.key === 'ArrowLeft') move(-1, 0);
@@ -959,7 +1004,7 @@ export function ComposeStudio({
           className="stage"
           tabIndex={0}
           role="application"
-          aria-label={`${target === 'photo' ? '写真' : 'フレーム'}の位置あわせ。矢印キーで動かせます`}
+          aria-label={`${target === 'crop' ? '切りぬく場所' : target === 'photo' ? '写真' : 'フレーム'}の位置あわせ。矢印キーで動かせます`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -978,7 +1023,11 @@ export function ComposeStudio({
             </span>
           ) : (
             <span className="stage__hint">
-              {target === 'photo' ? '写真をうごかしています' : 'フレームをうごかしています'}
+              {target === 'crop'
+                ? '切りぬく場所をあわせています'
+                : target === 'photo'
+                  ? '写真をうごかしています'
+                  : 'フレームをうごかしています'}
             </span>
           )}
         </div>
@@ -1091,14 +1140,29 @@ export function ComposeStudio({
       <div className="spacer" />
 
       <div className="stack">
+        {/*
+          指で動かす相手。
+
+          「切りぬく場所」は、かたちを選んでいるときだけ出す。
+          切りぬかないときは窓が無いので、選んでも何も起きない選択肢になる。
+          押して何も起きないものを並べない。
+        */}
         <Segmented<Target>
           ariaLabel="うごかすもの"
           value={target}
           onChange={setTarget}
-          options={[
-            { value: 'photo', label: '写真をうごかす' },
-            { value: 'frame', label: 'フレームをうごかす' },
-          ]}
+          options={
+            shape === 'fill'
+              ? [
+                  { value: 'photo', label: '写真をうごかす' },
+                  { value: 'frame', label: 'フレームをうごかす' },
+                ]
+              : [
+                  { value: 'photo', label: '写真' },
+                  { value: 'frame', label: 'フレーム' },
+                  { value: 'crop', label: '切りぬく場所' },
+                ]
+          }
         />
 
         <div className="btn-row">
@@ -1176,6 +1240,12 @@ export function ComposeStudio({
             onChange={(v) => {
               play('tap');
               setShape(v);
+              /*
+                切りぬかない形に戻したら、指の相手も写真に戻す。
+                窓が無くなったのに「切りぬく場所」を選んだままだと、
+                指で動かしても何も起きない画面になる。
+              */
+              if (v === 'fill') setTarget((cur) => (cur === 'crop' ? 'photo' : cur));
             }}
             options={[
               { value: 'fill', label: 'そのまま' },
