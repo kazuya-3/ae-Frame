@@ -134,7 +134,12 @@ for (const file of files) {
         data: c.toDataURL('image/webp', quality),
       };
     },
-    [raw.toString('base64'), `image/${extname(file).slice(1).replace('jpg', 'jpeg')}`, maxEdge, QUALITY],
+    [
+      raw.toString('base64'),
+      `image/${extname(file).slice(1).replace('jpg', 'jpeg')}`,
+      maxEdge,
+      QUALITY,
+    ],
   );
 
   const out = Buffer.from(result.data.split(',')[1], 'base64');

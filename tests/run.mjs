@@ -1011,6 +1011,143 @@ try {
     長おしできる本物の <img> が出ることを確かめる。
   */
   /*
+    とうめいにしたフレームを、そのまま人に渡せること。
+
+    ── なぜ「保存」だけでは足りなかったか ──
+
+    ここは端末に落とすことしかできなかった。だがフレームは**人に渡したくなるもの**で、
+    せっかく背景を抜いたのだから友だちにも使ってほしい、というのは自然な流れ。
+
+    しかも iPhone では、ダウンロードは「写真」ではなく「ファイル」アプリに入る。
+    そこから人に送るには、ファイルアプリを開いて探して共有し直すことになる。
+
+    ── 何を見張るか ──
+
+    渡るのが**フレームそのもの**であること。ここを取り違えて、合成したアイコンを
+    渡してしまうと、受け取った人はフレームとして使えない（写真が焼き込まれている）。
+    だから中身を読んで、とうめいな画素があることまで見る。
+  */
+  console.log('\n■ フレームだけを渡す');
+  {
+    /* まず、共有できない端末（いまの Chromium がそう）。落とす道が残っていること */
+    {
+      const { page } = await openFrame(browser, 'neon.png');
+      await page.getByRole('button', { name: /これでOK/ }).click();
+      await page.waitForTimeout(1200);
+
+      const btn = page.getByRole('button', { name: /とうめいにしたフレームだけを保存する/ });
+      check('共有できない端末では、保存ボタンが出る', (await btn.count()) === 1);
+      const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+      await btn.click();
+      const got = await dl;
+      check(
+        'フレームだけを保存できる',
+        !!got && /^frame_toka_/.test(got.suggestedFilename()),
+        got ? got.suggestedFilename() : '',
+      );
+      await page.close();
+    }
+
+    /*
+      次に、共有できる端末を作って確かめる。
+
+      Chromium は navigator.share を持たないので、差し替えて渡されたものを記録する。
+      見たいのは「共有シートが開くか」ではなく「**何が渡るか**」なので、
+      本物のシートは要らない。
+    */
+    {
+      const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+      await page.addInitScript(() => {
+        window.__shared = [];
+        navigator.canShare = (d) => !!d && Array.isArray(d.files) && d.files.length > 0;
+        navigator.share = async (d) => {
+          const f = d.files[0];
+          window.__shared.push({
+            name: f.name,
+            type: f.type,
+            size: f.size,
+            bytes: [...new Uint8Array(await f.arrayBuffer())],
+          });
+        };
+      });
+      await page.route('**huggingface.co/**', (r) => r.abort());
+      await page.goto(BASE, { waitUntil: 'networkidle' });
+      await page
+        .getByRole('button', { name: 'はじめる' })
+        .click()
+        .catch(() => {});
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+      await page.waitForTimeout(250);
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+      await page.waitForTimeout(4000);
+      await page.getByRole('button', { name: /これでOK/ }).click();
+      await page.waitForTimeout(1600);
+
+      const send = page.getByRole('button', { name: /とうめいなフレームを送る/ });
+      check('共有できる端末では、送るボタンが出る', (await send.count()) === 1);
+      await send.click();
+      await page.waitForTimeout(900);
+
+      const shared = await page.evaluate(() =>
+        window.__shared.map((s) => ({ ...s, bytes: undefined })),
+      );
+      check('押すと1枚だけ渡される', shared.length === 1, `${shared.length} 枚`);
+      if (shared.length === 1) {
+        check('PNG で渡される', shared[0].type === 'image/png', shared[0].type);
+        check(
+          'フレームだと分かる名前で渡される',
+          /^frame_toka_.*\.png$/.test(shared[0].name),
+          shared[0].name,
+        );
+      }
+
+      /*
+        渡ったのが「合成したアイコン」ではなく「とうめいなフレーム」であること。
+        取り違えると、受け取った人はフレームとして使えない。
+      */
+      const look = await page.evaluate(async () => {
+        const s = window.__shared[0];
+        if (!s) return null;
+        const blob = new Blob([new Uint8Array(s.bytes)], { type: 'image/png' });
+        const bmp = await createImageBitmap(blob);
+        const c = document.createElement('canvas');
+        c.width = bmp.width;
+        c.height = bmp.height;
+        const g = c.getContext('2d');
+        g.drawImage(bmp, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        let clear = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] < 8) clear++;
+        return { w: bmp.width, h: bmp.height, clear: +((clear / (d.length / 4)) * 100).toFixed(1) };
+      });
+      check(
+        'とうめいな部分が残っている',
+        !!look && look.clear > 5,
+        look ? `とうめい ${look.clear}%` : '',
+      );
+      /*
+        とうめいなだけでは足りない。合成したアイコンも、まるく切りぬいてあれば
+        四隅がとうめいで、2割ほど抜けている。実際それで一度、
+        合成したほうを渡しても通ってしまう検証を書いた。
+
+        決め手は大きさ。合成したアイコンは必ず書き出しサイズ（1080×1080）になる。
+        フレームのほうはそうならない —— ステップ2が透明な余白を切り詰めるので、
+        元の 900×900 ですらなく、抜いた結果しだいの半端な寸法になる
+        （この見本では 876×892）。だから「1080 でないこと」で見る。
+        寸法を決め打ちすると、切り詰めの結果が少し変わるたびに落ちてしまう。
+      */
+      check(
+        '書き出しサイズではない＝合成したアイコンではない',
+        !!look && !(look.w === 1080 && look.h === 1080),
+        look ? `${look.w}×${look.h}` : '',
+      );
+      await page.close();
+    }
+  }
+
+  /*
     「つかいかた」も同じシートの部品を使っている。
     片方を直したときにもう片方が壊れていないことを、ここで押さえる。
   */

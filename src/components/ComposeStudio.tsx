@@ -846,11 +846,89 @@ export function ComposeStudio({
     }
   };
 
-  const saveFrameOnly = async () => {
+  /*
+    とうめいにしたフレームを、そのまま渡せるようにする。
+
+    ── なぜ「保存」だけでは足りなかったか ──
+
+    ここは downloadBlob だけを呼んでいた。つまり自分の端末に落とすことしかできない。
+    ところが、フレームは**人に渡したくなるもの**。せっかく背景を抜いたのだから、
+    友だちにも同じフレームを使ってほしい、というのは自然な流れ。
+
+    そして iPhone では、ダウンロードは「写真」ではなく「ファイル」アプリに入る。
+    そこから人に送るには、ファイルアプリを開いて探して共有し直すことになる。
+    共有シートに載せれば、LINE でも AirDrop でも1回で渡せる。
+
+    ── なぜ先に作っておくのか ──
+
+    navigator.share は、指が離れてから少しの間しか呼べない。
+    押してから PNG を作ると、その間に期限が切れて共有シートが開かない。
+    しかも投げられる例外は「利用者が閉じた」と見分けがつきにくく、
+    黙って何も起きないように見える（本体の保存で踏んだのと同じ穴）。
+
+    フレームは、この画面にいるあいだ**一度も変わらない**。
+    写真をどう動かしても、切りぬきをどう変えても、フレームそのものは同じ。
+    だから最初に1回だけ作っておけば、押した瞬間には待ち時間ゼロで渡せる。
+  */
+  const frameReadyRef = useRef<Blob | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    frameReadyRef.current = null;
+    (async () => {
+      try {
+        const canvas = createCanvas(frame.width, frame.height);
+        get2d(canvas).drawImage(frame, 0, 0);
+        const blob = await canvasToBlob(canvas, 'image/png');
+        if (alive) frameReadyRef.current = blob;
+      } catch {
+        /* 用意できなくても、押したときに作り直すので黙っておく */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [frame]);
+
+  const frameFileName = () => timestampName('frame_toka', 'png');
+
+  const buildFrameBlob = async () => {
+    const warm = frameReadyRef.current;
+    if (warm) return warm;
     const canvas = createCanvas(frame.width, frame.height);
     get2d(canvas).drawImage(frame, 0, 0);
-    downloadBlob(await canvasToBlob(canvas, 'image/png'), timestampName('frame_toka', 'png'));
-    play('done');
+    return canvasToBlob(canvas, 'image/png');
+  };
+
+  /** フレームを人に渡す。共有シートが使えないときは、落として渡してもらう */
+  const shareFrameOnly = async () => {
+    const warm = frameReadyRef.current;
+    if (warm && canShare) {
+      const file = new File([warm], frameFileName(), { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        navigator
+          .share({ files: [file] })
+          .then(() => play('done'))
+          .catch((e: unknown) => {
+            // 閉じただけなら何も言わない。それ以外は行き止まりなので落とす道を出す
+            if ((e as { name?: string })?.name !== 'AbortError') void saveFrameOnly();
+          });
+        return;
+      }
+    }
+    await saveFrameOnly();
+  };
+
+  const saveFrameOnly = async () => {
+    setBusy(true);
+    try {
+      downloadBlob(await buildFrameBlob(), frameFileName());
+      play('done');
+    } catch {
+      play('error');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -1252,9 +1330,33 @@ export function ComposeStudio({
           保存できた人にいちばん要るのは、次の作業への道であって、お願いではない。
         */}
 
-        <Button variant="ghost" onClick={saveFrameOnly} sound="tap">
-          とうめいにしたフレームだけを保存する
-        </Button>
+        {/*
+          フレームだけを渡す。
+
+          共有シートが使える端末では、そちらを主にする。
+          フレームは人に渡したくなるもので、渡すのに保存を経由させる理由が無い。
+          共有シートには保存の項目も入っている（iPhone の「画像を保存」）ので、
+          自分の端末に置きたいだけの人も、ここから同じ数の操作で済む。
+
+          使えない端末では、これまでどおり落とす。
+        */}
+        {canShare ? (
+          <div className="btn-row">
+            <Button variant="ghost" onClick={shareFrameOnly} sound="tap" disabled={busy}>
+              <IconShare size={17} />
+              とうめいなフレームを送る
+            </Button>
+            <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
+              <IconDownload size={17} />
+              保存する
+            </Button>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
+            <IconDownload size={17} />
+            とうめいにしたフレームだけを保存する
+          </Button>
+        )}
 
         <div className="btn-row">
           <Button variant="ghost" onClick={onBack} sound="back">
