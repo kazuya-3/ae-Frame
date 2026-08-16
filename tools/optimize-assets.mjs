@@ -53,7 +53,6 @@ const MAX_EDGE = 1200;
 */
 const MAX_EDGE_BY_FILE = {
   'hedgehog-support': 560,
-  'hedgehog-thanks': 560,
   // ひょっこり出るほうは、もっと小さい枠に入る（80〜120px）
   'hedgehog-empty': 420,
   'hedgehog-waiting': 420,

@@ -176,6 +176,62 @@ export function checkDist(distDir) {
   return results;
 }
 
+/*
+  禁止語を「登録している」ファイル。ここだけは当たって当たり前なので外す。
+
+  ・tools/check-dist.mjs   一覧そのもの
+  ・docs/stripe-compliance.md 何が禁止で、なぜかを書いた文書
+
+  外すのはこの2つだけにする。増やしたくなったら、たいていは
+  「そのファイルから禁止語を消す」ほうが正しい。
+*/
+const WORD_ALLOWLIST = ['tools/check-dist.mjs', 'docs/stripe-compliance.md'];
+
+/**
+ * リポジトリ側にも、禁止語と決済リンクが無いこと。
+ *
+ * ── なぜ配るものだけでは足りなかったか ──
+ *
+ * はじめ dist しか見ていなかった。それで README が素通りした。
+ * README には支払いリンクの作りかたが手順ごと残っていて、
+ * `https://buy.stripe.com/...` という行まであった。
+ * 引き継ぎ資料（docs/handover.html）には**本物の支払いリンクが4本**入っていた。
+ *
+ * どちらも配布物には入らないので、dist を読む点検では永久に見つからない。
+ * ただし公開リポジトリなので、人からは読める。
+ * 「決済を持たない」と言っているアカウントのリポジトリに決済リンクの手順がある、
+ * という状態だった。
+ */
+export function checkRepoWords() {
+  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tips']);
+  const exts = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html', '.md', '.json', '.yml', '.yaml'];
+  const files = [];
+  const walkRepo = (dir) => {
+    for (const name of readdirSync(dir)) {
+      if (skip.has(name)) continue;
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walkRepo(p);
+      else if (exts.includes(extname(p))) files.push(p);
+    }
+  };
+  walkRepo(ROOT);
+
+  const hits = [];
+  for (const f of files) {
+    const rel = relative(ROOT, f);
+    if (WORD_ALLOWLIST.includes(rel)) continue;
+    const text = readFileSync(f, 'utf8');
+    for (const w of [...BANNED_WORDS, ...BANNED_LINKS]) {
+      if (text.includes(w)) hits.push(`${rel}（${w}）`);
+    }
+  }
+  return {
+    name: 'リポジトリにも、禁止語と決済リンクが無い',
+    ok: hits.length === 0,
+    detail: hits.length ? [...new Set(hits)].join(' / ') : `${files.length} ファイル確認`,
+  };
+}
+
 /** リポジトリ側に秘密鍵が入っていないこと。配るものとは別に見る */
 export function checkRepoSecrets() {
   const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tips', 'assets-src']);
@@ -209,7 +265,7 @@ export function checkRepoSecrets() {
 /* 単体で走らせたとき */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = join(ROOT, process.argv[2] ?? 'dist');
-  const results = [...checkDist(dir), checkRepoSecrets()];
+  const results = [...checkDist(dir), checkRepoWords(), checkRepoSecrets()];
   let bad = 0;
   console.log(`\n■ 配るものの点検（${relative(ROOT, dir) || '.'}）`);
   for (const r of results) {
