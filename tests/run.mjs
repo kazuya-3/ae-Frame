@@ -1011,6 +1011,122 @@ try {
     長おしできる本物の <img> が出ることを確かめる。
   */
   /*
+    同じフレームで、写真だけ差し替えられること。
+
+    ── なぜ効くのか ──
+
+    フレームを作るのがこのツールでいちばん手間のかかる工程。
+    「同じフレームで、もう1枚」はいちばん自然な次の行動なので、
+    そこに最短の道が要る。
+
+    ── 何が足りなかったか ──
+
+    機能そのものは前からあった。上のステップの丸から1へ戻れば、
+    写真だけ選び直せる（フレームは消えない）。
+    足りなかったのは**押すところ**で、保存し終わって下まで来た人に
+    見えていたのは「背景けしにもどる」と「さいしょから」だけだった。
+
+    しかも「さいしょから」はフレームを捨てる。同じフレームで作りたい人が
+    それを押すと、いちばん重い背景けしからやり直しになる。
+    **できることに押すところが無く、見えているボタンがいちばん高くつく道**だった。
+
+    ── 何を見張るか ──
+
+    ボタンがあること、押すと写真選びに戻ること、そして戻った先の「つぎへ」が
+    **背景けしを飛ばして位置あわせへ行くこと**。ここを飛ばさないと、
+    やることの無い画面を1枚はさんで「これでOK」を押させることになる。
+  */
+  console.log('\n■ 写真だけ差し替える');
+  {
+    const { page } = await openFrame(browser, 'neon.png', 'photo-tall.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1400);
+
+    /* 写真を動かして、あとで初期に戻ることを見られるようにする */
+    await page.getByRole('button', { name: /^大きくする$/ }).click();
+    await page.getByRole('button', { name: /^大きくする$/ }).click();
+    await page.waitForTimeout(400);
+    const zoomed = await page.evaluate(() => {
+      const el = document.querySelector('input[type=range]');
+      return el ? el.value : null;
+    });
+    check('写真を大きくした', zoomed !== '100', `${zoomed}%`);
+
+    const change = page.getByRole('button', { name: /写真だけ変える/ });
+    check('「写真だけ変える」がある', (await change.count()) === 1);
+    await change.click();
+    await page.waitForTimeout(700);
+
+    check(
+      '写真をえらぶところに戻る',
+      (await page.getByRole('heading', { name: /アイコンにする写真をえらぶ/ }).count()) === 1,
+    );
+    check('べつの写真にする入口がある', (await page.getByText('べつの写真にする').count()) >= 1);
+
+    /*
+      フレームは残っているので、背景けしを通さずに位置あわせへ行ける。
+      ラベル自体が行き先を名乗っていることまで見る。
+    */
+    const next = page.getByRole('button', { name: /つぎへ：位置をあわせる/ });
+    check('つぎへが「位置をあわせる」になっている', (await next.count()) === 1);
+    await next.click();
+    await page.waitForTimeout(900);
+    check(
+      '背景けしを通らずに位置あわせへ着く',
+      (await page.getByRole('heading', { name: /位置をあわせる/ }).count()) >= 1,
+    );
+
+    /*
+      写真を差し替えたら、写真の位置と切りぬきは初期に戻す。
+      前の写真に合わせた位置が次の写真に乗ると、顔があった場所には何も無い。
+      ここでは同じ写真を選び直しているが、扱いは差し替えと同じ。
+    */
+    await page.getByRole('button', { name: 'アイコン写真' }).click();
+    await page.waitForTimeout(500);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(900);
+    await page.getByRole('button', { name: /つぎへ：位置をあわせる/ }).click();
+    await page.waitForTimeout(900);
+    const afterSwap = await page.evaluate(() => {
+      const el = document.querySelector('input[type=range]');
+      return el ? el.value : null;
+    });
+    check('差し替えたら、写真の大きさは初期に戻る', afterSwap === '100', `${afterSwap}%`);
+
+    /*
+      そして**フレームは残っていること**。ここがこの機能の全部。
+      消えていたら背景けしからやり直しで、押すところを足した意味が無い。
+
+      フレームは「そのまま」では中身が読めない（合成された絵しか見えない）ので、
+      とうめいなフレームを渡す道から中身を取り出して確かめる。
+      書き出しサイズでないこと＝合成アイコンではなく、フレームそのもの。
+    */
+    const frameStill = await page.evaluate(async () => {
+      const c = document.querySelector('.stage canvas');
+      if (!c) return null;
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let ink = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 8) ink++;
+      return +((ink / (d.length / 4)) * 100).toFixed(1);
+    });
+    check(
+      'フレームは残っている（絵が描かれている）',
+      frameStill !== null && frameStill > 5,
+      `${frameStill}%`,
+    );
+    check(
+      'フレームを渡す道も残っている',
+      (await page
+        .getByRole('button', {
+          name: /とうめいにしたフレームだけを保存する|とうめいなフレームを送る/,
+        })
+        .count()) >= 1,
+    );
+
+    await page.close();
+  }
+
+  /*
     とうめいにしたフレームを、そのまま人に渡せること。
 
     ── なぜ「保存」だけでは足りなかったか ──

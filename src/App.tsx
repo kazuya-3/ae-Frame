@@ -236,8 +236,19 @@ export default function App({ active = true }: { active?: boolean }) {
                 <img src={photoUrl} alt="えらんだ写真" />
                 <span className="preview__badge">この写真でOK？</span>
               </div>
-              <Button variant="primary" onClick={() => goto(2)}>
-                つぎへ：フレームをえらぶ
+              {/*
+                フレームが出来ているなら、背景けしを通さずに位置あわせへ送る。
+
+                「同じフレームで、写真だけ変える」はいちばん自然な次の行動で、
+                そのときフレームはもう出来ている。それなのにステップ2へ戻すと、
+                やることが何も無い画面を1枚はさんで「これでOK」を押させることになる。
+                通す意味が無い画面は通さない。
+
+                フレームのほうを変えたいときは、上のステップの丸か、
+                位置あわせの「背景けしにもどる」から行ける。
+              */}
+              <Button variant="primary" onClick={() => goto(frameResult ? 3 : 2)}>
+                つぎへ：{frameResult ? '位置をあわせる' : 'フレームをえらぶ'}
                 <IconArrowRight size={20} />
               </Button>
               <DropZone
@@ -339,6 +350,7 @@ export default function App({ active = true }: { active?: boolean }) {
             frame={frameResult}
             active={step === 3}
             onBack={() => goto(2)}
+            onChangePhoto={() => goto(1)}
             onRestart={restart}
           />
         </div>

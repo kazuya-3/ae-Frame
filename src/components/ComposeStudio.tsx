@@ -16,6 +16,7 @@ import {
   IconFlip,
   IconMinus,
   IconMove,
+  IconPhoto,
   IconPlus,
   IconRefresh,
   IconRotate,
@@ -195,6 +196,7 @@ export function ComposeStudio({
   frame,
   active,
   onBack,
+  onChangePhoto,
   onRestart,
 }: {
   photo: ImageBitmap;
@@ -202,6 +204,8 @@ export function ComposeStudio({
   /** この画面が表示されているか。隠れている間は幅が0なので描き直さない。 */
   active: boolean;
   onBack: () => void;
+  /** 写真だけ選び直しに行く。フレームは残る */
+  onChangePhoto: () => void;
   onRestart: () => void;
 }) {
   const [photoT, setPhotoT] = useState<Transform>(IDENTITY);
@@ -270,6 +274,29 @@ export function ComposeStudio({
 
   const t = target === 'frame' ? frameT : photoT;
   const setT = target === 'frame' ? setFrameT : setPhotoT;
+
+  /*
+    写真が差し替わったら、写真の位置と切りぬきを初期に戻す。
+
+    ── なぜ戻すのか ──
+
+    前の写真に合わせた位置と切りぬきが、次の写真にそのまま乗る。
+    縦横比が違えば、顔があった場所には何も無い。「同じフレームで写真だけ変えたら、
+    変なところが切り取られて出てきた」ということが起きる。
+
+    ── なぜフレームは戻さないのか ──
+
+    フレームの位置は、その人が選んだ見せかたそのもの。写真を替えても
+    変えたくないはず。むしろ**保たれていないと、写真を替えるたびに
+    フレームを置き直す**ことになる。だから frameT は触らない。
+
+    差し替え以外では走らない。画面のあいだを行き来しても photo は同じものなので、
+    手なおしが消えることはない（そこは検証でも見ている）。
+  */
+  useEffect(() => {
+    setPhotoT(IDENTITY);
+    setCrop(CENTER);
+  }, [photo]);
 
   /*
     「共有できるか」は navigator.share の有無だけでは分からない。
@@ -1453,15 +1480,32 @@ export function ComposeStudio({
           </span>
         </Note>
 
+        {/*
+          次にやりたいことの、いちばん多い順に置く。
+
+          「写真だけ変える」がここに無かった。できることではあって、
+          上のステップの丸から1へ戻れば写真だけ選び直せる。
+          だが保存し終わってこの位置まで来た人に見えているのは
+          「背景けしにもどる」と「さいしょから」だけだった。
+
+          そして「さいしょから」は**フレームを捨てる**。同じフレームで
+          もう1枚作りたい人がこれを押すと、いちばん手間のかかる背景けしから
+          やり直しになる。できることに押すところが無く、見えているボタンが
+          いちばん高くつく道だった。
+        */}
         <div className="btn-row">
+          <Button variant="ghost" onClick={onChangePhoto} sound="tap">
+            <IconPhoto size={17} />
+            写真だけ変える
+          </Button>
           <Button variant="ghost" onClick={onBack} sound="back">
             <IconArrowLeft size={18} />
             背景けしにもどる
           </Button>
-          <Button variant="ghost" onClick={onRestart} sound="back">
-            さいしょから
-          </Button>
         </div>
+        <Button variant="ghost" onClick={onRestart} sound="back">
+          さいしょから（フレームも選び直す）
+        </Button>
       </div>
 
       {/*
