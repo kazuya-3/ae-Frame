@@ -965,6 +965,16 @@ input[type='range']:active::-webkit-slider-thumb {
   収まるだけの目安。ふつうの縦長の端末では 100% が先に効くので、
   これまでと同じ大きさのまま出る。効いてくるのは短い画面だけ。
 */
+/*
+  台に載るもの（ステップ2のプレビュー、ステップ3の合成キャンバス）は、
+  同じ決めかたで大きさを取る。片方だけ短い画面で場所を取りすぎる、
+  という食い違いが出ないように、指定を1か所にまとめてある。
+*/
+.stage-dock > .preview {
+  width: clamp(180px, calc(100dvh - 420px), 100%);
+  margin-inline: auto;
+}
+
 .stage {
   position: relative;
   width: clamp(180px, calc(100dvh - 420px), 100%);
@@ -1075,6 +1085,51 @@ input[type='range']:active::-webkit-slider-thumb {
   50% {
     transform: translateX(-50%) translateY(-4px);
   }
+}
+
+/*
+  ボタンの塊を、目的ごとに分ける。
+
+  ── なぜ要るのか ──
+
+  ステップ3の下は、機能を足すたびにボタンが縦に積まれていった。
+  最後には6本以上が同じ見た目で並び、「どれを押せばいいか」が読み取れなくなった。
+
+  並んでいるものは、じつは3つの別々の用事だった。
+
+    1. できたアイコンを持ち帰る   … この画面の本題
+    2. フレームを人にわたす        … 別の相手に、別のものを渡す話
+    3. つぎにどうする              … この画面から出ていく話
+
+  同じ見た目で1本ずつ並べると、この境目が消える。
+  見出しと区切り線を入れて、目的ごとにまとめる。
+
+  ── 見出しは控えめにする ──
+
+  塊の名前であって、押すところではない。太くしすぎると、
+  こんどは見出しがボタンに見える。
+*/
+.group {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink-faint);
+}
+
+.group__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.group__note {
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  margin: 0 0 10px;
 }
 
 /* ---------- 注意書き・状態表示 ---------- */

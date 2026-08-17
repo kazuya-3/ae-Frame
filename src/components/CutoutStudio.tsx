@@ -532,49 +532,61 @@ export function CutoutStudio({
 
       {notice && <div style={{ marginBottom: 12 }}>{notice}</div>}
 
-      <div className="preview" data-backdrop={backdrop}>
-        <canvas
-          ref={canvasRef}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          onPointerCancel={onPointerUp}
-          style={{
-            touchAction: tool && tool !== 'pick' ? 'none' : 'auto',
-            cursor: tool === 'pick' ? 'crosshair' : tool ? 'none' : 'default',
-          }}
-        />
-        <div
-          ref={cursorRef}
-          aria-hidden
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            borderRadius: '50%',
-            border: '1.6px solid var(--accent)',
-            background: 'rgba(255,45,85,0.12)',
-            pointerEvents: 'none',
-            opacity: 0,
-            transition: 'opacity .15s',
-          }}
-        />
-        {tool === 'pick' && <span className="preview__badge">けしたい色をタップ</span>}
-        {tool === 'erase' && <span className="preview__badge">なぞって消す</span>}
-        {tool === 'keep' && <span className="preview__badge">なぞって元にもどす</span>}
+      {/*
+        ステップ3と同じで、プレビューを画面に貼り付けておく。
 
-        <button
-          type="button"
-          className="preview__backdrop"
-          onClick={() => {
-            play('toggleOn');
-            setBackdrop(NEXT_BACKDROP[backdrop]);
-          }}
-          title="下じきの色を変えて、消え具合を確かめます"
-        >
-          下じき：{BACKDROP_LABEL[backdrop]}
-        </button>
+        ここは「消え具合を見ながら、つまみを動かす」画面。見るものと動かすものが
+        離れていると、動かす → 上へ見に行く → また下へ、の往復になる。
+        しかもこの画面のつまみは4つ以上あって、ステップ3より往復が多い。
+
+        指の当たり判定はそのつど getBoundingClientRect で取り直しているので、
+        大きさが変わってもなぞる位置はずれない。
+      */}
+      <div className="stage-dock">
+        <div className="preview" data-backdrop={backdrop}>
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerUp}
+            onPointerCancel={onPointerUp}
+            style={{
+              touchAction: tool && tool !== 'pick' ? 'none' : 'auto',
+              cursor: tool === 'pick' ? 'crosshair' : tool ? 'none' : 'default',
+            }}
+          />
+          <div
+            ref={cursorRef}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              borderRadius: '50%',
+              border: '1.6px solid var(--accent)',
+              background: 'rgba(255,45,85,0.12)',
+              pointerEvents: 'none',
+              opacity: 0,
+              transition: 'opacity .15s',
+            }}
+          />
+          {tool === 'pick' && <span className="preview__badge">けしたい色をタップ</span>}
+          {tool === 'erase' && <span className="preview__badge">なぞって消す</span>}
+          {tool === 'keep' && <span className="preview__badge">なぞって元にもどす</span>}
+
+          <button
+            type="button"
+            className="preview__backdrop"
+            onClick={() => {
+              play('toggleOn');
+              setBackdrop(NEXT_BACKDROP[backdrop]);
+            }}
+            title="下じきの色を変えて、消え具合を確かめます"
+          >
+            下じき：{BACKDROP_LABEL[backdrop]}
+          </button>
+        </div>
       </div>
 
       <div className="spacer" />

@@ -1011,6 +1011,69 @@ try {
     長おしできる本物の <img> が出ることを確かめる。
   */
   /*
+    どれを押せばいいかが、見て分かること。
+
+    ── なぜ崩れたか ──
+
+    機能を足すたびに、ステップ3の下へボタンが1本ずつ積まれていった。
+    最後には6本以上が同じ見た目で縦に並び、境目が消えた。
+
+    並んでいたのは、じつは3つの別々の用事だった。
+    「できたアイコンを持ち帰る」「フレームを人にわたす」「つぎにどうする」。
+    見出しと区切りで塊に分ける。
+
+    ── 強調色は1か所 ──
+
+    この道具の決まり（styles.css の冒頭）に「強調色は**いま押すところ**
+    1か所にしか出さない」とある。ところが、とうめいが消える注意書きを
+    強調色の地（.note--warn）で置いてしまい、赤い保存ボタンの真下で
+    もう1つ目を引くものを作っていた。**自分で決めた規約を自分で破っていた。**
+
+    規約は書いてあるだけだと守られない。数えられる形にして置いておく。
+  */
+  console.log('\n■ どれを押せばいいか');
+  {
+    const { page } = await openFrame(browser, 'neon.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1400);
+
+    const card = () =>
+      page.evaluate(() => {
+        /* ステップ2のカードにも台が付いたので、合成キャンバス（.stage）で見分ける */
+        const c = [...document.querySelectorAll('.card')].find((x) => x.querySelector('.stage'));
+        if (!c) return null;
+        return {
+          loud: c.querySelectorAll('.btn--primary, .note--warn').length,
+          groups: [...c.querySelectorAll('.group__title')].map((g) => g.textContent.trim()),
+          buttons: c.querySelectorAll('.btn').length,
+        };
+      });
+
+    const seen = await card();
+    check(
+      '目を引くものは1つだけ（強調色は「いま押すところ」に限る）',
+      seen && seen.loud === 1,
+      `${seen ? seen.loud : '?'} 個`,
+    );
+    check(
+      'ボタンが用事ごとに分かれている',
+      seen && seen.groups.length >= 2,
+      seen ? seen.groups.join(' / ') : '',
+    );
+
+    /*
+      塊に分けても、押すところが減ったわけではない。
+      増えすぎたら分けかたのほうを見直す合図にする。
+    */
+    check(
+      'ボタンが増えすぎていない',
+      seen && seen.buttons <= 14,
+      `${seen ? seen.buttons : '?'} 本`,
+    );
+    await page.close();
+  }
+
+  /*
     同じフレームで、写真だけ差し替えられること。
 
     ── なぜ効くのか ──

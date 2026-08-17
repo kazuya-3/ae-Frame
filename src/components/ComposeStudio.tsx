@@ -1452,35 +1452,49 @@ export function ComposeStudio({
           注意書きを読ませるためではなく、「写真として送らない」という
           具体的な逃げ道を1つ持って帰ってもらうために置いている。
         */}
-        {canShare ? (
-          <div className="btn-row">
-            <Button variant="ghost" onClick={shareFrameOnly} sound="tap" disabled={busy}>
-              <IconShare size={17} />
-              とうめいなフレームを送る
-            </Button>
+        <div className="group">
+          <p className="group__title">
+            <IconShare size={15} />
+            フレームを人にわたす
+          </p>
+          <p className="group__note">
+            背景をけしたフレームそのものを渡せます。受け取った人は、自分の写真で同じものを作れます。
+          </p>
+          {canShare ? (
+            <div className="btn-row">
+              <Button variant="ghost" onClick={shareFrameOnly} sound="tap" disabled={busy}>
+                <IconShare size={17} />
+                とうめいなフレームを送る
+              </Button>
+              <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
+                <IconDownload size={17} />
+                保存する
+              </Button>
+            </div>
+          ) : (
             <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
               <IconDownload size={17} />
-              保存する
+              とうめいにしたフレームだけを保存する
             </Button>
-          </div>
-        ) : (
-          <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
-            <IconDownload size={17} />
-            とうめいにしたフレームだけを保存する
-          </Button>
-        )}
+          )}
 
-        <Note tone="warn">
-          <span>
-            <b>とうめいは、送りかたで消えます。</b>
-            <br />
-            LINE や SNS に<b>「写真」として送ると</b>、とうめいのところが白や黒で埋まります。
-            そのまま渡したいときは、<b>「ファイル」として送る</b>
-            か、いちど保存してから渡してください。
-          </span>
-        </Note>
+          {/*
+          色は落とす。この画面でいちばん目を引くのは「画像をほぞんする」で、
+          そこは1か所だけにする、というのがこの道具の決まり（styles.css の冒頭）。
+          注意書きを強調色にすると、押すところが2つあるように見える。
+          伝えたいことは太字の1行目が持っているので、地の色まで赤くしなくていい。
+        */}
+          <Note>
+            <span>
+              <b>とうめいは、送りかたで消えます。</b>
+              <br />
+              LINE や SNS に<b>「写真」として送ると</b>、とうめいのところが白や黒で埋まります。
+              そのまま渡したいときは、<b>「ファイル」として送る</b>
+              か、いちど保存してから渡してください。
+            </span>
+          </Note>
 
-        {/*
+          {/*
           次にやりたいことの、いちばん多い順に置く。
 
           「写真だけ変える」がここに無かった。できることではあって、
@@ -1493,19 +1507,27 @@ export function ComposeStudio({
           やり直しになる。できることに押すところが無く、見えているボタンが
           いちばん高くつく道だった。
         */}
-        <div className="btn-row">
-          <Button variant="ghost" onClick={onChangePhoto} sound="tap">
-            <IconPhoto size={17} />
-            写真だけ変える
-          </Button>
-          <Button variant="ghost" onClick={onBack} sound="back">
-            <IconArrowLeft size={18} />
-            背景けしにもどる
+        </div>
+
+        <div className="group">
+          <p className="group__title">
+            <IconRefresh size={15} />
+            つぎにどうする
+          </p>
+          <div className="btn-row">
+            <Button variant="ghost" onClick={onChangePhoto} sound="tap">
+              <IconPhoto size={17} />
+              写真だけ変える
+            </Button>
+            <Button variant="ghost" onClick={onBack} sound="back">
+              <IconArrowLeft size={18} />
+              背景けしにもどる
+            </Button>
+          </div>
+          <Button variant="ghost" onClick={onRestart} sound="back">
+            さいしょから（フレームも選び直す）
           </Button>
         </div>
-        <Button variant="ghost" onClick={onRestart} sound="back">
-          さいしょから（フレームも選び直す）
-        </Button>
       </div>
 
       {/*
