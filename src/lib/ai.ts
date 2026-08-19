@@ -19,6 +19,23 @@ export type AiProgress = {
 
 export type AiQuality = 'balanced' | 'high';
 
+/**
+ * どちらの AI を先に試すか。
+ *
+ * ── なぜ選べるようにしたか ──
+ *
+ * どちらが上かは、**渡されるフレーム次第**で入れ替わる。
+ * RMBG-1.4 は輪郭が素直で、髪や細い線に強い。BiRefNet はうすい色や
+ * グローの境目を粘る。手もとには本物のフレームが1枚も無いので、
+ * こちらでどちらが良いとは決められない。
+ *
+ * 順番を黙って入れ替えることもできるが、それは「測っていないほうへ賭ける」だけで、
+ * 良くなったかどうかは誰にも分からないままになる。
+ * だから既定は変えず、**うまくいかなかった人がその場で試せる**ようにした。
+ * 置き場所は「うまく消えないときは」の中で、普段の画面には出ない。
+ */
+export type AiModel = 'default' | 'alt';
+
 type ModelSpec = {
   id: string;
   label: string;
@@ -27,52 +44,53 @@ type ModelSpec = {
   processorConfig?: Record<string, unknown>;
 };
 
+const RMBG: ModelSpec = {
+  id: 'briaai/RMBG-1.4',
+  label: 'RMBG-1.4',
+  modelOptions: {
+    config: { model_type: 'custom', is_encoder_decoder: false },
+  },
+  processorConfig: {
+    do_normalize: true,
+    do_pad: false,
+    do_rescale: true,
+    do_resize: true,
+    image_mean: [0.5, 0.5, 0.5],
+    image_std: [1, 1, 1],
+    resample: 2,
+    rescale_factor: 1 / 255,
+    size: { width: 1024, height: 1024 },
+  },
+};
+
+const BIREFNET: ModelSpec = {
+  id: 'onnx-community/BiRefNet_lite',
+  label: 'BiRefNet-lite',
+  modelOptions: {
+    config: { model_type: 'custom', is_encoder_decoder: false },
+  },
+  processorConfig: {
+    do_normalize: true,
+    do_pad: false,
+    do_rescale: true,
+    do_resize: true,
+    image_mean: [0.485, 0.456, 0.406],
+    image_std: [0.229, 0.224, 0.225],
+    resample: 2,
+    rescale_factor: 1 / 255,
+    size: { width: 1024, height: 1024 },
+  },
+};
+
+const MODNET: ModelSpec = { id: 'Xenova/modnet', label: 'MODNet' };
+
 /**
- * 上から順に試す。
- * RMBG-1.4 は輪郭の素直さで頭ひとつ抜けており、髪や細い線に強い。
+ * 上から順に試す。選んだほうを先頭にするだけで、残りは控えとして残す。
+ * ハブ側の都合で1つ落ちても、ツール全体が使えなくならないようにするため。
  */
-const MODELS: ModelSpec[] = [
-  {
-    id: 'briaai/RMBG-1.4',
-    label: 'RMBG-1.4',
-    modelOptions: {
-      config: { model_type: 'custom', is_encoder_decoder: false },
-    },
-    processorConfig: {
-      do_normalize: true,
-      do_pad: false,
-      do_rescale: true,
-      do_resize: true,
-      image_mean: [0.5, 0.5, 0.5],
-      image_std: [1, 1, 1],
-      resample: 2,
-      rescale_factor: 1 / 255,
-      size: { width: 1024, height: 1024 },
-    },
-  },
-  {
-    id: 'onnx-community/BiRefNet_lite',
-    label: 'BiRefNet-lite',
-    modelOptions: {
-      config: { model_type: 'custom', is_encoder_decoder: false },
-    },
-    processorConfig: {
-      do_normalize: true,
-      do_pad: false,
-      do_rescale: true,
-      do_resize: true,
-      image_mean: [0.485, 0.456, 0.406],
-      image_std: [0.229, 0.224, 0.225],
-      resample: 2,
-      rescale_factor: 1 / 255,
-      size: { width: 1024, height: 1024 },
-    },
-  },
-  {
-    id: 'Xenova/modnet',
-    label: 'MODNet',
-  },
-];
+function order(pick: AiModel): ModelSpec[] {
+  return pick === 'alt' ? [BIREFNET, RMBG, MODNET] : [RMBG, BIREFNET, MODNET];
+}
 
 type Loaded = {
   spec: ModelSpec;
@@ -83,7 +101,11 @@ type Loaded = {
 
 let loaded: Loaded | null = null;
 let loading: Promise<Loaded> | null = null;
-let loadedQuality: AiQuality | null = null;
+/*
+  いま持っているものが何か。画質だけでなく、どちらの AI を選んだかまで含める。
+  画質だけで見ていると、AI を切り替えても前のモデルが返ってしまう。
+*/
+let loadedKey: string | null = null;
 
 async function webgpuAvailable(): Promise<boolean> {
   const gpu = (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
@@ -98,12 +120,14 @@ async function webgpuAvailable(): Promise<boolean> {
 /** モデルとプロセッサを用意する。二重ロードは避け、結果は使いまわす。 */
 export async function loadModel(
   quality: AiQuality,
+  pick: AiModel = 'default',
   onProgress?: (p: AiProgress) => void,
 ): Promise<Loaded> {
-  if (loaded && loadedQuality === quality) return loaded;
-  if (loading && loadedQuality === quality) return loading;
+  const key = `${quality}/${pick}`;
+  if (loaded && loadedKey === key) return loaded;
+  if (loading && loadedKey === key) return loading;
 
-  loadedQuality = quality;
+  loadedKey = key;
   loading = (async () => {
     const tf = await import('@huggingface/transformers');
     const { AutoModel, AutoProcessor, env } = tf;
@@ -141,7 +165,7 @@ export async function loadModel(
     };
 
     const errors: string[] = [];
-    for (const spec of MODELS) {
+    for (const spec of order(pick)) {
       for (const dev of [device, 'wasm'] as const) {
         try {
           const model = await AutoModel.from_pretrained(spec.id, {
@@ -168,7 +192,7 @@ export async function loadModel(
       }
     }
     loading = null;
-    loadedQuality = null;
+    loadedKey = null;
     throw new Error(`AIモデルを読み込めませんでした\n${errors.join('\n')}`);
   })();
 
@@ -178,11 +202,6 @@ export async function loadModel(
     loading = null;
     throw e;
   }
-}
-
-/** 読み込み済みかどうか（UI の文言を変えるために使う）。 */
-export function isModelReady(quality: AiQuality) {
-  return loaded != null && loadedQuality === quality;
 }
 
 /** 出力オブジェクトの中から、マスクらしいテンソルを1つ拾う。 */
@@ -226,10 +245,11 @@ function sigmoidInPlace(arr: Float32Array) {
 export async function runMatting(
   image: ImageData,
   quality: AiQuality,
+  pick: AiModel,
   onProgress?: (p: AiProgress) => void,
 ): Promise<Uint8ClampedArray> {
   const { RawImage } = await import('@huggingface/transformers');
-  const { model, processor } = await loadModel(quality, onProgress);
+  const { model, processor } = await loadModel(quality, pick, onProgress);
 
   onProgress?.({ phase: 'run', progress: 0.15, label: '背景を見分けています' });
 

@@ -380,6 +380,73 @@ try {
   }
 
   /*
+    どちらの AI を先に試すか。
+
+    どちらが上かは渡されるフレーム次第で入れ替わるので、こちらでは決めない。
+    決められないなら、うまくいかなかった人がその場で試せるようにする。
+    そのスイッチは「うまく消えないときは」の中だけに置き、AI を通ったあとにだけ出す。
+
+    ここでは推論の中身は見られない（この環境は huggingface.co を遮断している）。
+    見えるのは**何を取りにいったか**で、順番の話はそれで足りる。
+    切り替えたのに前のモデルを取りにいく、という壊れかたが実際にあり得る
+    （設定を変えた直後の再計算が、変える前の設定を閉じこめた関数で走る）。
+  */
+  console.log('\n■ どちらのAIを先に試すか');
+  {
+    const page = await browser.newPage({ viewport: PHONE });
+    let asked = [];
+    await page.route('**huggingface.co/**', (r) => {
+      asked.push(r.request().url());
+      r.abort();
+    });
+    await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(250);
+    // 色では抜けないデザイン。自動で AI に切り替わる。
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'glass.png'));
+    await waitFor(() => asked.length > 0, 20000);
+    check('はじめは RMBG-1.4 を取りにいく', /RMBG-1\.4/i.test(asked[0] ?? ''), asked[0] ?? 'なし');
+
+    await page.waitForTimeout(2500);
+    await page.getByRole('button', { name: /うまく消えないときは/ }).click();
+    await page.waitForTimeout(400);
+    const alt = page.getByRole('button', { name: /べつのAIで試す/ });
+    check('切り替えるスイッチは、AIを通ったあとに出る', (await alt.count()) === 1);
+
+    asked = [];
+    await alt.click();
+    await waitFor(() => asked.length > 0, 20000);
+    check(
+      '切り替えると、こんどは BiRefNet を取りにいく',
+      /BiRefNet/i.test(asked[0] ?? ''),
+      asked[0] ?? 'なし',
+    );
+    await page.close();
+  }
+
+  /*
+    切り替えるスイッチは、AI を通っていない画面には出さない。
+    出すと「AIを使う道具」に見えるが、ほとんどのフレームは色キーで足りている。
+  */
+  {
+    const { page } = await openFrame(browser, 'lineart.png');
+    await page.getByRole('button', { name: /うまく消えないときは/ }).click();
+    await page.waitForTimeout(300);
+    check(
+      'AIを通らなかった画面には、切り替えるスイッチを出さない',
+      (await page.getByRole('button', { name: /べつのAIで試す/ }).count()) === 0,
+    );
+    await page.close();
+  }
+
+  /*
     AI は数十MBのダウンロードを伴う。色キーで足りるデザインで呼んでしまうと、
     待たせたうえに細い線が鈍る。呼ばないことも、はっきり確かめておく。
   */

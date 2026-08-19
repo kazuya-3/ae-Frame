@@ -22,7 +22,7 @@ import {
   type CutoutSettings,
   type PaintMask,
 } from '../lib/cutout';
-import type { AiQuality } from '../lib/ai';
+import type { AiModel, AiQuality } from '../lib/ai';
 import {
   canvasToBlob,
   downloadBlob,
@@ -111,6 +111,7 @@ export function CutoutStudio({
   const [tool, setTool] = useState<Tool>(null);
   const [brushSize, setBrushSize] = useState(28);
   const [quality, setQuality] = useState<AiQuality>('balanced');
+  const [aiModel, setAiModel] = useState<AiModel>('default');
   const [aiTried, setAiTried] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
   const [backdrop, setBackdrop] = useState<Backdrop>('checker');
@@ -120,6 +121,22 @@ export function CutoutStudio({
   const baseAlphaRef = useRef<Uint8ClampedArray | null>(null);
   const finishedRef = useRef<Uint8ClampedArray | null>(null);
   const aiAlphaRef = useRef<Uint8ClampedArray | null>(null);
+  /*
+    AI の設定は、状態のほかに ref でも持つ。
+
+    スイッチの onChange は、setQuality したあと同じ手続きの中で computeBase を呼ぶ。
+    そこにあるのは**切り替える前の設定を閉じこめた computeBase** なので、
+    切り替えたつもりで前の設定のまま計算が走っていた。
+    しかも進捗バーは動くので、画面の上では効いているように見える。
+    （高画質にした1回目は普通の画質、戻した1回目は高画質、というずれかた）
+
+    依存に入れて作り直す手もあるが、そうすると設定を触るたびに
+    「まだ走っている計算」と「新しい関数」が食い違う。読むほうを ref に寄せる。
+  */
+  const aiOptsRef = useRef<{ quality: AiQuality; model: AiModel }>({
+    quality: 'balanced',
+    model: 'default',
+  });
   const paintRef = useRef<PaintMask>(createPaintMask(source.width, source.height));
   const strokeBeforeRef = useRef<{
     erase: Uint8Array;
@@ -210,7 +227,8 @@ export function CutoutStudio({
           });
           try {
             const { runMatting } = await import('../lib/ai');
-            const alpha = await runMatting(source, quality, (p) => {
+            const { quality: q, model: m } = aiOptsRef.current;
+            const alpha = await runMatting(source, q, m, (p) => {
               if (runIdRef.current !== runId) return;
               setStatus({
                 kind: 'working',
@@ -254,7 +272,7 @@ export function CutoutStudio({
       scheduleDraw();
       setStatus({ kind: 'ready' });
     },
-    [source, scheduleDraw, quality],
+    [source, scheduleDraw],
   );
 
   // 初回：判定してそのまま実行する（ユーザーに何も聞かない）。
@@ -469,6 +487,24 @@ export function CutoutStudio({
     undoRef.current = [];
     setUndoCount(0);
     scheduleDraw();
+  };
+
+  /**
+   * AI の設定を変えたときに、いまの画像でもう一度かけ直す。
+   *
+   * いま AI で無くても AI にする。ここは「AI をこうする」と書いてあるスイッチで、
+   * 押した人はかけ直しを待っている。
+   * 前は、AI の読み込みに失敗して「かんたん処理」に落ちたあとだと
+   * 何も起きなかった。スイッチは動くのに画面は変わらない、といういちばん困る形で、
+   * しかも**AIが駄目だった人こそ、もう片方を試したい**場面だった。
+   */
+  const rerunAi = () => {
+    // 前の結果は使い回さない。設定を変えた意味が無くなる。
+    aiAlphaRef.current = null;
+    const next = { ...settings, mode: 'ai' as const };
+    setSettings(next);
+    setStatus({ kind: 'working', label: 'AIを準備しています', progress: 0.02 });
+    void computeBase('ai', next, true);
   };
 
   const resetAll = () => {
@@ -818,24 +854,43 @@ export function CutoutStudio({
             )}
           </div>
 
+          {/*
+            AI の設定は2つとも、ここ（「うまく消えないときは」の中）にしか出さない。
+            しかも AI を通ったあとだけ。普段の画面には出さない。
+          */}
           {aiTried && (
-            <Toggle
-              on={quality === 'high'}
-              onChange={(v) => {
-                const q: AiQuality = v ? 'high' : 'balanced';
-                setQuality(q);
-                aiAlphaRef.current = null;
-                if (settings.mode === 'ai') {
-                  setStatus({
-                    kind: 'working',
-                    label: 'AIを準備しています',
-                    progress: 0.02,
-                  });
-                  void computeBase('ai', settings, true);
-                }
-              }}
-              label="AIを高画質にする（重くなります）"
-            />
+            <div className="stack">
+              <Toggle
+                on={quality === 'high'}
+                onChange={(v) => {
+                  const q: AiQuality = v ? 'high' : 'balanced';
+                  aiOptsRef.current = { ...aiOptsRef.current, quality: q };
+                  setQuality(q);
+                  rerunAi();
+                }}
+                label="AIを高画質にする（重くなります）"
+              />
+              {/*
+                どちらの AI が上かは、渡されるフレーム次第で入れ替わる。
+                RMBG は輪郭が素直で髪や細い線に強く、BiRefNet はうすい色や
+                グローの境目を粘る。こちらの手もとに本物のフレームは1枚も無いので、
+                どちらが良いとは決められない。決めずに、その場で試せるようにする。
+              */}
+              <Toggle
+                on={aiModel === 'alt'}
+                onChange={(v) => {
+                  const m: AiModel = v ? 'alt' : 'default';
+                  aiOptsRef.current = { ...aiOptsRef.current, model: m };
+                  setAiModel(m);
+                  rerunAi();
+                }}
+                label="べつのAIで試す（消えかたが変わります）"
+              />
+              <p className="field__note">
+                切り替えると、そのAIをもう一度取りにいきます（通信が要ります）。
+                うすい色やグローの境目がうまく残らないときに試してください。
+              </p>
+            </div>
           )}
 
           <div className="spacer" />
