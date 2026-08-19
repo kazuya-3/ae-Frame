@@ -97,6 +97,13 @@ export function canvasToBlob(
   });
 }
 
+/** 透過を保ったまま PNG のファイル1つにする。 */
+export async function bitmapToPngBlob(bmp: ImageBitmap): Promise<Blob> {
+  const canvas = createCanvas(bmp.width, bmp.height);
+  get2d(canvas).drawImage(bmp, 0, 0);
+  return canvasToBlob(canvas, 'image/png');
+}
+
 /**
  * 透明部分を実際に使っている範囲まで詰める。
  * フレーム画像は余白が大きいことが多く、そのままだと重ねたときに小さく見える。

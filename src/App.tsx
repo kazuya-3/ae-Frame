@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   bitmapToImageData,
+  bitmapToPngBlob,
   createCanvas,
   fileToBitmap,
   fitWithin,
   get2d,
   imageDataToCanvas,
 } from './lib/image';
+import { forgetFrame, hasKeptFrame, keepFrame, loadKeptFrame } from './lib/keep';
 import {
   isHapticsOn,
   isSoundOn,
@@ -57,6 +59,19 @@ export default function App({ active = true }: { active?: boolean }) {
   const [help, setHelp] = useState(false);
   const [sound, setSound] = useState(isSoundOn);
   const [haptics, setHaptics] = useState(isHapticsOn);
+  /*
+    覚えたフレームまわり。
+
+    hasKept は「覚えたものが1つある」。フレームをえらぶ画面を描くときに要るので、
+    localStorage の札を同期で読む（lib/keep.ts）。ここで IndexedDB を開くと、
+    まだ使うと決まっていないのに最初の1枚目の表示に非同期の往復が乗る。
+
+    frameKept は「いま持っているフレームが、その覚えたものか」。
+    札のほうは有無しか知らないので、新しく切りぬいたフレームを見ているのに
+    スイッチが入って見える、という食い違いを防ぐために別に持つ。
+  */
+  const [hasKept, setHasKept] = useState(hasKeptFrame);
+  const [frameKept, setFrameKept] = useState(false);
 
   const photoUrlRef = useRef<string | null>(null);
 
@@ -144,9 +159,73 @@ export default function App({ active = true }: { active?: boolean }) {
   const handleCutoutDone = useCallback(async (result: ImageData) => {
     const bmp = await createImageBitmap(imageDataToCanvas(result));
     setFrameResult(bmp);
+    // 切りぬいたばかりのものは、まだ覚えていない
+    setFrameKept(false);
     setStep(3);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  /** 覚えたフレームを呼び出して、背景けしを飛ばして位置あわせへ送る。 */
+  const useKeptFrame = useCallback(async () => {
+    setError(null);
+    try {
+      const kept = await loadKeptFrame();
+      if (!kept) {
+        setHasKept(false);
+        setError('覚えていたフレームが見つかりませんでした。もう一度えらんでください。');
+        play('error');
+        return;
+      }
+      const bmp = await fileToBitmap(kept.blob);
+      setFrameResult(bmp);
+      setFrameKept(true);
+      /*
+        背景けしは通さない。覚えてあるのは**けし終わったあと**のもので、
+        通してもやることが無い。工程を1つ飛ばせるのがこの機能の中身なので、
+        飛ばさずに画面だけ出すと、覚えた意味がなくなる。
+      */
+      setFrameSource(null);
+      setFrameFull(null);
+      setAutoCropped(false);
+      play('done');
+      setStep(3);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      console.warn(e);
+      setHasKept(false);
+      setError('覚えていたフレームを読み出せませんでした。もう一度えらんでください。');
+      play('error');
+    }
+  }, []);
+
+  /** 覚える／忘れる。押されるまで IndexedDB は開かない。 */
+  const changeKeep = useCallback(
+    async (next: boolean) => {
+      // 押した手ごたえを待たせない。失敗したら戻す。
+      setFrameKept(next);
+      setHasKept(next);
+      play(next ? 'toggleOn' : 'toggleOff');
+      try {
+        if (next) {
+          if (!frameResult) throw new Error('フレームがありません');
+          await keepFrame(await bitmapToPngBlob(frameResult));
+        } else {
+          await forgetFrame();
+        }
+      } catch (e) {
+        console.warn(e);
+        setFrameKept(!next);
+        setHasKept(hasKeptFrame());
+        setError(
+          next
+            ? 'この端末に覚えておけませんでした。空き容量か、ブラウザの設定（プライベートモードなど）を確かめてください。'
+            : '覚えていたフレームを消せませんでした。',
+        );
+        play('error');
+      }
+    },
+    [frameResult],
+  );
 
   const restart = useCallback(() => {
     setStep(1);
@@ -154,6 +233,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameFull(null);
     setAutoCropped(false);
     setFrameResult(null);
+    setFrameKept(false);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
@@ -334,6 +414,23 @@ export default function App({ active = true }: { active?: boolean }) {
             icon={<IconFrame size={34} />}
             onFile={loadFrame}
           />
+
+          {/*
+            覚えたフレームの入口は、ここ1か所だけにしてある。
+
+            ステップ1にも置けるが、置くと「写真をえらぶ」画面に
+            フレームの話が混ざる。えらぶ場所は、えらぶ画面にある。
+          */}
+          {hasKept && (
+            <div className="kept">
+              <Button variant="ghost" onClick={useKeptFrame}>
+                <IconFrame size={17} />
+                前に覚えたフレームをつかう
+              </Button>
+              <p className="kept__note">背景けしは終わっているので、そのまま重ねられます。</p>
+            </div>
+          )}
+
           <div className="spacer" />
           <Note>
             <IconWand size={16} /> すでに背景がとうめいなPNGなら、そのまま次に進めます。
@@ -352,6 +449,8 @@ export default function App({ active = true }: { active?: boolean }) {
             onBack={() => goto(2)}
             onChangePhoto={() => goto(1)}
             onRestart={restart}
+            kept={frameKept}
+            onKeepChange={changeKeep}
           />
         </div>
       )}

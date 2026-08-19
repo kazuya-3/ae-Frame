@@ -5,7 +5,14 @@
  * ボタンでも同じことができるので、ジェスチャーを知らない人でも詰まらない。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { canvasToBlob, createCanvas, downloadBlob, get2d, timestampName } from '../lib/image';
+import {
+  bitmapToPngBlob,
+  canvasToBlob,
+  createCanvas,
+  downloadBlob,
+  get2d,
+  timestampName,
+} from '../lib/image';
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
@@ -198,6 +205,8 @@ export function ComposeStudio({
   onBack,
   onChangePhoto,
   onRestart,
+  kept,
+  onKeepChange,
 }: {
   photo: ImageBitmap;
   frame: ImageBitmap;
@@ -207,6 +216,10 @@ export function ComposeStudio({
   /** 写真だけ選び直しに行く。フレームは残る */
   onChangePhoto: () => void;
   onRestart: () => void;
+  /** いま見ているフレームを、この端末に覚えてあるか */
+  kept: boolean;
+  /** 覚える／忘れる。実際の読み書きは呼び出し側が持つ */
+  onKeepChange: (next: boolean) => void;
 }) {
   const [photoT, setPhotoT] = useState<Transform>(IDENTITY);
   const [frameT, setFrameT] = useState<Transform>(IDENTITY);
@@ -949,9 +962,7 @@ export function ComposeStudio({
     frameReadyRef.current = null;
     (async () => {
       try {
-        const canvas = createCanvas(frame.width, frame.height);
-        get2d(canvas).drawImage(frame, 0, 0);
-        const blob = await canvasToBlob(canvas, 'image/png');
+        const blob = await bitmapToPngBlob(frame);
         if (alive) frameReadyRef.current = blob;
       } catch {
         /* 用意できなくても、押したときに作り直すので黙っておく */
@@ -964,13 +975,7 @@ export function ComposeStudio({
 
   const frameFileName = () => timestampName('frame_toka', 'png');
 
-  const buildFrameBlob = async () => {
-    const warm = frameReadyRef.current;
-    if (warm) return warm;
-    const canvas = createCanvas(frame.width, frame.height);
-    get2d(canvas).drawImage(frame, 0, 0);
-    return canvasToBlob(canvas, 'image/png');
-  };
+  const buildFrameBlob = async () => frameReadyRef.current ?? (await bitmapToPngBlob(frame));
 
   /** フレームを人に渡す。共有シートが使えないときは、落として渡してもらう */
   const shareFrameOnly = async () => {
@@ -1514,6 +1519,28 @@ export function ComposeStudio({
             <IconRefresh size={15} />
             つぎにどうする
           </p>
+
+          {/*
+            ── なぜ押させるのか、なぜスイッチなのか ──
+
+            いちばん手間がかかるのは背景けしで、しかも同じフレームは
+            何度も使う。次に開いたときにそれが残っていれば、工程が1つ消える。
+
+            ただし黙って残さない。この道具は「画像はこの端末の中だけで
+            処理されます」と言っている。端末の外に出ないのは残しても本当だが、
+            閉じたあとも残っているのは言っていない話なので、押して決めてもらう。
+
+            ボタンではなくスイッチにしてある。この画面はもう
+            「どれを押せばいいか」が問題になっていて、押しどころは
+            「画像をほぞんする」1か所に絞ってある（styles.css の冒頭）。
+            入と切のあるものをボタンで作ると、状態ごとに別のボタンが要り、
+            押すところがまた増える。スイッチなら1つで両方向を持てる。
+          */}
+          <Toggle on={kept} onChange={onKeepChange} label="このフレームを、この端末に覚えておく" />
+          <p className="group__note">
+            覚えておくと、次に開いたときフレームをえらぶ画面から呼び出せます。背景けしをやり直さずに済みます。覚えておけるのは1つだけで、切ると消えます。
+          </p>
+
           <div className="btn-row">
             <Button variant="ghost" onClick={onChangePhoto} sound="tap">
               <IconPhoto size={17} />

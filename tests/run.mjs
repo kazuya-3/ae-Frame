@@ -144,9 +144,20 @@ async function contrastOf(page, fgSel, bgSel) {
 
 /* ---------------- 画面操作のヘルパー ---------------- */
 
+const PHONE = { width: 390, height: 900 };
+
+/*
+  opts.context … 同じ端末として続きを開きたいときに渡す。
+    browser.newPage() は毎回まっさらな入れ物を作るので、
+    localStorage も IndexedDB も引き継がれない。
+    「閉じてから開き直しても残っている」を確かめるには、入れ物のほうを共有する。
+  opts.stopAt … 'frame' でフレームをえらぶ画面まで進めて止める。
+*/
 async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts = {}) {
   const origin = opts.origin ?? BASE;
-  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  const page = opts.context
+    ? await opts.context.newPage()
+    : await browser.newPage({ viewport: PHONE });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e.message)));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -169,8 +180,10 @@ async function openFrame(browser, frameFile, photoFile = 'photo-color.png', opts
   await page.waitForTimeout(500);
   await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
   await page.waitForTimeout(250);
-  await page.setInputFiles('input[type=file]', join(FIXTURES, frameFile));
-  await page.waitForTimeout(4000);
+  if (opts.stopAt !== 'frame') {
+    await page.setInputFiles('input[type=file]', join(FIXTURES, frameFile));
+    await page.waitForTimeout(4000);
+  }
 
   return { page, errors, aiRequested: () => aiRequested };
 }
@@ -2493,6 +2506,147 @@ try {
     一度も数えていなかった**から。出ているものばかり数えていた。
     だからここは、出ていてはいけないものを名指しで数える。
   */
+  /*
+    前に作ったフレームを、この端末に覚えておく。
+
+    見るところは3つ。
+
+    1. 押されるまで IndexedDB を開かないこと。
+       「有るか無いか」だけなら localStorage の札で足りる。そこを間違えると、
+       まだ使うと決めていない人の1枚目の表示に、非同期の往復が1回乗る。
+       これは画面を見ても分からないので、indexedDB.open を数える。
+
+    2. 閉じて開き直しても残っていること。
+       browser.newPage() は毎回まっさらなので、入れ物（context）を共有する。
+
+    3. 切ったら本当に消えること。
+       札だけ下ろして中身が残る、という壊れかたを見つけたい。
+       札が下りていれば入口は出ないので、画面からは気づけない。
+  */
+  console.log('\n■ 前に作ったフレームを覚えておく');
+  {
+    const ctx = await browser.newContext({ viewport: PHONE });
+    await ctx.addInitScript(() => {
+      // 何回 IndexedDB を開いたか。ページをまたいで数えたいので入れ物に仕込む。
+      window.__idbOpens = 0;
+      const real = indexedDB.open.bind(indexedDB);
+      indexedDB.open = (...a) => {
+        window.__idbOpens++;
+        return real(...a);
+      };
+      /*
+        呼び出したフレームが、覚えたものと同じ画素かを見たい。
+        画面から画素を読む道が無いので、共有シートを差し替えて
+        「フレームだけを渡す」で出てくる PNG のバイト列を受け取る。
+      */
+      window.__shared = [];
+      navigator.canShare = (d) => !!d && Array.isArray(d.files) && d.files.length > 0;
+      navigator.share = async (d) => {
+        const f = d.files[0];
+        window.__shared.push([...new Uint8Array(await f.arrayBuffer())].join(','));
+      };
+    });
+    const opens = (page) => page.evaluate(() => window.__idbOpens);
+    const sharedFrame = async (page) => {
+      await page.getByRole('button', { name: /とうめいなフレームを送る/ }).click();
+      await page.waitForTimeout(700);
+      return page.evaluate(() => window.__shared.at(-1) ?? '');
+    };
+
+    /* ---- 覚えていないうち ---- */
+    const first = await openFrame(browser, 'neon.png', 'photo-color.png', {
+      context: ctx,
+      stopAt: 'frame',
+    });
+    check(
+      '覚えていないうちは、呼び出す入口を出さない',
+      (await first.page.getByRole('button', { name: /前に覚えたフレームをつかう/ }).count()) === 0,
+    );
+    await first.page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+    await first.page.waitForTimeout(4000);
+    await first.page.getByRole('button', { name: /これでOK/ }).click();
+    await first.page.waitForTimeout(1200);
+
+    const idle = await opens(first.page);
+    check('押されるまで IndexedDB を開かない', idle === 0, `${idle} 回`);
+
+    /* ---- 覚える ---- */
+    const before = await sharedFrame(first.page);
+    const keep = first.page.getByRole('button', { name: /この端末に覚えておく/ });
+    check(
+      '覚えるスイッチは、はじめ切れている',
+      (await keep.getAttribute('aria-pressed')) === 'false',
+    );
+    await keep.click();
+    await first.page.waitForTimeout(1200);
+    check('入れると IndexedDB を開く', (await opens(first.page)) > 0);
+    check('入れたら入ったまま', (await keep.getAttribute('aria-pressed')) === 'true');
+    await first.page.close();
+
+    /* ---- 開き直す ---- */
+    const back = await openFrame(browser, 'neon.png', 'photo-color.png', {
+      context: ctx,
+      stopAt: 'frame',
+    });
+    const recall = back.page.getByRole('button', { name: /前に覚えたフレームをつかう/ });
+    check('開き直しても覚えている', (await recall.count()) === 1);
+
+    await recall.click();
+    await back.page.waitForTimeout(1800);
+    check(
+      '呼び出すと、背景けしを通さずに位置あわせへ行く',
+      (await back.page.getByRole('button', { name: /画像をほぞんする/ }).count()) === 1,
+    );
+    const after = await sharedFrame(back.page);
+    check(
+      '呼び出したフレームは、覚えたものと同じ画素',
+      after.length > 0 && after === before,
+      `${before.split(',').length}B → ${after.split(',').length}B`,
+    );
+    check(
+      '呼び出したフレームは、覚えている状態で出る',
+      (await back.page
+        .getByRole('button', { name: /この端末に覚えておく/ })
+        .getAttribute('aria-pressed')) === 'true',
+    );
+    check(
+      '呼び出しても、目に見える不具合を出さない',
+      back.errors.length === 0,
+      back.errors[0] ?? '',
+    );
+
+    /* ---- 忘れる ---- */
+    await back.page.getByRole('button', { name: /この端末に覚えておく/ }).click();
+    await back.page.waitForTimeout(1000);
+    const left = await back.page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const req = indexedDB.open('aeframe', 1);
+          req.onsuccess = () => {
+            const get = req.result.transaction('kept', 'readonly').objectStore('kept').get('frame');
+            get.onsuccess = () => {
+              req.result.close();
+              resolve(get.result === undefined ? 'なし' : 'のこっている');
+            };
+          };
+          req.onerror = () => resolve('ひらけない');
+        }),
+    );
+    check('切ると、中身まで消える', left === 'なし', left);
+    await back.page.close();
+
+    const gone = await openFrame(browser, 'neon.png', 'photo-color.png', {
+      context: ctx,
+      stopAt: 'frame',
+    });
+    check(
+      '忘れたあとは、呼び出す入口が消える',
+      (await gone.page.getByRole('button', { name: /前に覚えたフレームをつかう/ }).count()) === 0,
+    );
+    await gone.page.close();
+    await ctx.close();
+  }
+
   console.log('\n■ お金に触れる要素が無いこと');
   {
     for (const [name, hash] of [
