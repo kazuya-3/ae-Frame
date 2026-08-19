@@ -1,0 +1,1114 @@
+/* =========================================================
+   スタジオのデザイン言語
+
+   ── つくる画面（styles.css）と、なぜ違うのか ──
+
+   つくる画面は「紙」でできている。白い地に 1.6px の線、実線のオフセット影。
+   軽くて、親しみやすくて、ボタンが押し込める。あれは正しい。
+
+   ここは「舞台」でできている。理由は機能そのものにある。
+   この画面で人がすることは、透明を目で確かめることだけ。
+   まわりが明るいと白いフチが見えず、まわりが暗いと黒いフチが見えない。
+   だから舞台の外は徹底して暗く・無彩色にして、目の判断を舞台の中だけに閉じ込める。
+
+   その結果として、深さの出しかたも変わる。
+   紙の世界では「線と影のオフセット」が深さだったが、ここでは光がそれをやる。
+   面は暗く沈め、境目は 1px の細い線、浮いているものだけが柔らかい影を落とす。
+
+   ── 色の掟 ──
+
+   有彩色を出してよい場所は2つだけ。
+
+     1. いま押すところ（アクセント）
+     2. 意味を持つ色そのもの（グリーンバックの緑、透明の市松）
+
+   それ以外は黒・灰・生成りだけで組む。素材の色と競わないようにするため。
+
+   ── 舞台の上に効果をかけない ──
+
+   ふつう、こういう画面には周辺減光（ビネット）や粒子を乗せたくなる。
+   ここではやらない。舞台に映っているものは「保存されるもの」と1ピクセルも
+   違ってはいけない。見栄えのために乗せた効果は、いつか誤解のもとになる。
+   演出は舞台の外側（枠・影・待ちの表示）だけでやる。
+   ========================================================= */
+
+body.studio-theme {
+  --paper: #0a0a0e;
+  --paper-2: #14141b;
+  --paper-3: #1d1d26;
+  --ink: #f5f3ec;
+  --ink-soft: #9d9cab;
+  --ink-faint: #56555f;
+  --line: #34343f;
+  --accent: #ff3b60;
+  --accent-ink: #ffffff;
+  --accent-wash: #2b1119;
+  --ok: #4de0ac;
+  --ok-wash: #10302a;
+
+  --lw: 1px;
+  --radius: 16px;
+  --radius-sm: 11px;
+  --shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.9);
+  --shadow-sm: 0 6px 16px -10px rgba(0, 0, 0, 0.85);
+  --page: 68rem;
+
+  --checker-a: #23232d;
+  --checker-b: #171720;
+
+  color-scheme: dark;
+  background: var(--paper);
+}
+
+/* 方眼の地は紙のためのもの。舞台では消す */
+body.studio-theme::before {
+  opacity: 0.02;
+}
+
+/* 押し込む動きは「紙」の作法。ここでは沈むのではなく、少し降りる */
+.studio .btn:active:not(:disabled),
+.st-card:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.studio {
+  position: relative;
+  z-index: 1;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 14px 16px 72px;
+}
+
+/* ---------- 上の帯 ---------- */
+
+.st-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 18px;
+}
+
+.st-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+}
+
+.st-brand b {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.st-brand__sub {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  padding-left: 9px;
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 520px) {
+  .st-brand__sub {
+    display: none;
+  }
+}
+
+.st-top__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 6px 2px;
+  border-bottom: 1px solid transparent;
+}
+.st-top__link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--line);
+}
+
+/* ---------- はじめの画面 ---------- */
+
+.st-hero {
+  max-width: 38rem;
+  margin: 0 auto;
+  animation: st-rise 0.5s var(--ease-out) both;
+}
+
+/*
+  見出しは、折り返しの位置まで含めて見出し。
+  ブラウザ任せにすると「まるごと消／す。」のように、意味の切れ目でない
+  ところで割れる。行の長さをそろえる指定を入れ、効かないブラウザでは
+  一行に収まる大きさに留める。
+*/
+.st-hero__title {
+  font-size: clamp(1.6rem, 5.2vw, 2.3rem);
+  font-weight: 800;
+  line-height: 1.34;
+  letter-spacing: -0.015em;
+  margin-bottom: 12px;
+  text-wrap: balance;
+}
+
+.st-hero__title em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.st-hero__lead {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.75;
+  margin-bottom: 22px;
+}
+.st-hero__lead b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 置く場所は、この画面でいちばん大きい面にする（視線の起点） */
+.st-drop .drop {
+  min-height: 240px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 59, 96, 0.07), transparent 60%), var(--paper-2);
+  border-color: var(--ink-faint);
+  border-width: 1.5px;
+}
+.st-drop .drop:hover {
+  border-color: var(--accent);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 59, 96, 0.12), transparent 60%), var(--paper-2);
+}
+.st-drop .drop__title {
+  font-size: 1.08rem;
+}
+
+.st-steps {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 620px) {
+  .st-steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.st-steps li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+}
+.st-steps b {
+  color: var(--ink);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+/* 説明は番号の下ではなく、番号の列を飛ばした位置から始める */
+.st-steps li > span:last-child {
+  grid-column: 2;
+  line-height: 1.5;
+}
+.st-steps__num {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.st-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  margin-top: 22px;
+}
+.st-foot svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+/* ---------- 作業中の画面 ---------- */
+
+.st-work {
+  display: grid;
+  gap: 18px;
+  animation: st-rise 0.45s var(--ease-out) both;
+}
+
+/*
+  グリッドの中身は、既定では「いちばん幅の要る子」に合わせて広がる。
+  横に並ぶチップやフィルムがあると、列そのものが画面より広くなり、
+  スマホで右側がはみ出す（実機で最初に気づいたのがこれ）。
+  ここで 0 まで縮んでよいと言っておく。
+*/
+.st-work > *,
+.st-work__main > *,
+.st-work__rail > * {
+  min-width: 0;
+}
+
+@media (min-width: 940px) {
+  .st-work {
+    grid-template-columns: minmax(0, 1.5fr) minmax(310px, 0.9fr);
+    gap: 26px;
+    align-items: start;
+  }
+}
+
+.st-work__rail {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+/* ---------- 舞台 ---------- */
+
+.st-stage {
+  position: relative;
+  width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #101018;
+  box-shadow:
+    0 30px 70px -34px rgba(0, 0, 0, 1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.st-stage__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 透明は「市松」で表す。canvas の中には描かない（保存されるものと同じにするため） */
+  background-color: var(--checker-b);
+  background-image:
+    linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+  background-size: 22px 22px;
+  background-position:
+    0 0,
+    0 11px,
+    11px -11px,
+    -11px 0;
+}
+
+/* ---------- 見くらべ ---------- */
+
+.st-wipe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  margin-left: -24px;
+  display: grid;
+  place-items: center;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.st-wipe__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.9) 10%,
+    rgba(255, 255, 255, 0.9) 90%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  mix-blend-mode: difference;
+}
+
+.st-wipe__grip {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--accent);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.55),
+    0 0 0 5px rgba(255, 59, 96, 0.16);
+  transition: transform 0.16s var(--ease-spring);
+}
+.st-wipe[data-dragging='true'] .st-wipe__grip {
+  transform: scale(1.12);
+}
+.st-wipe:focus-visible {
+  outline: none;
+}
+.st-wipe:focus-visible .st-wipe__grip {
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.55),
+    0 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+/* 見くらべへの入口。名前があるので、初めてでも押せる */
+.st-compare {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 7px 12px 7px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(8, 8, 12, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.st-compare:hover {
+  background: rgba(8, 8, 12, 0.82);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.st-tag {
+  position: absolute;
+  top: 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(8, 8, 12, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.st-tag--before {
+  left: 10px;
+}
+.st-tag--after {
+  right: 10px;
+}
+
+.st-play {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(8, 8, 12, 0.6);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 0.14s var(--ease-spring);
+}
+.st-play:hover {
+  transform: scale(1.06);
+}
+
+/* ---------- 消しているあいだ ---------- */
+
+.st-working {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  overflow: hidden;
+  background: rgba(6, 6, 10, 0.5);
+}
+
+/* 「いま見られている」ことが伝わる走査線。舞台の外側の演出として置いている */
+.st-working__scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 59, 96, 0) 0%,
+    rgba(255, 59, 96, 0.12) 60%,
+    rgba(255, 255, 255, 0.22) 100%
+  );
+  animation: st-scan 2.6s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+.st-working__box {
+  position: relative;
+  margin: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: rgba(10, 10, 14, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.st-working__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  margin-bottom: 9px;
+}
+
+.st-working__eta {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.st-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.28s var(--ease-out);
+}
+
+/* ---------- 背景チップ ---------- */
+
+.st-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.st-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.st-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px 8px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    color 0.16s,
+    background 0.16s;
+}
+.st-chip:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+.st-chip[aria-pressed='true'] {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--paper-3);
+}
+.st-chip:disabled,
+.st-chip[aria-disabled='true'] {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.st-chip input[type='file'] {
+  display: none;
+}
+.st-chip--file {
+  position: relative;
+}
+
+.st-chips--sm .st-chip {
+  font-size: 0.78rem;
+  padding: 6px 11px;
+}
+
+.st-chip__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #888;
+}
+.st-chip__swatch[data-kind='none'] {
+  background-color: var(--checker-b);
+  background-image:
+    linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+}
+.st-chip__swatch[data-kind='green'] {
+  background: #00b140;
+}
+.st-chip__swatch[data-kind='white'] {
+  background: #fff;
+}
+.st-chip__swatch[data-kind='black'] {
+  background: #000;
+}
+.st-chip__swatch[data-kind='blur'] {
+  background: linear-gradient(135deg, #6f7bd6, #c46fa8 55%, #e0a26a);
+  filter: blur(1.4px);
+}
+.st-chip__swatch[data-kind='image'] {
+  background: linear-gradient(135deg, #2b2b36, #4a4a5c);
+}
+
+/* ---------- フィルム ---------- */
+
+.st-film {
+  margin-top: 14px;
+}
+
+/* 上下のパーフォレーション。「これは時間の帯だ」を、形そのもので言う */
+.st-film__track {
+  position: relative;
+  height: 68px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d0d13;
+  border: 1px solid var(--line);
+  /* 横のドラッグはこちらで受け、縦の指スクロールはページに通す */
+  touch-action: pan-y;
+  cursor: pointer;
+}
+.st-film__track::before,
+.st-film__track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9px;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(to right, rgba(10, 10, 14, 0.95) 0 6px, transparent 6px 14px),
+    rgba(10, 10, 14, 0.55);
+  pointer-events: none;
+}
+.st-film__track::before {
+  top: 0;
+}
+.st-film__track::after {
+  bottom: 0;
+}
+
+.st-film__cells {
+  display: flex;
+  height: 100%;
+}
+
+.st-film__cell {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  border-right: 1px solid rgba(0, 0, 0, 0.55);
+  background-color: var(--checker-b);
+  background-image:
+    linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+  background-size: 12px 12px;
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+  overflow: hidden;
+}
+
+.st-film__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  animation: st-pop 0.32s var(--ease-spring) both;
+}
+
+.st-film__wait {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.02) 30%,
+    rgba(255, 255, 255, 0.07) 50%,
+    rgba(255, 255, 255, 0.02) 70%
+  );
+  background-size: 220% 100%;
+  animation: st-shimmer 1.8s linear infinite;
+}
+
+.st-film__mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(6, 6, 10, 0.72);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.st-film__handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  margin-left: -13px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  cursor: ew-resize;
+}
+.st-film__handle:focus-visible {
+  outline: none;
+}
+.st-film__handle:focus-visible span {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.6),
+    0 0 0 3px var(--accent);
+}
+
+.st-film__handle span {
+  width: 8px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.st-film__handle span::after {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 14px;
+  margin: 13px auto;
+  border-radius: 2px;
+  background: var(--paper);
+}
+
+.st-film__head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(255, 59, 96, 0.8);
+}
+
+.st-film__scale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 7px;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.st-film__span {
+  color: var(--ink-soft);
+}
+
+/* ---------- 右側の道具 ---------- */
+
+.st-clip {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+}
+.st-clip__icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+}
+.st-clip__body {
+  min-width: 0;
+  flex: 1;
+}
+.st-clip__name {
+  display: block;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-clip__meta {
+  display: block;
+  font-size: 0.73rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.st-clip__x {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.st-clip__x:hover {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+.st-plan {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.83rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+}
+.st-plan svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+/* 主ボタンだけは、常に画面の中でいちばん明るい面にする */
+.studio .st-go {
+  width: 100%;
+  min-height: 58px;
+  font-size: 1.06rem;
+  letter-spacing: 0.02em;
+}
+.studio .btn--primary.st-go {
+  box-shadow:
+    0 12px 30px -12px rgba(255, 59, 96, 0.85),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  border-color: transparent;
+}
+
+.st-note-soft {
+  font-size: 0.76rem;
+  line-height: 1.65;
+  color: var(--ink-faint);
+}
+
+.st-field-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+.st-field-note {
+  font-size: 0.73rem;
+  color: var(--ink-faint);
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+/* ---------- 保存のシート ---------- */
+
+.st-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.st-sheet__title {
+  font-size: 1.16rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.st-sheet__sub {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+.st-cards {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.st-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s,
+    transform 0.12s;
+}
+.st-card:hover:not(:disabled) {
+  border-color: var(--ink-faint);
+  background: var(--paper-3);
+}
+.st-card:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+/* いちばん多い行き先だけ、枠に色を置いて先に見つけてもらう */
+.st-card[data-accent='true'] {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(255, 59, 96, 0.09), rgba(255, 59, 96, 0.02));
+}
+
+.st-card__icon {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: var(--paper-3);
+  color: var(--ink);
+}
+.st-card[data-accent='true'] .st-card__icon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.st-card__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.st-card__title {
+  font-weight: 700;
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+.st-card__lead {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+.st-card__meta {
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.st-card__note {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+.st-save__opts {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  margin-bottom: 12px;
+}
+.st-opt {
+  display: grid;
+  gap: 7px;
+}
+.st-opt__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.st-save__busy {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 18px 0 8px;
+  text-align: center;
+}
+.st-save__busyLabel {
+  font-weight: 700;
+}
+
+.st-ring {
+  position: relative;
+  width: 122px;
+  height: 122px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--accent) calc(var(--v) * 360deg), rgba(255, 255, 255, 0.09) 0);
+}
+.st-ring::after {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: var(--paper-2);
+}
+.st-ring span {
+  position: relative;
+  z-index: 1;
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-save__done {
+  display: grid;
+  gap: 12px;
+}
+.st-save__doneTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ok);
+}
+.st-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.st-file__name {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+.st-file__meta {
+  flex: none;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.st-save__actions {
+  display: grid;
+  gap: 8px;
+}
+
+/* ---------- 動き ---------- */
+
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes st-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes st-scan {
+  0% {
+    transform: translateY(-110%);
+  }
+  100% {
+    transform: translateY(300%);
+  }
+}
+
+@keyframes st-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+/* 動きが苦手な人には、動かさない */
+@media (prefers-reduced-motion: reduce) {
+  .st-working__scan,
+  .st-film__wait,
+  .st-film__img,
+  .st-hero,
+  .st-work {
+    animation: none;
+  }
+}
+
+/* スタジオを取りにいっているあいだ。一瞬なので、文字だけ置く */
+.st-boot {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}

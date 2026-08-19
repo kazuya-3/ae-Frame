@@ -23,6 +23,7 @@ import { Sprite } from './components/Sprite';
 import { navigate } from './lib/route';
 import {
   IconArrowRight,
+  IconFilm,
   IconFrame,
   IconHelp,
   IconLock,
@@ -355,6 +356,24 @@ export default function App({ active = true }: { active?: boolean }) {
           />
         </div>
       )}
+
+      {/*
+        動画の背景けし（スタジオ）への入口。
+
+        ここに置いたのは、この画面の用（フレームを重ねる）が済んだ人の目が、
+        最後に落ちる場所だから。作業中の3ステップの中に混ぜると、
+        「いま押すボタンは1つ」という約束が崩れる。
+      */}
+      <button type="button" className="hop" onClick={() => navigate('studio')}>
+        <span className="hop__icon">
+          <IconFilm size={22} />
+        </span>
+        <span className="hop__body">
+          <b>動画の背景も、消せます</b>
+          <span>配信で重ねる素材づくりはこちら。透過のまま書き出せます。</span>
+        </span>
+        <IconArrowRight size={20} className="hop__go" />
+      </button>
 
       <div className="footer">
         <p>

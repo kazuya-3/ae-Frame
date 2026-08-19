@@ -6,7 +6,7 @@
  * 1. GitHub Pages には「どのURLでも index.html を返す」設定が無い。
  *    ふつうのパス（/share）で直リンクを配ると 404 になる。
  *    ハッシュ（#/share）なら、サーバーから見ればいつも同じ1枚なので必ず開ける。
- * 2. 画面は2つしかない。そのために依存を増やすのは割に合わない。
+ * 2. 画面は数えるほどしかない。そのために依存を増やすのは割に合わない。
  *
  *
  * ── 応援ページを畳んだこと ──
@@ -34,11 +34,12 @@
  */
 import { useEffect, useState } from 'react';
 
-export type Route = 'maker' | 'share';
+export type Route = 'maker' | 'share' | 'studio';
 
 export const ROUTE_HASH: Record<Route, string> = {
   maker: '#/',
   share: '#/share',
+  studio: '#/studio',
 };
 
 /** 共有ページへ送る、古いハッシュ。決済まわりを外す前に配ってしまったもの */
@@ -63,6 +64,8 @@ export function isLegacyHash(hash: string) {
 export function readRoute(hash = window.location.hash, search = window.location.search): Route {
   const h = normalize(hash);
   if (h === '#/share') return 'share';
+  // うごく素材のスタジオ。つくる画面とは別の道具なので、URL も分けてある
+  if (h === '#/studio') return 'studio';
   // 古い応援・お礼のURLは、共有ページとして開く
   if (LEGACY_HASH.includes(h)) return 'share';
 

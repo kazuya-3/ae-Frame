@@ -247,3 +247,90 @@ export const IconTouch = (p: Props) => (
     <path d="M17.6 11.9a1.6 1.6 0 013.1.5v2.4c0 3.2-2.2 5.7-5.4 5.7h-1.4c-2 0-3.2-.8-4.3-2.4l-2.4-3.5a1.7 1.7 0 012.6-2.1l1.3 1.4" />
   </Svg>
 );
+
+/* ---------------- うごく素材のスタジオで使うもの ---------------- */
+
+/** フィルム（動画そのもの） */
+export const IconFilm = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="M7 5v14M17 5v14" />
+    <path d="M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4" />
+  </Svg>
+);
+
+/** 再生 */
+export const IconPlay = (p: Props) => (
+  <Svg {...p}>
+    <path d="M8 5.5l11 6.5-11 6.5z" />
+  </Svg>
+);
+
+/** 一時停止 */
+export const IconPause = (p: Props) => (
+  <Svg {...p}>
+    <path d="M9 5v14M15 5v14" />
+  </Svg>
+);
+
+/** 見くらべ（左右にひらく） */
+export const IconCompare = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 3v18" />
+    <path d="M8 8L4 12l4 4" />
+    <path d="M16 8l4 4-4 4" />
+  </Svg>
+);
+
+/** 配信（電波を出す） */
+export const IconBroadcast = (p: Props) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="2.2" />
+    <path d="M8.4 8.4a5 5 0 000 7.2M15.6 8.4a5 5 0 010 7.2" />
+    <path d="M5.6 5.6a9 9 0 000 12.8M18.4 5.6a9 9 0 010 12.8" />
+  </Svg>
+);
+
+/** 重ねる（レイヤー） */
+export const IconLayers = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 3.5l8.5 4.5L12 12.5 3.5 8z" />
+    <path d="M3.5 12.5L12 17l8.5-4.5" />
+    <path d="M3.5 16.5L12 21l8.5-4.5" />
+  </Svg>
+);
+
+/** つまみ（こまかい調整） */
+export const IconSliders = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+    <circle cx="16" cy="7" r="2" />
+    <circle cx="10" cy="17" r="2" />
+  </Svg>
+);
+
+/** ひとまとめの箱（ZIP） */
+export const IconArchive = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4" width="17" height="4.5" rx="1.4" />
+    <path d="M5 8.5V19a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 19V8.5" />
+    <path d="M10.5 12.5h3" />
+  </Svg>
+);
+
+/** きらめき（AI がやっていること） */
+export const IconSparkle = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 3.5l1.8 4.7L18.5 10l-4.7 1.8L12 16.5l-1.8-4.7L5.5 10l4.7-1.8z" />
+    <path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" />
+  </Svg>
+);
+
+/** はさみ（切り抜き） */
+export const IconScissors = (p: Props) => (
+  <Svg {...p}>
+    <circle cx="6.5" cy="17.5" r="2.5" />
+    <circle cx="6.5" cy="6.5" r="2.5" />
+    <path d="M8.6 8.4L20 18M8.6 15.6L20 6" />
+  </Svg>
+);

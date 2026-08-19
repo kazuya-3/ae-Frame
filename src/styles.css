@@ -2096,3 +2096,68 @@ input[type='range']:active::-webkit-slider-thumb {
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------- ほかの道具への入口 ---------- */
+
+/*
+  「動画のほうもある」を伝えるための行。
+
+  ここは作業の外側なので、色は置かない（主ボタンと競わせない）。
+  そのかわり、押せるものだと分かるように、行そのものを枠で囲って
+  右端に矢印を置いている。
+*/
+.hop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  margin: 4px 0 18px;
+  padding: 13px 14px;
+  border: var(--lw) solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    transform 0.09s,
+    box-shadow 0.09s;
+}
+
+.hop:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--line);
+}
+
+.hop__icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  border: var(--lw) solid var(--line);
+}
+
+.hop__body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.hop__body b {
+  font-size: 0.92rem;
+}
+
+.hop__body span {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.hop__go {
+  flex: none;
+  color: var(--ink-faint);
+}

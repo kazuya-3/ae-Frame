@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
+import { runMp4Checks } from './mp4.mjs';
 import { checkDist, checkRepoWords, checkRepoSecrets } from '../tools/check-dist.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2493,6 +2494,387 @@ try {
     一度も数えていなかった**から。出ているものばかり数えていた。
     だからここは、出ていてはいけないものを名指しで数える。
   */
+  /*
+    ■ うごく素材のスタジオ
+
+    ここで確かめたいのは、ただ1つ。
+    **「背景がなくなった状態で、他のアプリに渡せるか」**
+
+    画面に出ている絵がきれいでも、渡した先で背景が黒く塗られていたら
+    このツールは何もしていないのと同じになる。だから見るのは
+    「舞台の画素」だけでなく、**書き出したファイルを読み直したときの画素**。
+
+    ── 検証用の動画を、その場で作っている理由 ──
+
+    リポジトリに動画を置くと、それだけで数百KB〜数MBが増える。
+    しかも検証に使う Chromium には H.264 の鍵が入っていないので、
+    ふつうの MP4 を置いても、この環境では開けない。
+    ブラウザ自身に WebM を録らせれば、置かずに済み、必ず開ける。
+
+    ── AI は動かせない ──
+
+    検証中はモデルの取得を止めてある（通信できない端末の再現）。
+    そのため、ここで通るのは「色で消す」道だけ。AI の道は
+    src/lib/ai.ts の側で、つくる画面の検証が見ている。
+  */
+  console.log('\n■ うごく素材のスタジオ');
+  {
+    const page = await browser.newPage({ viewport: { width: 1180, height: 940 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e.message)));
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    await page.route('**huggingface.co/**', (r) => r.abort());
+
+    const asked = [];
+    page.on('request', (r) => asked.push(r.url()));
+
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(400);
+    check(
+      'つくる画面では、スタジオの中身を落としてこない',
+      !asked.some((u) => /StudioPage/.test(u)),
+      asked.filter((u) => /StudioPage/.test(u)).join(' '),
+    );
+    check('つくる画面に、動画への入口がある', (await page.locator('.hop').count()) === 1);
+
+    await page.goto(BASE + '#/studio', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(700);
+    check('スタジオが開く', (await page.locator('.st-hero').count()) === 1);
+    check(
+      '開いたときだけ、スタジオの中身を取りにいく',
+      asked.some((u) => /StudioPage/.test(u)),
+    );
+
+    /* 置き場所が、この画面でいちばん大きい面であること（視線の起点） */
+    {
+      const drop = await page.locator('.st-drop .drop').boundingBox();
+      check(
+        '置き場所が、指で外しようのない大きさ',
+        drop.height >= 200,
+        `${Math.round(drop.height)}px`,
+      );
+    }
+
+    /* ── 画像1枚：単色の地が消え、まん中の形だけが残る ── */
+    await page.setInputFiles('.st-drop input[type=file]', join(FIXTURES, 'studio-solid.png'));
+    await page.waitForTimeout(900);
+
+    check('置くと舞台が出る', (await page.locator('.st-stage__canvas').count()) === 1);
+    check(
+      '単色の地は「色で消す」と、先に言う',
+      /単色/.test(await page.locator('.st-plan').innerText()),
+      await page.locator('.st-plan').innerText(),
+    );
+    check('消す前は、見くらべのつまみを出さない', (await page.locator('.st-wipe').count()) === 0);
+
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    // 消し終わったあと、一度だけ右から左へ拭う演出が入る。その終わりまで待つ
+    await page.waitForTimeout(2800);
+
+    check(
+      'けし終わると、次は保存だと分かる',
+      (await page.getByRole('button', { name: 'ほぞんする' }).count()) === 1,
+    );
+
+    const stagePixel = (fx, fy) =>
+      page.evaluate(
+        ([fx, fy]) => {
+          const c = document.querySelector('.st-stage__canvas');
+          const d = c.getContext('2d', { willReadFrequently: true });
+          const x = Math.min(c.width - 1, Math.round(c.width * fx));
+          const y = Math.min(c.height - 1, Math.round(c.height * fy));
+          return [...d.getImageData(x, y, 1, 1).data];
+        },
+        [fx, fy],
+      );
+
+    {
+      const corner = await stagePixel(0.02, 0.05);
+      const center = await stagePixel(0.5, 0.5);
+      check('地は透明になる', corner[3] < 12, `alpha ${corner[3]}`);
+      check('前景は残る', center[3] > 240, `alpha ${center[3]}`);
+    }
+
+    check('消したあとは、見くらべの入口が出る', (await page.locator('.st-compare').count()) === 1);
+
+    /*
+      見くらべ。押すと境目が出て、左側だけが「消す前」に戻る。
+
+      ここは目でしか確かめられないと思われがちだが、
+      「左は元の地の色・右は透明」を読めば、機械でも確かめられる。
+    */
+    {
+      await page.locator('.st-compare').click();
+      await page.waitForTimeout(250);
+      const stage = await page.locator('.st-stage').boundingBox();
+      const grip = await page.locator('.st-wipe__grip').boundingBox();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(stage.x + stage.width * 0.62, grip.y + grip.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+
+      const left = await stagePixel(0.1, 0.06);
+      const right = await stagePixel(0.92, 0.06);
+      check(
+        'つまみの左には、消す前の地が出る',
+        left[3] > 250 && left[2] > 150 && left[0] < 90,
+        left.join(','),
+      );
+      check('つまみの右は、消したあとのまま', right[3] < 12, `alpha ${right[3]}`);
+
+      // 端まで戻すと、つまみは引っ込んで「くらべる」に戻る
+      await page.mouse.move(stage.x + stage.width * 0.62, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(stage.x + 1, grip.y + grip.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      check(
+        '端まで戻すと、つまみは引っ込む',
+        (await page.locator('.st-wipe').count()) === 0 &&
+          (await page.locator('.st-compare').count()) === 1,
+      );
+    }
+
+    /* ── 背景チップ：うしろに敷いたものが、その場で舞台に出る ── */
+    await page.getByRole('button', { name: 'グリーン' }).click();
+    await page.waitForTimeout(350);
+    {
+      const corner = await stagePixel(0.02, 0.05);
+      check(
+        'グリーンを選ぶと、うしろが緑で埋まる',
+        corner[3] > 250 && corner[1] > 120 && corner[0] < 90,
+        corner.join(','),
+      );
+    }
+    await page.getByRole('button', { name: 'とうめい' }).click();
+    await page.waitForTimeout(350);
+    check('とうめいに戻せる', (await stagePixel(0.02, 0.05))[3] < 12);
+
+    /* ── 動画：録って、置いて、消して、書き出して、読み直す ── */
+    await page.locator('.st-clip__x').click();
+    await page.waitForTimeout(400);
+    check('素材を外すと、はじめの画面に戻る', (await page.locator('.st-hero').count()) === 1);
+
+    const made = await page.evaluate(async () => {
+      const c = document.createElement('canvas');
+      c.width = 320;
+      c.height = 180;
+      const x = c.getContext('2d');
+      const stream = c.captureStream(25);
+      const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const stopped = new Promise((r) => (rec.onstop = r));
+      rec.start();
+      const t0 = performance.now();
+      await new Promise((done) => {
+        const draw = () => {
+          const p = (performance.now() - t0) / 1400;
+          x.fillStyle = '#00b140';
+          x.fillRect(0, 0, 320, 180);
+          x.fillStyle = '#e2384f';
+          // まん中は動かさない（どの時刻でも「前景」が居ることを確かめたいので）
+          x.fillRect(104 + Math.sin(p * 6) * 6, 44, 112, 92);
+          if (performance.now() - t0 > 1400) done();
+          else requestAnimationFrame(draw);
+        };
+        draw();
+      });
+      rec.stop();
+      await stopped;
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const file = new File([blob], 'test-clip.webm', { type: 'video/webm' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document
+        .querySelector('.st-drop .drop')
+        .dispatchEvent(
+          new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }),
+        );
+      return blob.size;
+    });
+    check('検証用の動画を録れた', made > 1000, `${made} バイト`);
+
+    await page.waitForTimeout(2500);
+    check('動画を置くと、フィルムが出る', (await page.locator('.st-film__track').count()) === 1);
+    check(
+      '長さが書かれていない動画でも、コマ数を数えられる',
+      /コマ/.test(await page.locator('.st-clip__meta').innerText()) &&
+        !/^0コマ/.test(await page.locator('.st-clip__meta').innerText()),
+      await page.locator('.st-clip__meta').innerText(),
+    );
+
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(6000);
+    check(
+      '動画も、けし終わって保存に進める',
+      (await page.getByRole('button', { name: 'ほぞんする' }).count()) === 1,
+    );
+    {
+      const corner = await stagePixel(0.03, 0.06);
+      const center = await stagePixel(0.5, 0.5);
+      check('動画でも、地が透明になる', corner[3] < 20, `alpha ${corner[3]}`);
+      check('動画でも、前景が残る', center[3] > 230, `alpha ${center[3]}`);
+    }
+
+    check(
+      'フィルムに、切り抜いたあとのコマが並ぶ',
+      (await page.locator('.st-film__img').count()) >= 3,
+      `${await page.locator('.st-film__img').count()} 枚`,
+    );
+
+    /* 保存：行き先で選ばせているか */
+    await page.getByRole('button', { name: 'ほぞんする' }).click();
+    await page.waitForTimeout(700);
+    const cards = await page.locator('.st-card__title').allInnerTexts();
+    check('行き先の名前で選ばせている（形式名ではなく）', cards.length >= 3, cards.join(' / '));
+    check('配信ソフト向けが、いちばん上にある', /配信ソフト/.test(cards[0] ?? ''), cards[0]);
+
+    /* 透過WebM を実際に書き出して、透明が残っているかを読み直す */
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: /配信ソフトに、そのまま置く/ }).click(),
+    ]);
+    const savedPath = await download.path();
+    const savedName = download.suggestedFilename();
+    const bytes = readFileSync(savedPath);
+    check(
+      '透過の動画が書き出される',
+      savedName.endsWith('.webm') && bytes.length > 2000,
+      `${savedName} / ${bytes.length}バイト`,
+    );
+    check(
+      '中身がちゃんと WebM になっている',
+      bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3,
+    );
+
+    const back = await page.evaluate(async (b64) => {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const v = document.createElement('video');
+      v.muted = true;
+      v.playsInline = true;
+      v.src = URL.createObjectURL(new Blob([arr], { type: 'video/webm' }));
+      await new Promise((res, rej) => {
+        v.onloadeddata = res;
+        v.onerror = () => rej(new Error('読み直せない'));
+        setTimeout(() => rej(new Error('時間切れ')), 10_000);
+      });
+      v.currentTime = 0.4;
+      await new Promise((res) => {
+        v.onseeked = res;
+        setTimeout(res, 3000);
+      });
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.clearRect(0, 0, c.width, c.height);
+      x.drawImage(v, 0, 0);
+      const at = (fx, fy) => [
+        ...x.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data,
+      ];
+      return { size: [c.width, c.height], corner: at(0.04, 0.08), center: at(0.5, 0.5) };
+    }, bytes.toString('base64'));
+
+    check('書き出したものを開き直せる', back.size[0] > 0, back.size.join('x'));
+    check(
+      '**渡した先でも、背景が無いまま**',
+      back.corner[3] < 30,
+      `すみの不透明度 ${back.corner[3]}`,
+    );
+    check(
+      '渡した先でも、前景は残っている',
+      back.center[3] > 200,
+      `まん中の不透明度 ${back.center[3]}`,
+    );
+
+    /*
+      グリーン背景：透過を読めないアプリへ渡すための道。
+
+      ここで確かめたいのは「本当にその形式で録れるか」。
+      MediaRecorder.isTypeSupported は、符号器を持っていなくても
+      対応していると答えることがある（この Chromium がまさにそれで、
+      video/mp4 に「はい」と答えるのに H.264 を持っていない）。
+      実際に押して、ファイルが出てくるところまで見る。
+    */
+    await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
+    await page.waitForTimeout(500);
+    const [green] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: /CapCut などの編集アプリで使う/ }).click(),
+    ]);
+    const greenBytes = readFileSync(await green.path());
+    check(
+      'グリーン背景の動画が書き出される',
+      greenBytes.length > 2000,
+      `${green.suggestedFilename()} / ${greenBytes.length}バイト`,
+    );
+
+    const greenBack = await page.evaluate(async (b64) => {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const v = document.createElement('video');
+      v.muted = true;
+      v.src = URL.createObjectURL(new Blob([arr]));
+      await new Promise((res, rej) => {
+        v.onloadeddata = res;
+        v.onerror = () => rej(new Error('読み直せない'));
+        setTimeout(() => rej(new Error('時間切れ')), 10_000);
+      });
+      v.currentTime = 0.4;
+      await new Promise((res) => {
+        v.onseeked = res;
+        setTimeout(res, 3000);
+      });
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(v, 0, 0);
+      return [
+        ...x.getImageData(Math.round(c.width * 0.04), Math.round(c.height * 0.08), 1, 1).data,
+      ];
+    }, greenBytes.toString('base64'));
+    check(
+      '渡した先では、地がグリーンで塗られている',
+      greenBack[3] > 250 && greenBack[1] > 120 && greenBack[0] < 90,
+      greenBack.join(','),
+    );
+
+    /* PNG連番：ひとまとめの箱として渡せるか */
+    await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
+    await page.waitForTimeout(500);
+    const [zip] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: /いちばんきれいに残す/ }).click(),
+    ]);
+    const zipBytes = readFileSync(await zip.path());
+    check(
+      'PNG連番が ZIP として書き出される',
+      zip.suggestedFilename().endsWith('.zip') &&
+        zipBytes[0] === 0x50 &&
+        zipBytes[1] === 0x4b &&
+        zipBytes.length > 3000,
+      `${zip.suggestedFilename()} / ${zipBytes.length}バイト`,
+    );
+    check(
+      'ZIP の中に、コマと読みかたの紙が入っている',
+      zipBytes.includes(Buffer.from('0001.png')) &&
+        zipBytes.includes(Buffer.from('このフォルダについて.txt')),
+    );
+
+    check('通しで、エラーが1件も出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
+    await page.close();
+  }
+
+  /* MP4 をほどく部分は、中身の分かるファイルを組み立てて Node 側で見る */
+  console.log('\n■ MP4 をほどく');
+  runMp4Checks(check);
+
   console.log('\n■ お金に触れる要素が無いこと');
   {
     for (const [name, hash] of [
