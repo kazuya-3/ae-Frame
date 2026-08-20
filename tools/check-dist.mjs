@@ -23,6 +23,11 @@
  *   4. 誰からも参照されていない古いハッシュ付きファイルが残っていないか
  *   5. リンクを貼ったときに出る絵が、実在して、申告どおりの大きさか
  *   6. 配る画像が重すぎないか（1枚ごと・合計）
+ *   7. お礼（チップ）の文言が、出すと決めた状態と合っているか
+ *
+ * 7 は「入っていない」と「そろっている」の両方を見る。VITE_TIP_URL を
+ * 渡さずに走らせたときは「1つも入っていないこと」、渡したときは
+ * 「全部そろっていて、送り先もその1本だけであること」。
  *
  * 4 は中身ではなく残りかすの話。--emptyOutDir を付け忘れたビルドや、
  * 手で足したファイルがあると、古い JS が公開先に残る。中身が古いだけに、
@@ -58,6 +63,25 @@ export const BANNED_WORDS = [
   'このツールの改善に活用',
   'まだ決めていません',
   'creator_support',
+];
+
+/**
+ * お礼（チップ）まわりでしか出てこない言葉。
+ *
+ * 送り先が空のビルドには、**1つも入っていてはいけない**。
+ * 前回そこで踏んだ。募集の文言を条件分岐の向こうに置いて「画面に出ない」で
+ * 止めたが、文字列は配られる JS にそのまま残っていた。
+ * 画面を見る検証では永久に捕まえられない壊れかたなので、ここで実物を読む。
+ *
+ * 逆に、送り先が入っているビルドには**全部入っていないといけない**。
+ * 入口を出すと決めたのに、束ねる側の都合で文が落ちていたら、
+ * 「払っても何も変わらない」という肝心の断りが消える。
+ */
+export const TIP_MARKERS = [
+  '作った人にお礼を送る',
+  'お礼を送る',
+  '送っても、送らなくても',
+  'お返しするものもありません',
 ];
 
 /** 決済への入口。1本でも残っていたら「決済なし」ではない */
@@ -99,7 +123,7 @@ function walk(dir, out = []) {
  * 配るものを調べる。
  * @returns {{name: string, ok: boolean, detail: string}[]}
  */
-export function checkDist(distDir) {
+export function checkDist(distDir, { tipUrl = '' } = {}) {
   const results = [];
   const add = (name, ok, detail = '') => results.push({ name, ok, detail });
 
@@ -131,17 +155,53 @@ export function checkDist(distDir) {
     wordHits.length ? where(wordHits) : `${BANNED_WORDS.length} 語ぶん確認`,
   );
 
-  /* 2. 決済リンク */
+  /*
+    2. 決済リンク。
+
+    ── なぜ「0本」で固定できないのか ──
+
+    お礼を入れると、送り先が1本だけ配るものに入る。そのとき「0本」を
+    数え続けると、この点検はただ落ちるだけになり、上限を緩めて黙らせたくなる。
+    緩めた瞬間、**2本目が入っても気づけなくなる**。
+
+    だから数えかたを、期待する状態で切り替える。
+    送り先が空なら0本。入っているなら「その1本だけ」。
+    どちらの状態でも「意図しない決済への入口が無い」を言い続けられる。
+  */
+  const allowedDomain = tipUrl ? BANNED_LINKS.find((l) => tipUrl.includes(l)) : null;
   const linkHits = [];
   for (const [f, text] of bodies) {
-    for (const l of BANNED_LINKS)
+    for (const l of BANNED_LINKS) {
+      if (l === allowedDomain) continue;
       if (text.includes(l)) linkHits.push(`${l}（${relative(distDir, f)}）`);
+    }
   }
   add(
-    '決済リンクが入っていない',
+    tipUrl ? '決済リンクが、決めた1本のほかに無い' : '決済リンクが入っていない',
     linkHits.length === 0,
     linkHits.length ? where(linkHits) : `${BANNED_LINKS.length} 種ぶん確認`,
   );
+
+  /* 2b. お礼まわりの文言。空のビルドには1つも、入りのビルドには全部 */
+  {
+    const found = TIP_MARKERS.filter((m) => [...bodies.values()].some((t) => t.includes(m)));
+    if (tipUrl) {
+      const missing = TIP_MARKERS.filter((m) => !found.includes(m));
+      add(
+        'お礼の文言が、配るものにそろっている',
+        missing.length === 0,
+        missing.length ? `足りない：${missing.join(' / ')}` : `${TIP_MARKERS.length} 語ぶん確認`,
+      );
+      const hasUrl = [...bodies.values()].some((t) => t.includes(tipUrl));
+      add('お礼の送り先が、配るものに入っている', hasUrl, tipUrl);
+    } else {
+      add(
+        'お礼の文言が、配るものに1つも入っていない',
+        found.length === 0,
+        found.length ? where(found) : `${TIP_MARKERS.length} 語ぶん確認`,
+      );
+    }
+  }
 
   /* 3. 秘密鍵らしきもの */
   const secretHits = [];
@@ -367,7 +427,10 @@ const WORD_ALLOWLIST = ['tools/check-dist.mjs', 'docs/stripe-compliance.md'];
  * という状態だった。
  */
 export function checkRepoWords() {
-  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tips']);
+  // 配るものは checkDist が別に読む。ここはリポジトリ側だけを見る。
+  // （'dist-tips' という綴りが残っていた。実際のフォルダは dist-tip なので
+  //  素通りしていた。中に決済リンクが入るのは、まさにこの版）
+  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip']);
   const exts = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html', '.md', '.json', '.yml', '.yaml'];
   const files = [];
   const walkRepo = (dir) => {
@@ -428,7 +491,7 @@ export function checkOgSource() {
 
 /** リポジトリ側に秘密鍵が入っていないこと。配るものとは別に見る */
 export function checkRepoSecrets() {
-  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tips', 'assets-src']);
+  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'assets-src']);
   const files = [];
   const walkRepo = (dir) => {
     for (const name of readdirSync(dir)) {
@@ -459,7 +522,12 @@ export function checkRepoSecrets() {
 /* 単体で走らせたとき */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = join(ROOT, process.argv[2] ?? 'dist');
-  const results = [...checkDist(dir), checkOgSource(), checkRepoWords(), checkRepoSecrets()];
+  const results = [
+    ...checkDist(dir, { tipUrl: process.env.VITE_TIP_URL ?? '' }),
+    checkOgSource(),
+    checkRepoWords(),
+    checkRepoSecrets(),
+  ];
   let bad = 0;
   console.log(`\n■ 配るものの点検（${relative(ROOT, dir) || '.'}）`);
   for (const r of results) {

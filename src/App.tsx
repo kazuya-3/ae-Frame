@@ -23,6 +23,7 @@ import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
 import { Sprite } from './components/Sprite';
 import { navigate } from './lib/route';
+import { TipLink } from 'virtual:tip';
 import {
   IconArrowRight,
   IconFrame,
@@ -467,6 +468,19 @@ export default function App({ active = true }: { active?: boolean }) {
         <button type="button" className="link-quiet" onClick={() => navigate('share')}>
           このツールを人に知らせる
         </button>
+        {/*
+          お礼の入口。中身は virtual:tip の向こうにある。
+
+          ── なぜ文言をここに書かないのか ──
+
+          はじめ、ここに {TIP_ON && <button>作った人にお礼を送る</button>} と書いた。
+          送り先が空でも押せないだけで、**文字列は配られる JS にそのまま残っていた**。
+          前回 Stripe の審査で踏んだ穴と、まったく同じ形。
+
+          ページだけを差し替えても、呼ぶ側に文言が残っていては同じこと。
+          出したくないものは、リンクの1行まで全部あちら側に置く。
+        */}
+        <TipLink />
       </div>
 
       {help && active && (

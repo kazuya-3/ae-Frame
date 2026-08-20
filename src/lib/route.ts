@@ -33,12 +33,14 @@
  * 届いたときに壊れないほうがよい。
  */
 import { useEffect, useState } from 'react';
+import { TIP_ON } from './tip';
 
-export type Route = 'maker' | 'share';
+export type Route = 'maker' | 'share' | 'tip';
 
 export const ROUTE_HASH: Record<Route, string> = {
   maker: '#/',
   share: '#/share',
+  tip: '#/tip',
 };
 
 /** 共有ページへ送る、古いハッシュ。決済まわりを外す前に配ってしまったもの */
@@ -63,6 +65,12 @@ export function isLegacyHash(hash: string) {
 export function readRoute(hash = window.location.hash, search = window.location.search): Route {
   const h = normalize(hash);
   if (h === '#/share') return 'share';
+  /*
+    お礼のページは、送り先が設定されているビルドにしか無い。
+    無いビルドで #/tip を開いた人には、つくる画面を出す。
+    「あるのに開けない」ではなく「無い」ので、案内も出さない。
+  */
+  if (TIP_ON && h === '#/tip') return 'tip';
   // 古い応援・お礼のURLは、共有ページとして開く
   if (LEGACY_HASH.includes(h)) return 'share';
 

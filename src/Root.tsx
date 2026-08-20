@@ -8,6 +8,8 @@
  */
 import App from './App';
 import { SharePage } from './components/SharePage';
+// 送り先が空のビルドでは、中身の無い部品に差し替わる（vite.config.ts）
+import { TipPage } from 'virtual:tip';
 import { useRoute } from './lib/route';
 
 export default function Root() {
@@ -19,6 +21,7 @@ export default function Root() {
         <App active={route === 'maker'} />
       </div>
       {route === 'share' && <SharePage />}
+      {route === 'tip' && <TipPage />}
     </>
   );
 }

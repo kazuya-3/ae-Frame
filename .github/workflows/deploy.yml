@@ -36,14 +36,33 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # ── お礼（チップ）の送り先 ──
+      #
+      # リポジトリ変数 TIP_URL に決済リンクを入れると、次の公開から入口が出る。
+      # 空のあいだは、入口も文言も配るものに入らない（vite.config.ts の
+      # ae-frame:tip-entry が、モジュールごと差し替える）。
+      #
+      # secret ではなく variable にしてある。中身は誰でも見る公開URLで、
+      # secret にするとログで伏せ字になり、取り違えたときに気づけない。
+      #
+      # 入れる前に Stripe の事前確認が要る。手順は docs/tip-restart-plan.md。
+      #
       # npm run build の中で tsc -b も走るので、ここで別に叩かない。
       # オプションを足して叩くと src/ に .js が吐かれ、以後 Vite が
       # .tsx ではなくそちらを読んでしまう（引き継ぎ資料 CASE 14）。
       - run: npm run build
+        env:
+          VITE_TIP_URL: ${{ vars.TIP_URL }}
 
       # 透過の品質は、壊れても型では気づけない。実ブラウザで確かめてから公開する。
+      #
+      # 検証にも同じ値を渡す。渡さないと「空のはずなのに文言が入っている」と
+      # 判定されて、入れた側の公開が通らなくなる。
       - run: npx playwright install --with-deps chromium
       - run: npm test
+        env:
+          VITE_TIP_URL: ${{ vars.TIP_URL }}
 
       # Pages のスイッチ（Settings → Pages → Source を「GitHub Actions」に）は、
       # 一度だけ人が手で入れる必要がある。ここは自動化できない。

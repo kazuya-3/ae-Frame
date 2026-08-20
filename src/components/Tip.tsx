@@ -1,0 +1,135 @@
+/**
+ * お礼（チップ）まわり。**このファイルは、送り先が設定されているビルドにしか
+ * 存在しない。** 空のときは vite.config.ts が中身の無い部品に差し替えるので、
+ * ここに書いた文字は1つも配られない。
+ *
+ * 入口（footer のリンク）もここに置いてある。ページだけを差し替えても、
+ * 呼ぶ側に文言が残っていては同じこと。**出したくないものは全部この中に置く。**
+ *
+ * ── ここに書いてよいこと ──
+ *
+ * **もう起きたことだけ。** これから作るもの、お金の使いみち、目標額、期間、
+ * 送った人の一覧、見返り。どれも書かない。書いた瞬間に資金調達になり、
+ * 一度そこで止められている（docs/stripe-compliance.md）。
+ *
+ * 「寄付」とも呼ばない。Stripe の言う寄付には、果たすと約束した慈善の目的が要る。
+ * この道具にそれは無い。あるのは「もう使ってもらった」という事実だけ。
+ *
+ * ── なぜ「変わりません」を3回書くのか ──
+ *
+ * くどいが、これがこの機能の中身そのものだから。
+ *
+ * 払った人に何かを渡すと、それは売りものになる。売りものになると、
+ * 特定商取引法の表示義務がかかり、氏名・住所・電話番号を公開することになる。
+ * 個人が顔と名前でやっている道具でそれをやると、話が別物になる。
+ *
+ * だから「渡すものは1つも無い」は、遠慮ではなく設計。
+ * 読む人にも、審査する人にも、同じ強さで見えていてほしい。
+ *
+ * ── 押しどころを増やさない ──
+ *
+ * この画面には強調色のボタンが1つある。それはこの画面の用事そのものなので
+ * よいが、**つくる画面には1文字も出さない**。保存できた直後にお願いを
+ * 差し込むと、いちばん多い次の行動（写真だけ変える・フレームを渡す）を
+ * 押しのけることになる。
+ */
+import { useEffect } from 'react';
+import { navigate } from '../lib/route';
+import { play } from '../lib/sound';
+import { TIP_URL } from '../lib/tip';
+import { Note, Button } from './ui';
+import { IconArrowLeft, IconFrame, IconLock } from './Icons';
+
+/**
+ * つくる画面の足もとに置く、静かな入口。
+ *
+ * 強調色は「いま押すところ」1か所だけ、というのがこの道具の決まり
+ * （styles.css の冒頭）。つくる画面のそこは「画像をほぞんする」。
+ * お礼を強調色にすると、押すところが2つに見える。
+ *
+ * 保存できた直後には置かない。あの場所に要るのは次の作業への道であって、
+ * お願いではない。割り込ませると、この道具でいちばん多い次の行動
+ * （写真だけ変える・フレームを渡す）を、お願いが押しのけることになる。
+ */
+export function TipLink() {
+  return (
+    <button type="button" className="link-quiet" onClick={() => navigate('tip')}>
+      作った人にお礼を送る
+    </button>
+  );
+}
+
+export function TipPage() {
+  useEffect(() => {
+    document.title = 'お礼を送る｜アイコンフレーム メーカー';
+    return () => {
+      document.title = 'アイコンフレーム メーカー｜背景透過してアイコンに重ねる';
+    };
+  }, []);
+
+  return (
+    <div className="app">
+      <header className="appbar">
+        <h1 className="appbar__title">
+          <IconFrame size={24} />
+          <span>アイコンフレーム メーカー</span>
+        </h1>
+      </header>
+
+      <div className="card">
+        <div className="card__head">
+          <h2 className="card__title">作った人にお礼を送る</h2>
+        </div>
+
+        <p className="card__hint">
+          このツールは<b>ぜんぶ無料</b>です。これからも無料のままです。
+          もう使ってもらったこと自体へのお礼として、好きな金額を送れます。
+        </p>
+
+        <div className="stack">
+          <Note tone="ok">
+            <span>
+              <b>送っても、送らなくても、できることは1つも変わりません。</b>
+              <br />
+              払うと増える機能はありません。払わないと使えない機能もありません。
+              お返しするものもありません。
+            </span>
+          </Note>
+
+          {/*
+            外へ出す唯一の場所。新しいタブで開く。
+            rel は付ける（開いた先からこちらの window を触られないため）。
+          */}
+          <Button
+            variant="primary"
+            onClick={() => {
+              play('tap');
+              window.open(TIP_URL, '_blank', 'noopener,noreferrer');
+            }}
+          >
+            お礼を送る
+          </Button>
+
+          <Note>
+            <IconLock size={15} />
+            <span>
+              金額を決める画面と支払いは、決済サービスの側でおこないます。
+              カードの番号は、このサイトを通りません。
+            </span>
+          </Note>
+
+          <Button variant="ghost" onClick={() => navigate('maker')} sound="back">
+            <IconArrowLeft size={18} />
+            つくる画面にもどる
+          </Button>
+        </div>
+      </div>
+
+      <div className="footer">
+        <p>
+          <IconLock size={14} /> 画像はこの端末の中だけで処理されます。どこにも送信されません。
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -11,6 +11,38 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 */
 const demo = process.env.DEMO === '1';
 
+/*
+  お礼（チップ）の入口は、ビルドのときに丸ごと入るか入らないかが決まる。
+
+  ── なぜ条件分岐ではだめか ──
+
+  前に一度しくじっている。募集の文言を `if` の向こうに置いて「画面に出ない」
+  で止めた。描画はされないが、**文字列は配られる JS にそのまま残っていた**。
+  審査を受けている当のアカウントで、引っかかった当の文言が公開物から
+  読み出せる状態だった（docs/stripe-compliance.md）。
+
+  条件分岐は、束ねる側の気分しだいで残る。残ったかどうかは目で見ても分からない。
+  だから**モジュールの解決そのものを差し替える**。VITE_TIP_URL が空なら、
+  TipPage.tsx はモジュールの地図に一度も現れない。入りようがない。
+
+  この仕掛けが効いていることは tools/check-dist.mjs が実物を読んで確かめる。
+*/
+const tipOn = !!process.env.VITE_TIP_URL;
+
+const tipEntry = {
+  name: 'ae-frame:tip-entry',
+  resolveId(id: string) {
+    if (id === 'virtual:tip') return '\0virtual:tip';
+    return null;
+  },
+  load(id: string) {
+    if (id !== '\0virtual:tip') return null;
+    return tipOn
+      ? `export { TipPage, TipLink } from '/src/components/Tip.tsx';`
+      : `export const TipPage = () => null;\nexport const TipLink = () => null;`;
+  },
+};
+
 // 既定を相対パスにしておくと、GitHub Pages のサブディレクトリ
 // （https://ユーザー名.github.io/ae-Frame/）でも、独自ドメインの直下でも、
 // 同じビルド成果物がそのまま動く。必要なら BASE_PATH で上書きできる。
@@ -18,7 +50,7 @@ const base = process.env.BASE_PATH ?? './';
 
 export default defineConfig({
   base: demo ? './' : base,
-  plugins: [react(), ...(demo ? [viteSingleFile()] : [])],
+  plugins: [react(), tipEntry, ...(demo ? [viteSingleFile()] : [])],
   define: demo ? { 'import.meta.env.VITE_DEMO': '"1"' } : {},
   resolve: demo
     ? {

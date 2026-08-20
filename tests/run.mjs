@@ -7,7 +7,7 @@
  * 「四隅が透明か」「囲まれた白が残っているか」「グローが階調で残っているか」は
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,14 +51,14 @@ function check(name, ok, extra = '') {
 
 /* ---------------- 静的サーバー ---------------- */
 
-function serve() {
+function serve(dir = 'dist', port = PORT) {
   const child = spawn(
     process.execPath,
     [
       '-e',
       `
       const http=require('http'),fs=require('fs'),path=require('path');
-      const root=${JSON.stringify(join(root, 'dist'))};
+      const root=${JSON.stringify(join(root, dir))};
       const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png',
         '.svg':'image/svg+xml','.wasm':'application/wasm','.webmanifest':'application/manifest+json'};
       http.createServer((req,res)=>{
@@ -80,7 +80,7 @@ function serve() {
         if(!fs.existsSync(p)) { res.writeHead(404); return res.end('not found'); }
         res.writeHead(200,{'Content-Type':types[path.extname(p)]||'application/octet-stream'});
         fs.createReadStream(p).pipe(res);
-      }).listen(${PORT});
+      }).listen(${port});
       `,
     ],
     { stdio: 'ignore' },
@@ -2719,6 +2719,189 @@ try {
     await ctx.close();
   }
 
+  /*
+    お礼（チップ）。
+
+    ── なぜ2本ビルドするのか ──
+
+    この機能には状態が2つある。「送り先が空（＝入口ごと無い）」と
+    「送り先が入っている」。片方しか見ないと、もう片方が壊れても気づけない。
+
+    前回いちばん高くついたのは、**空のはずの側**だった。募集の文言を
+    条件分岐の向こうに置き、画面には出さないところで止めた。描画はされないが
+    文字列は配られる JS に残り、審査を受けている当のアカウントで、
+    引っかかった当の文言が公開物から読み出せる状態だった。
+
+    だからここでは、空の側と入りの側を**両方立てて**見る。
+    入りの側は example.com のダミーで、本物の決済リンクは1本も要らない。
+
+    ── いちばん大事な1件 ──
+
+    「払わない人が損をしない」。これは言葉で書いても意味がなく、
+    **つくる画面が入口の有無で1文字も変わらない**ことで示す。
+    足もとの静かなリンク1本を除いて、出るものが同じであることを比べる。
+  */
+  console.log('\n■ お礼（チップ）');
+  {
+    const TIP_DUMMY = 'https://example.com/tip-dummy';
+    console.log('  （送り先ありのビルドを作っています…）');
+    const built = spawnSync('npm', ['run', 'build:tip'], {
+      cwd: root,
+      stdio: 'ignore',
+      env: { ...process.env },
+    });
+    check('送り先ありのビルドが作れる', built.status === 0);
+
+    const tipServer = serve('dist-tip', PORT + 1);
+    const TIP_BASE = `http://127.0.0.1:${PORT + 1}/`;
+    await new Promise((r) => setTimeout(r, 900));
+
+    /** つくる画面の見えている文字。足もとの帯だけ外す */
+    const makerText = (page) =>
+      page.evaluate(() => {
+        const app = [...document.querySelectorAll('.app')].find((a) => a.offsetParent !== null);
+        if (!app) return '';
+        return [...app.children]
+          .filter((el) => !el.classList.contains('footer'))
+          .map((el) => el.innerText)
+          .join('\n');
+      });
+
+    const open = async (origin, hash = '') => {
+      const page = await browser.newPage({ viewport: PHONE });
+      await page.route('**huggingface.co/**', (r) => r.abort());
+      await page.goto(origin + hash, { waitUntil: 'networkidle' });
+      await page
+        .getByRole('button', { name: 'はじめる' })
+        .click()
+        .catch(() => {});
+      await page.waitForTimeout(300);
+      return page;
+    };
+
+    /* ---- 送り先が空のビルド ---- */
+    {
+      const page = await open(BASE);
+      check(
+        '空のときは、足もとに入口を出さない',
+        (await page.getByRole('button', { name: /お礼を送る/ }).count()) === 0,
+      );
+      await page.close();
+
+      const direct = await open(BASE, '#/tip');
+      check(
+        '空のときに #/tip を開くと、つくる画面が出る',
+        (await direct.locator('.steps').count()) === 1,
+      );
+      const text = await direct.evaluate(() => document.body.innerText);
+      const leaked = ['お礼を送る', '送っても、送らなくても', 'お返しするもの'].filter((w) =>
+        text.includes(w),
+      );
+      check('空のときは、お礼の文言が1つも出ない', leaked.length === 0, leaked.join(' / '));
+      await direct.close();
+    }
+
+    /* ---- 送り先が入っているビルド ---- */
+    {
+      const page = await open(TIP_BASE);
+      check(
+        '送り先があるときは、足もとに入口が出る',
+        (await page.getByRole('button', { name: /作った人にお礼を送る/ }).count()) === 1,
+      );
+      await page.close();
+
+      const tip = await open(TIP_BASE, '#/tip');
+      const body = await tip.evaluate(() => document.body.innerText);
+      check(
+        '払っても変わらないことを、その場で言っている',
+        body.includes('送っても、送らなくても'),
+      );
+      check(
+        '払わなくても全部使えることを言っている',
+        body.includes('払わないと使えない機能もありません'),
+      );
+      check('無料であることを先に言っている', body.includes('ぜんぶ無料'));
+
+      /*
+        お礼の画面にも、危ない言いかたを置かない。
+
+        「寄付」と呼んだ時点で別の話になる。Stripe が寄付に求めるのは
+        **果たすと約束した慈善の目的**で、この道具にそれは無い。
+        「支援」「応援」「目標」は、これから作るものの話に読める。
+        「特典」「限定」「先行」は、渡すものがあることになり、
+        そうなると売りものなので、氏名・住所・電話番号の表示の話になる。
+      */
+      const risky = ['寄付', '募金', '支援', '応援', '目標', '特典', '限定', '先行', '円'].filter(
+        (w) => body.includes(w),
+      );
+      check('お礼の画面に、危ない言いかたが出ない', risky.length === 0, risky.join(' / '));
+
+      /*
+        押しどころは1か所だけ、というこの道具の決まり（styles.css の冒頭）。
+        お礼の画面ではお礼が用事なので1つでよいが、2つになっていないことは見る。
+      */
+      const loud = await tip.evaluate(
+        () => document.querySelectorAll('.btn--primary, .note--warn').length,
+      );
+      check('お礼の画面でも、押しどころは1か所', loud === 1, `${loud} 個`);
+
+      // 行き先。window.open を差し替えて、渡される URL を受け取る
+      await tip.evaluate(() => {
+        window.__opened = [];
+        window.open = (u) => {
+          window.__opened.push(u);
+          return null;
+        };
+      });
+      await tip.getByRole('button', { name: 'お礼を送る' }).click();
+      await tip.waitForTimeout(300);
+      const opened = await tip.evaluate(() => window.__opened);
+      check(
+        '押すと、決めた送り先だけが開く',
+        opened.length === 1 && opened[0] === TIP_DUMMY,
+        String(opened),
+      );
+      await tip.close();
+    }
+
+    /* ---- いちばん大事な1件：つくる画面が変わらない ---- */
+    {
+      const plain = await open(BASE);
+      const withTip = await open(TIP_BASE);
+      check(
+        'つくる画面（1枚目）が、入口の有無で変わらない',
+        (await makerText(plain)) === (await makerText(withTip)),
+      );
+      await plain.close();
+      await withTip.close();
+
+      /*
+        2枚を並べて開いてから比べる、をやると落ちる。
+        「指でうごかせます」の案内が6秒で引っ込むので、先に開いたほうだけ
+        消えている、という差が出る。**同じ経過時間の姿を撮って**から比べる。
+      */
+      const step3Text = async (origin) => {
+        const { page } = await openFrame(browser, 'neon.png', 'photo-color.png', { origin });
+        await page.getByRole('button', { name: /これでOK/ }).click();
+        await page.waitForTimeout(1200);
+        const text = await makerText(page);
+        await page.close();
+        return text;
+      };
+      check(
+        '重ねて保存の画面が、入口の有無で変わらない',
+        (await step3Text(BASE)) === (await step3Text(TIP_BASE)),
+      );
+    }
+
+    /* 配るものの側も、両方の状態で読む */
+    for (const r of checkDist(join(root, 'dist-tip'), { tipUrl: TIP_DUMMY })) {
+      check(`送り先あり：${r.name}`, r.ok, r.detail);
+    }
+
+    tipServer.kill();
+  }
+
   console.log('\n■ お金に触れる要素が無いこと');
   {
     for (const [name, hash] of [
@@ -2799,7 +2982,8 @@ try {
   */
   console.log('\n■ 配るものの点検');
   for (const r of [
-    ...checkDist(join(root, 'dist')),
+    // 「頼んだとおりに作れているか」を見る。空で作ったなら空、入りで作ったなら入り
+    ...checkDist(join(root, 'dist'), { tipUrl: process.env.VITE_TIP_URL ?? '' }),
     checkOgSource(),
     checkRepoWords(),
     checkRepoSecrets(),
