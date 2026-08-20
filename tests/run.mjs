@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
-import { runMp4Checks } from './mp4.mjs';
+import { runBudgetChecks, runMp4Checks } from './mp4.mjs';
 import { checkDist, checkRepoWords, checkRepoSecrets } from '../tools/check-dist.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2845,6 +2845,122 @@ try {
       greenBack.join(','),
     );
 
+    /*
+      書き出しの途中で、画面を離れられたとき。
+
+      これは「起きるかもしれない」ではなく、**必ず起きる**。
+      実時間で録るので、10秒の素材なら10秒待つことになり、
+      人はそのあいだに別のタブを見にいく。通知に応える。画面を消す。
+
+      ブラウザは、見えていない画面のコマ送りを止める。
+      止まったことに気づかずに録り続けると、途中から止め絵の動画ができあがり、
+      **本人は最後まで録れたと思ったまま**配信で使うことになる。
+
+      ここでは、その状況を作って確かめる。
+      画面が隠れたら止まること・止まっているあいだ進まないこと・
+      戻ったら続きから録れて、最後まで透過が残っていること。
+    */
+    await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
+    await page.waitForTimeout(400);
+
+    const setHidden = (hidden) =>
+      page.evaluate((h) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => (h ? 'hidden' : 'visible'),
+        });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+
+    const percent = () =>
+      page.evaluate(() => document.querySelector('.st-ring span')?.textContent ?? '');
+
+    {
+      const pending = page.waitForEvent('download', { timeout: 60_000 });
+      await page.getByRole('button', { name: /配信ソフトに、そのまま置く/ }).click();
+      await page.waitForSelector('.st-save__busy', { timeout: 10_000 });
+      await setHidden(true);
+      await page.waitForTimeout(350);
+
+      check(
+        '離れたら、止めたと画面に出る',
+        (await page.locator('.st-save__busy[data-paused="true"]').count()) === 1,
+        await page.locator('.st-save__busyLabel').innerText(),
+      );
+      check(
+        '離れたら、動画そのものも止まっている',
+        await page.evaluate(() => document.querySelector('video')?.paused === true),
+      );
+
+      const before = await percent();
+      await page.waitForTimeout(900);
+      const after = await percent();
+      check('離れているあいだ、進まない', before === after, `${before} → ${after}`);
+
+      await setHidden(false);
+      await page.waitForTimeout(300);
+      check(
+        '戻ったら、また動き出す',
+        (await page.locator('.st-save__busy[data-paused="true"]').count()) === 0,
+      );
+
+      const resumed = await pending;
+      const resumedBytes = readFileSync(await resumed.path());
+      check(
+        '離席をはさんでも、最後まで書き出せる',
+        resumedBytes.length > 2000,
+        `${resumed.suggestedFilename()} / ${resumedBytes.length}バイト`,
+      );
+
+      const stillClear = await page.evaluate(async (b64) => {
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const v = document.createElement('video');
+        v.muted = true;
+        v.src = URL.createObjectURL(new Blob([arr], { type: 'video/webm' }));
+        await new Promise((res, rej) => {
+          v.onloadeddata = res;
+          v.onerror = () => rej(new Error('読み直せない'));
+          setTimeout(() => rej(new Error('時間切れ')), 10_000);
+        });
+        /*
+          離席をはさんだ後半のコマを見る（前半だけ正しい、を見逃さないため）。
+
+          録りながら書き出した WebM には長さが書かれていないので、
+          duration は Infinity のまま。ここでは「あり得ないほど先」へ飛ばして
+          終わりに着地させる（アプリ側が長さを確かめるのと同じやりかた）。
+        */
+        v.currentTime = 1e101;
+        await new Promise((res) => {
+          v.onseeked = res;
+          setTimeout(res, 3000);
+        });
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.clearRect(0, 0, c.width, c.height);
+        x.drawImage(v, 0, 0);
+        const at = (fx, fy) => [
+          ...x.getImageData(Math.round(c.width * fx), Math.round(c.height * fy), 1, 1).data,
+        ];
+        return { corner: at(0.04, 0.08), center: at(0.5, 0.5) };
+      }, resumedBytes.toString('base64'));
+
+      check(
+        '再開したあとのコマも、背景が無いまま',
+        stillClear.corner[3] < 30,
+        `すみの不透明度 ${stillClear.corner[3]}`,
+      );
+      check(
+        '再開したあとのコマに、前景が残っている',
+        stillClear.center[3] > 200,
+        `まん中の不透明度 ${stillClear.center[3]}`,
+      );
+    }
+
     /* PNG連番：ひとまとめの箱として渡せるか */
     await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
     await page.waitForTimeout(500);
@@ -2874,6 +2990,10 @@ try {
   /* MP4 をほどく部分は、中身の分かるファイルを組み立てて Node 側で見る */
   console.log('\n■ MP4 をほどく');
   runMp4Checks(check);
+
+  /* いちどに引き受ける量。落ちかたが最悪なので、算数のうちに確かめる */
+  console.log('\n■ いちどに引き受ける量');
+  runBudgetChecks(check);
 
   console.log('\n■ お金に触れる要素が無いこと');
   {

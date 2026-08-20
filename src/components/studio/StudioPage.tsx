@@ -43,8 +43,10 @@ import {
 import {
   buildImageMatte,
   buildMatteTrack,
+  clampRange,
   decideEngine,
   frameToImageData,
+  maxSpanSec,
   openVideo,
   seekTo,
   type Engine,
@@ -114,6 +116,29 @@ export default function StudioPage() {
     mediaRef.current = media;
   }, [media]);
 
+  /*
+    消している最中・書き出している最中に、タブを閉じようとしたら引きとめる。
+
+    ここでの「作業中」は、数十秒から数分かかることがある。
+    閉じれば全部消える。しかも作りかけはどこにも残らない（端末の中だけで
+    処理しているので、開き直しても続きは無い）。
+    ブラウザの確認は無粋だが、無粋さより、消えることのほうが高くつく。
+
+    作業していないときは何も出さない。出しっぱなしにすると、
+    ふつうに閉じるときにも毎回聞かれることになる。
+  */
+  useEffect(() => {
+    const working = phase === 'working' || saving;
+    if (!working) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // 文面はブラウザが決める。空文字を返すのが、いまの作法
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [phase, saving]);
+
   /* 画面を離れるときは、動画とマットを手放す（戻ってこないものを抱えない） */
   useEffect(() => {
     return () => {
@@ -173,7 +198,14 @@ export default function StudioPage() {
         };
         setMedia(next);
         mediaRef.current = next;
-        const end = Math.min(video.durationSec, DEFAULT_SPAN_SEC);
+        /*
+          はじめに選んでおく長さ。
+
+          ふつうは 15 秒。ただし、こちらが受けられる長さのほうが短いことがある
+          （コマ数が多い＝1秒あたりのコマが細かい素材）。短いほうに合わせる。
+        */
+        const limit = maxSpanSec(video.width, video.height, Math.min(30, video.fps || 24));
+        const end = Math.min(video.durationSec, DEFAULT_SPAN_SEC, limit);
         setRange({ start: 0, end });
         setTime(0);
         setPhase('ready');
@@ -309,6 +341,15 @@ export default function StudioPage() {
   const markDirty = () => {
     if (phase === 'done') setDirty(true);
   };
+
+  /**
+   * いちどに消せる長さ。持てるマットの量から決まる（budget.ts）。
+   * 素材の大きさによらずだいたい 700 コマぶんで、1秒あたりのコマ数で割った秒数になる。
+   */
+  const spanLimit =
+    media?.kind === 'video'
+      ? Math.min(media.durationSec, maxSpanSec(media.width, media.height, processFps(media)))
+      : Infinity;
 
   const frameCount =
     media?.kind === 'video' ? Math.round((range.end - range.start) * processFps(media)) + 1 : 1;
@@ -478,7 +519,13 @@ export default function StudioPage() {
                 durationSec={media.durationSec}
                 range={range}
                 onRange={(r) => {
-                  setRange(r);
+                  /*
+                    受けられる長さを超えたぶんは、こちらで収めてから受け取る。
+                    「伸ばせるところまでは伸びて、そこで止まる」ので、
+                    上限があることは触っているうちに分かる（説明の前に手が知る）。
+                  */
+                  const moved = r.start !== range.start ? 'start' : 'end';
+                  setRange(clampRange(r, spanLimit, moved));
                   markDirty();
                 }}
                 trimmable={phase === 'ready'}
@@ -533,10 +580,12 @@ export default function StudioPage() {
                 <Button variant="primary" className="st-go" onClick={start}>
                   背景をけす
                 </Button>
-                {media.kind === 'video' && media.durationSec > DEFAULT_SPAN_SEC && (
+                {media.kind === 'video' && media.durationSec > range.end - range.start + 0.05 && (
                   <p className="st-note-soft">
-                    長いので、はじめの{DEFAULT_SPAN_SEC}秒だけ選んでいます。
-                    フィルムの両はしを動かすと変えられます。
+                    長いので、はじめの{(range.end - range.start).toFixed(0)}秒だけ選んでいます。
+                    フィルムの両はしを動かすと変えられます（いちどに
+                    {spanLimit.toFixed(0)}秒まで
+                    {smooth === 'full' && '。「なめらかさ」を半分にすると、倍まで伸びます'}）。
                   </p>
                 )}
               </>
@@ -664,6 +713,22 @@ export default function StudioPage() {
                         onChange={(v) => {
                           setSmooth(v);
                           markDirty();
+                          /*
+                            コマを半分にすると、同じ長さを半分のマットで持てる。
+                            そのぶん上限が伸びる（縮めたときは、はみ出さないように戻す）。
+                          */
+                          if (media.kind === 'video') {
+                            const next = maxSpanSec(
+                              media.width,
+                              media.height,
+                              v === 'half'
+                                ? Math.max(8, Math.round(Math.min(30, media.video.fps || 24) / 2))
+                                : Math.min(30, media.video.fps || 24),
+                            );
+                            setRange((r) =>
+                              clampRange(r, Math.min(media.durationSec, next), 'end'),
+                            );
+                          }
                         }}
                         options={[
                           { value: 'full', label: 'そのまま' },

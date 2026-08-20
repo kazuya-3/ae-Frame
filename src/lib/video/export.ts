@@ -34,7 +34,12 @@ import {
 import { readFrames, seekTo, type OpenedVideo } from './source';
 import { ZipBuilder } from './zip';
 
-export type ExportProgress = { value: number; label: string };
+export type ExportProgress = {
+  value: number;
+  label: string;
+  /** 画面を離れたので、いったん止めている最中か */
+  paused?: boolean;
+};
 
 export type ExportBase = {
   video: OpenedVideo;
@@ -128,6 +133,12 @@ const audioTaps = new WeakMap<
  * 「保存を押したら急に音が出た」ことになるので、音の行き先を
  * 録音先だけにつなぐ（スピーカーへはつながない）。
  */
+/** 止めているあいだに眠った音の回路を、起こし直す */
+function wakeAudio(el: HTMLVideoElement) {
+  const found = audioTaps.get(el);
+  if (found && found.ctx.state === 'suspended') void found.ctx.resume();
+}
+
 function tapAudio(el: HTMLVideoElement): MediaStreamAudioDestinationNode | null {
   try {
     const found = audioTaps.get(el);
@@ -220,11 +231,38 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
     requestVideoFrameCallback は「新しいコマが画面に出た」ときだけ呼ばれるので、
     タイマーで回すのと違って、同じコマを二重に録ることも、飛ばすこともない。
   */
+  /*
+    ── 途中で画面を離れられたときのこと ──
+
+    書き出しは実時間で進む。10秒の素材なら10秒、そのあいだ画面はこのまま。
+    けれど人は待つ。待つあいだに、別のタブを見にいく。通知に応える。
+    画面が消える。**それはふつうの行動であって、失敗ではない。**
+
+    ところがブラウザは、見えていない画面のコマ送りを止める。
+    requestVideoFrameCallback も requestAnimationFrame も呼ばれなくなる。
+    いっぽう <video> は再生を続け、録音機も時間を刻み続ける。
+    その結果できあがるのは、**途中から止め絵になった動画**だった。
+    しかも本人は最後まで録れたと思っている。気づくのは配信の最中になる。
+
+    だから、見えなくなったら本当に止める。
+
+      ・<video> を止める（時間が進まない）
+      ・録音機も止める（pause は時間の刻みごと止まる。継ぎ目は残らない）
+      ・戻ってきたら、両方を起こして、コマ送りを繋ぎ直す
+
+    待ち時間はそのぶん延びるが、延びたことは画面に出る。
+    黙って壊れたものを渡すより、ずっといい。
+  */
   await new Promise<void>((resolve, reject) => {
     const anyEl = el as HTMLVideoElement & {
       requestVideoFrameCallback?: (cb: (now: number, meta: unknown) => void) => number;
     };
     let raf = 0;
+    let held = false;
+    /** コマ送りの予約の世代。止めて再開するたびに進める */
+    let gen = 0;
+    /** 止めているあいだだけ動く見張り */
+    let watch = 0;
 
     const drawOne = () => {
       const t = el.currentTime;
@@ -242,6 +280,8 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
     const tick = () => {
       if (opts.signal.aborted) return finish();
+      // 止めているあいだは描かない。再開はこちらからではなく、戻ってきた側から
+      if (held) return;
       drawOne();
       if (el.currentTime >= end - 0.001 || el.ended) return finish();
       schedule();
@@ -256,14 +296,25 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
       保険として、しばらく音沙汰が無ければこちらから進める。
       正常なときは 40ミリ秒ほどで呼ばれるので、この保険は働かない。
     */
+    /*
+      止めて再開したとき、**古い予約が生き返る**ことがある。
+      止める前に入れた requestVideoFrameCallback は取り消せないので、
+      戻ってきた瞬間に「古い予約」と「新しい予約」の2本が走り、
+      1コマを2回描いて2回渡すことになる。
+
+      世代番号を持たせて、古い予約は自分で気づいて降りるようにしてある。
+    */
     const schedule = () => {
+      const mine = gen;
       if (!anyEl.requestVideoFrameCallback) {
-        raf = requestAnimationFrame(() => tick());
+        raf = requestAnimationFrame(() => {
+          if (mine === gen) tick();
+        });
         return;
       }
       let moved = false;
       const once = () => {
-        if (moved) return;
+        if (moved || mine !== gen) return;
         moved = true;
         clearTimeout(guard);
         tick();
@@ -274,21 +325,72 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
     const finish = () => {
       cancelAnimationFrame(raf);
+      clearInterval(watch);
+      document.removeEventListener('visibilitychange', onVisibility);
       el.pause();
       resolve();
     };
 
-    el.play().then(
-      () => schedule(),
-      (e) => {
-        // 音つきで再生できないときは、音を諦めて録りなおす
-        el.muted = true;
-        el.play().then(
-          () => schedule(),
-          () => reject(e),
-        );
-      },
-    );
+    /** 再生を始めて、コマ送りを繋ぐ。隠れているあいだは始めない */
+    const begin = () => {
+      if (held || opts.signal.aborted) return;
+      el.play().then(
+        () => schedule(),
+        (e) => {
+          // 音つきで再生できないときは、音を諦めて録りなおす
+          el.muted = true;
+          el.play().then(
+            () => schedule(),
+            () => reject(e),
+          );
+        },
+      );
+    };
+
+    const hold = () => {
+      held = true;
+      el.pause();
+      if (recorder.state === 'recording') recorder.pause();
+      opts.onProgress?.({
+        value: Math.min(1, (el.currentTime - start) / span),
+        label: '止めています',
+        paused: true,
+      });
+      /*
+        止めているあいだは、コマ送りが1回も回らない。
+        「やめる」を押されたことに気づく場所も、そこには無い。
+        止めているあいだだけ、別に見張りを立てる（戻ってきたら畳む）。
+      */
+      clearInterval(watch);
+      watch = setInterval(() => {
+        if (opts.signal.aborted) finish();
+      }, 500) as unknown as number;
+    };
+
+    const onVisibility = () => {
+      if (document.hidden === held) return;
+      if (document.hidden) hold();
+      else {
+        held = false;
+        clearInterval(watch);
+        gen++;
+        if (recorder.state === 'paused') recorder.resume();
+        wakeAudio(el);
+        begin(); // コマ送りは止まったままなので、こちらから繋ぎ直す
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    /*
+      すでに隠れている状態で始まることがある。
+
+      押した直後に別のタブへ移る（＝押したことを覚えていて、待つあいだに移動する）と、
+      下ごしらえのあいだに隠れてしまい、こちらは「変わった」を受け取れない。
+      変化だけを見ていると、**はじめから隠れている場合に素通りする。**
+      検証でも、まさにここが素通りした。始める前に、いまの状態を一度見る。
+    */
+    if (document.hidden) hold();
+    begin();
   });
 
   // 最後のコマが取りこぼされないよう、少しだけ録り続けてから止める

@@ -26,9 +26,13 @@ import { runMatting, type AiQuality } from '../ai';
 import { createCanvas, fitWithin, get2d } from '../image';
 import { openVideo, readFrames, seekTo, type OpenedVideo } from './source';
 import { estimateBackgroundColor, stabilize, type Matte, type MatteTrack } from './matte';
+import { MATTE_MAX_EDGE, maxFrames } from './budget';
 
-/** マットを持つ解像度の上限。ここは見た目より、持てる重さで決まる（matte.ts の頭を参照） */
-export const MATTE_MAX_EDGE = 640;
+/*
+  マットを持つ解像度と、いちどに持てる量は budget.ts に置いてある。
+  算数しかしていない部分を分けておくと、ブラウザを起こさずに検証できる。
+*/
+export { MATTE_MAX_EDGE, maxSpanSec, maxFrames, clampRange } from './budget';
 
 export type Engine = 'auto' | 'ai' | 'color';
 
@@ -158,7 +162,20 @@ export async function buildMatteTrack(
   let bgColor: [number, number, number] = decided.analysis.borderColor;
   let prev: Uint8ClampedArray | null = null;
   let index = 0;
+  /** 続けてしくじった回数。一時的なつまずきと、本当の故障を見分けるため */
+  let misses = 0;
   const t0 = performance.now();
+
+  /*
+    最後の砦。
+
+    画面の側でも受けられる長さに収めているが、それは「親切」であって
+    「保証」ではない。設定を変えた直後や、こちらの計算が変わったときに、
+    上限を超えた範囲がここへ来ることはありうる。
+    メモリを使い切って落ちるのは、いちばん取り返しがつかない壊れかたなので、
+    ここでも数えて止める。止まった結果は、短い出来上がりとして残る。
+  */
+  const hardLimit = maxFrames(video.width, video.height);
 
   for await (const frame of readFrames(video, {
     startSec: opts.startSec,
@@ -167,15 +184,36 @@ export async function buildMatteTrack(
     signal: opts.signal,
   })) {
     if (opts.signal.aborted) break;
+    if (frames.length >= hardLimit) break;
 
     const data = frameToImageData(frame.image, frame.width, frame.height);
+
+    /*
+      1コマしくじったくらいで、全部を捨てない。
+
+      AI は端末の GPU を使う。長い処理の途中で他のアプリに GPU を取られる、
+      画面を消したあいだに演算装置ごと落とされる、といったことが起きる。
+      そこで例外を投げて終わると、**2分待った結果が丸ごと消える。**
+
+      もう一度だけ試して、それでも駄目なら前のコマのマットで代える
+      （動きの少ない素材なら、1コマぶんは目で分からない）。
+      続けて何度も失敗するなら、それは一時的なつまずきではないので、諦めて伝える。
+    */
     let alpha: Uint8ClampedArray;
-    if (decided.engine === 'keep') {
-      alpha = passthroughAlpha(data);
-    } else if (decided.engine === 'color') {
-      alpha = colorKeyAlpha(data, decided.settings);
-    } else {
-      alpha = await runMatting(data, opts.quality);
+    try {
+      alpha = await matteOf(data, decided, opts.quality);
+      misses = 0;
+    } catch (e) {
+      if (opts.signal.aborted) break;
+      try {
+        alpha = await matteOf(data, decided, opts.quality);
+        misses = 0;
+      } catch (again) {
+        misses++;
+        if (!prev || misses > 30) throw again;
+        console.warn('このコマは飛ばしました', e);
+        alpha = new Uint8ClampedArray(prev);
+      }
     }
 
     if (index === 0) bgColor = estimateBackgroundColor(data, alpha);
@@ -223,6 +261,17 @@ export async function buildMatteTrack(
     engine: decided.engine,
     colorSettings: decided.engine === 'color' ? decided.settings : null,
   };
+}
+
+/** 1コマぶんのマットを作る。消しかたの違いは、ここだけに閉じている */
+function matteOf(
+  data: ImageData,
+  decided: { engine: EngineUsed; settings: CutoutSettings },
+  quality: AiQuality,
+): Promise<Uint8ClampedArray> | Uint8ClampedArray {
+  if (decided.engine === 'keep') return passthroughAlpha(data);
+  if (decided.engine === 'color') return colorKeyAlpha(data, decided.settings);
+  return runMatting(data, quality);
 }
 
 export class AbortError extends Error {

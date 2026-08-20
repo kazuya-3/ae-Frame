@@ -1112,3 +1112,11 @@ body.studio-theme::before {
   color: var(--ink-soft);
   font-size: 0.85rem;
 }
+
+/* 止まっているあいだは、輪も止まって見えるようにする（進んでいないことを、色でも言う） */
+.st-save__busy[data-paused='true'] .st-ring {
+  background: conic-gradient(var(--ink-faint) calc(var(--v) * 360deg), rgba(255, 255, 255, 0.09) 0);
+}
+.st-save__busy[data-paused='true'] .st-save__busyLabel {
+  color: var(--ink-soft);
+}

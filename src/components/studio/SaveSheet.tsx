@@ -58,9 +58,14 @@ export function SaveSheet({
   const isVideo = media.kind === 'video';
   const video = isVideo ? (media.video as OpenedVideo) : null;
 
-  const [half, setHalf] = useState(false);
+  /*
+    4K のまま実時間で録るのは、たいていの端末で追いつかない
+    （1コマごとに 800万画素を読んで書き戻すので、24コマ/秒に間に合わない）。
+    大きい素材のときだけ、はじめから半分を選んでおく。選び直せる。
+  */
+  const [half, setHalf] = useState(media.kind === 'video' && media.width > 1920);
   const [withAudio, setWithAudio] = useState(true);
-  const [busy, setBusy] = useState<{ value: number; label: string } | null>(null);
+  const [busy, setBusy] = useState<{ value: number; label: string; paused?: boolean } | null>(null);
   const [result, setResult] = useState<{ file: ExportedFile; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [seqBytes, setSeqBytes] = useState<number | null>(null);
@@ -119,8 +124,8 @@ export function SaveSheet({
     setError(null);
     setResult(null);
     setBusy({ value: 0, label: 'じゅんびしています' });
-    const onProgress = (p: { value: number; label: string }) =>
-      setBusy({ value: p.value, label: p.label });
+    const onProgress = (p: { value: number; label: string; paused?: boolean }) =>
+      setBusy({ value: p.value, label: p.label, paused: p.paused });
 
     try {
       let file: ExportedFile;
@@ -190,15 +195,21 @@ export function SaveSheet({
   return (
     <Sheet onClose={busy ? () => {} : onClose}>
       {busy ? (
-        <div className="st-save__busy">
+        <div className="st-save__busy" data-paused={busy.paused ? 'true' : undefined}>
           <div className="st-ring" style={{ ['--v' as string]: busy.value }}>
             <span>{Math.round(busy.value * 100)}%</span>
           </div>
           <p className="st-save__busyLabel">{busy.label}</p>
+          {/*
+            止まっているときに「録っています」と出しっぱなしにしない。
+            進捗が動かない理由が分からないと、人は壊れたと判断して閉じる。
+          */}
           <p className="st-note-soft">
-            {media.kind === 'video'
-              ? '動画をそのまま流しながら録っています。画面はこのままにしてください。'
-              : '書き出しています。'}
+            {busy.paused
+              ? 'ほかの画面に移ったので、いったん止めました。この画面に戻ると、続きから録ります。'
+              : media.kind === 'video'
+                ? '動画をそのまま流しながら録っています。画面はこのままにしてください。'
+                : '書き出しています。'}
           </p>
           <Button
             variant="ghost"

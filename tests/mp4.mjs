@@ -204,3 +204,84 @@ export function runMp4Checks(check) {
   ]);
   check('MP4：分割された MP4 は、null を返す', parseMp4(toArrayBuffer(fragmented)) === null);
 }
+
+/* ---------------- いちどに引き受ける量 ---------------- */
+
+import {
+  clampRange,
+  matteBytesPerFrame,
+  maxFrames,
+  maxSpanSec,
+  MATTE_BUDGET_BYTES,
+} from '../src/lib/video/budget.ts';
+
+/**
+ * 上限の計算。
+ *
+ * ここが狂うと、壊れかたが最悪になる（数分待たせたあとに、タブごと消える）。
+ * しかも起きるのは「長い動画を渡した人の端末」だけなので、
+ * こちらでは再現しにくい。だから算数のうちに確かめる。
+ */
+export function runBudgetChecks(check) {
+  const budgetMB = MATTE_BUDGET_BYTES / 1024 / 1024;
+  check('上限：予算がメモリの現実の範囲にある', budgetMB >= 64 && budgetMB <= 400, `${budgetMB}MB`);
+
+  /* 大きい素材ほどマットも大きい、わけではない（長辺を 640 に揃えて持つため） */
+  check(
+    '上限：4K でも 720p でも、1コマの重さは同じ',
+    matteBytesPerFrame(3840, 2160) === matteBytesPerFrame(1280, 720),
+    `${matteBytesPerFrame(3840, 2160)} / ${matteBytesPerFrame(1280, 720)}`,
+  );
+  check(
+    '上限：縦長でも同じ（向きで損をしない）',
+    matteBytesPerFrame(1080, 1920) === matteBytesPerFrame(1920, 1080),
+  );
+
+  /* 予算を本当に超えないか */
+  for (const [w, h] of [
+    [1280, 720],
+    [1080, 1920],
+    [3840, 2160],
+    [640, 480],
+  ]) {
+    check(
+      `上限：${w}×${h} のコマ数が予算に収まる`,
+      maxFrames(w, h) * matteBytesPerFrame(w, h) <= MATTE_BUDGET_BYTES,
+      `${maxFrames(w, h)}コマ × ${Math.round(matteBytesPerFrame(w, h) / 1024)}KB`,
+    );
+  }
+
+  /* コマが細かいほど、受けられる秒数は短くなる */
+  const at30 = maxSpanSec(1280, 720, 30);
+  const at15 = maxSpanSec(1280, 720, 15);
+  check('上限：秒数が実用の範囲にある（30コマ/秒で15秒以上）', at30 >= 15, `${at30}秒`);
+  check(
+    '上限：コマを半分にすると、倍の長さを受けられる',
+    Math.abs(at15 - at30 * 2) < 0.2,
+    `${at30} → ${at15}`,
+  );
+  check(
+    '上限：秒数は切り上げない（超える組み合わせを作らない）',
+    at30 * 30 <= maxFrames(1280, 720),
+  );
+
+  /* 範囲の収めかた。動かしたほうの端が残る */
+  check(
+    '範囲：終わりを伸ばしすぎたら、終わりが戻る',
+    JSON.stringify(clampRange({ start: 2, end: 90 }, 10, 'end')) ===
+      JSON.stringify({ start: 2, end: 12 }),
+  );
+  check(
+    '範囲：始まりを引っぱりすぎたら、始まりが戻る',
+    JSON.stringify(clampRange({ start: 0, end: 40 }, 10, 'start')) ===
+      JSON.stringify({ start: 30, end: 40 }),
+  );
+  check(
+    '範囲：収まっているものは、そのまま通す',
+    JSON.stringify(clampRange({ start: 1, end: 5 }, 10)) === JSON.stringify({ start: 1, end: 5 }),
+  );
+  check(
+    '範囲：さかさまに渡されても壊れない',
+    clampRange({ start: 9, end: 3 }, 10).end >= clampRange({ start: 9, end: 3 }, 10).start,
+  );
+}
