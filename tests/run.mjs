@@ -2718,6 +2718,36 @@ try {
       check('動画でも、前景が残る', center[3] > 230, `alpha ${center[3]}`);
     }
 
+    /*
+      緑の地から抜いたとき、被写体のフチに緑が残っていないこと。
+
+      緑の地は光を反射するので、フチそのものが緑に染まる。そこは半透明ではなく
+      不透明なので、「半透明から背景色を引く」処理では手が届かない。
+      動画の圧縮（色を間引く方式）がさらに緑をにじませる。
+
+      放送の現場と同じ考えかたで、「緑が赤と青の平均を超えている分」を削っている。
+      ここでは、いちばん外側の不透明な画素を拾って、その色を読む。
+    */
+    {
+      const edge = await page.evaluate(() => {
+        const c = document.querySelector('.st-stage__canvas');
+        const d = c
+          .getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, c.width, c.height).data;
+        const y = Math.round(c.height * 0.5);
+        for (let x = 0; x < c.width; x++) {
+          const i = (y * c.width + x) * 4;
+          if (d[i + 3] > 200) return [d[i], d[i + 1], d[i + 2]];
+        }
+        return null;
+      });
+      check(
+        '緑の地から抜いても、フチが緑に光らない',
+        !!edge && edge[1] <= (edge[0] + edge[2]) / 2 + 12,
+        edge ? `フチの色 rgb(${edge.join(',')})` : '見つからない',
+      );
+    }
+
     check(
       'フィルムに、切り抜いたあとのコマが並ぶ',
       (await page.locator('.st-film__img').count()) >= 3,
@@ -2744,6 +2774,17 @@ try {
       savedName.endsWith('.webm') && bytes.length > 2000,
       `${savedName} / ${bytes.length}バイト`,
     );
+    /*
+      書き出したものは、渡す前にこちらで開いて確かめている（export.ts の inspect）。
+      その確かめが**正しいものに難癖をつけていない**ことを、ここで見ておく。
+      せっかく良い出来のものに毎回「怪しい」と出たら、警告そのものが読まれなくなる。
+    */
+    check(
+      '正しく録れたものには、注意書きを出さない',
+      (await page.locator('.st-save__done .note--warn').count()) === 0,
+      await page.locator('.st-save__done').innerText(),
+    );
+
     check(
       '中身がちゃんと WebM になっている',
       bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3,
@@ -2984,6 +3025,172 @@ try {
     );
 
     check('通しで、エラーが1件も出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
+    await page.close();
+  }
+
+  /*
+    ■ iPhone から使ったとき
+
+    ここは端末ごとに正反対のことが起きる場所で、しかも実機でしか確かめられない
+    と思われがちなところ。だが「どちらの道を主役にしたか」「何と書いたか」
+    「押したら何を渡したか」は、名乗りを変えるだけで確かめられる。
+
+    iPhone で起きること（一次情報にあたって確かめた事実）
+      ・Safari の録画は MP4（H.264/AAC）だけ。MP4 は透明を持てない
+        → 透過WebM の行き先は出せない。**出せない理由と代わりの道**を出す
+      ・写真アプリに入れる道は共有シートだけ。ダウンロードは「ファイル」行き
+        → いちばん大きいボタンを共有に入れ替える
+      ・共有シートは、指が離れてすぐでないと開けない
+        → 書き出しの直後に自分から開かず、押してもらう
+  */
+  console.log('\n■ iPhone から使ったとき');
+  {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e.message)));
+    await page.route('**huggingface.co/**', (r) => r.abort());
+
+    /*
+      iPhone の振るまいのうち、こちらの分岐に効くものだけを置き換える。
+
+        ・透過（WebM）は録れない … isTypeSupported に webm を否と言わせる
+        ・共有シートは持っている … share / canShare を、呼ばれた記録に差し替える
+
+      端末そのものを再現するのではなく、**分かれ道の入口だけ**を再現している。
+      ここで見たいのは「どちらへ行くか」であって、Safari の中身ではない。
+    */
+    await page.addInitScript(() => {
+      const original = MediaRecorder.isTypeSupported.bind(MediaRecorder);
+      MediaRecorder.isTypeSupported = (type) =>
+        /webm/i.test(type) ? false : original('video/webm;codecs=vp8') && !/webm/i.test(type);
+      window.__shared = [];
+      navigator.canShare = (data) => !!data?.files?.length;
+      navigator.share = (data) => {
+        window.__shared.push((data.files || []).map((f) => ({ name: f.name, type: f.type })));
+        return Promise.resolve();
+      };
+    });
+
+    await page.goto(BASE + '#/studio', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(700);
+    await page.setInputFiles('.st-drop input[type=file]', join(FIXTURES, 'studio-solid.png'));
+    await page.waitForTimeout(800);
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(2600);
+    await page.getByRole('button', { name: 'ほぞんする' }).click();
+    await page.waitForTimeout(600);
+
+    const cards = await page.locator('.st-card__title').allInnerTexts();
+    check('iPhone：画像の行き先はそのまま出る', cards.length >= 2, cards.join(' / '));
+
+    /* 画像を保存 → 共有が主役になっているか */
+    const beforeDownloads = [];
+    page.on('download', (d) => beforeDownloads.push(d.suggestedFilename()));
+    await page.getByRole('button', { name: /背景のない画像として保存する/ }).click();
+    await page.waitForTimeout(1200);
+
+    const primary = await page.locator('.st-save__actions .btn').first().innerText();
+    check('iPhone：いちばん大きいボタンが「保存する」になる', /保存する/.test(primary), primary);
+    check(
+      'iPhone：写真に入れる道だと書いてある',
+      /写真アプリ/.test(await page.locator('.st-save__done .note').first().innerText()),
+      await page.locator('.st-save__done .note').first().innerText(),
+    );
+    check(
+      'iPhone：勝手にダウンロードを始めない',
+      beforeDownloads.length === 0,
+      beforeDownloads.join(' / '),
+    );
+
+    await page.locator('.st-save__actions .btn').first().click();
+    await page.waitForTimeout(400);
+    const shared = await page.evaluate(() => window.__shared);
+    check(
+      'iPhone：押すと、ファイルそのものを共有シートに渡す',
+      shared.length === 1 && shared[0].length === 1 && /\.png$/.test(shared[0][0].name),
+      JSON.stringify(shared),
+    );
+
+    /* 動画のとき：出せない行き先の理由と、代わりの道が出るか */
+    await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'とじる' }).click();
+    await page.waitForTimeout(300);
+    await page.locator('.st-clip__x').click();
+    await page.waitForTimeout(400);
+
+    await page.evaluate(async () => {
+      const c = document.createElement('canvas');
+      c.width = 240;
+      c.height = 135;
+      const x = c.getContext('2d');
+      const stream = c.captureStream(25);
+      const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const stopped = new Promise((r) => (rec.onstop = r));
+      rec.start();
+      const t0 = performance.now();
+      await new Promise((done) => {
+        const draw = () => {
+          x.fillStyle = '#00b140';
+          x.fillRect(0, 0, 240, 135);
+          x.fillStyle = '#e2384f';
+          x.fillRect(80, 30, 80, 70);
+          if (performance.now() - t0 > 1200) done();
+          else requestAnimationFrame(draw);
+        };
+        draw();
+      });
+      rec.stop();
+      await stopped;
+      const file = new File([new Blob(chunks, { type: 'video/webm' })], 'clip.webm', {
+        type: 'video/webm',
+      });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document
+        .querySelector('.st-drop .drop')
+        .dispatchEvent(
+          new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }),
+        );
+    });
+    await page.waitForTimeout(2600);
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(5000);
+    await page.getByRole('button', { name: 'ほぞんする' }).click();
+    await page.waitForTimeout(700);
+
+    const titles = await page.locator('.st-card__title').allInnerTexts();
+    check(
+      'iPhone：いちばん上は「できること」になっている',
+      /配信ソフト・編集アプリで使う/.test(titles[0] ?? ''),
+      titles.join(' / '),
+    );
+    check(
+      'iPhone：透明を持てない事情が、その場に書いてある',
+      /MP4 は透明を持てません/.test(await page.locator('.st-card__note').first().innerText()),
+      await page.locator('.st-card__note').first().innerText(),
+    );
+    check(
+      'iPhone：緑で渡すことと、その外しかたが書いてある',
+      /クロマキー/.test(await page.locator('.st-card__note').first().innerText()),
+    );
+    check(
+      'iPhone：透過のまま渡す道（PNG連番）も残っている',
+      titles.some((t) => /いちばんきれいに残す/.test(t)),
+      titles.join(' / '),
+    );
+    check(
+      'iPhone：押せない行き先を並べない',
+      (await page.locator('.st-card:disabled').count()) <= 1,
+    );
+
+    check('iPhone：通しでエラーが出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
     await page.close();
   }
 

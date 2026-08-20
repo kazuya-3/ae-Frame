@@ -353,16 +353,37 @@ function imgHeight(image: CanvasImageSource): number {
 }
 
 /**
- * 半透明のフチに残った背景の色を抜く。
+ * フチに残った背景の色を抜く。
  *
- * 半透明の画素は「前景 × a ＋ 背景 ×(1-a)」で出来ている。
- * 背景の色が分かっているなら、その分を引き算すれば前景の色が戻る。
+ * ── 2つのことを、ひとつのつまみでやっている ──
  *
- *   前景 = (見えている色 − 背景 ×(1−a)) ÷ a
+ * (1) 半透明の画素から、背景の色を引き算する
  *
- * これをやらないと、暗い背景で撮ったものは輪郭に黒いふちが残り、
+ * 半透明の画素は「前景 × a ＋ 背景 ×(1−a)」で出来ている。
+ * 背景の色が分かっているなら、その分を引けば前景の色が戻る。
+ *
+ *   前景 =（見えている色 − 背景 ×(1−a)）÷ a
+ *
+ * これをやらないと、暗い場所で撮ったものは輪郭に黒いふちが残り、
  * 白い画面に置いたときだけ「切り抜きました」という顔になる。
- * 逆に強くやりすぎるとフチが光るので、既定は控えめにしてある。
+ *
+ * (2) 不透明な画素に乗った「色かぶり」を抑える
+ *
+ * グリーンバックでは、これだけでは足りなかった。
+ * 緑の地は光を反射するので、**被写体のフチそのものが緑に染まる**。
+ * そこは半透明ではなく不透明なので、(1) は手を出さない。
+ * 動画では圧縮（色情報を間引く方式）がさらに緑をにじませる。
+ *
+ * 結果、切り抜きの縁だけ緑に光る。実際、検証用の緑素材で目に見えて出た。
+ *
+ * 放送の現場で使われている考えかたは単純で、
+ * **「緑が、赤と青の平均を超えている分だけ削る」**。
+ * 緑の服や緑のぬいぐるみは、赤と青も一緒に持っているので生き残る。
+ *
+ * ── 地が緑や青のときだけ働く ──
+ *
+ * 暗いスタジオ撮りのような無彩色の地では、削るべき色かぶりが無い。
+ * そこで働かせると、ただ色を濁らせるだけになる。地の色を見て決める。
  */
 export function decontaminate(
   ctx: CanvasRenderingContext2D,
@@ -373,17 +394,49 @@ export function decontaminate(
 ) {
   const img = ctx.getImageData(0, 0, width, height);
   const px = img.data;
+  const spill = spillChannel(bg);
+
   for (let j = 0; j < px.length; j += 4) {
     const a = px[j + 3] / 255;
-    if (a <= 0.02 || a >= 0.98) continue; // 完全な内側・外側は触らない
-    for (let c = 0; c < 3; c++) {
-      const v = px[j + c];
-      const fixed = (v - bg[c] * (1 - a)) / a;
-      px[j + c] = v + (fixed - v) * strength;
+    if (a <= 0.02) continue;
+
+    if (a < 0.98) {
+      for (let c = 0; c < 3; c++) {
+        const v = px[j + c];
+        const fixed = (v - bg[c] * (1 - a)) / a;
+        px[j + c] = v + (fixed - v) * strength;
+      }
+    }
+
+    if (spill !== null) {
+      // 抜きたい色の「ほかの2色の平均より出っぱっている分」を削る
+      const other = (px[j + spill.other[0]] + px[j + spill.other[1]]) / 2;
+      const over = px[j + spill.index] - other;
+      if (over > 0) px[j + spill.index] -= over * strength;
     }
   }
   ctx.putImageData(img, 0, 0);
 }
+
+/**
+ * その地は「クロマキー」か。緑（グリーンバック）と青（ブルーバック）だけを見る。
+ *
+ * ここが分かると、扱いを2つ変えられる。
+ *   ・境目の幅を広く取る（圧縮でにじんだフチを、半透明として拾うため）
+ *   ・不透明な画素の色かぶりを削る（緑の照り返しを落とすため）
+ *
+ * 無彩色の地（暗いスタジオ撮り）では、どちらも要らない。
+ */
+export function chromaChannel(
+  bg: [number, number, number],
+): { index: number; other: [number, number] } | null {
+  const [r, g, b] = bg;
+  if (g > 60 && g > r * 1.3 && g > b * 1.3) return { index: 1, other: [0, 2] };
+  if (b > 60 && b > r * 1.3 && b > g * 1.3) return { index: 2, other: [0, 1] };
+  return null;
+}
+
+const spillChannel = chromaChannel;
 
 /**
  * フチの色抜きに使う「背景の色」を、消えた側の画素から推定する。

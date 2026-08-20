@@ -71,6 +71,8 @@ export function SaveSheet({
   const [seqBytes, setSeqBytes] = useState<number | null>(null);
   const [canShare, setCanShare] = useState(false);
   const [embedded, setEmbedded] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [shareFailed, setShareFailed] = useState(false);
   const signal = useMemo(() => ({ aborted: false }), []);
 
   const width = Math.round((half ? media.width / 2 : media.width) / 2) * 2;
@@ -93,6 +95,19 @@ export function SaveSheet({
     } catch {
       setEmbedded(true);
     }
+    /*
+      iPhone / iPad かどうか。ここで保存の道が正反対になる。
+
+        iPhone : 共有シートに「ビデオを保存」があり、写真アプリに入れる道はそこだけ。
+                 ダウンロードすると「ファイル」アプリ行きになる。
+        それ以外: ダウンロードがそのまま保存になる。
+
+      つくる画面（ComposeStudio）と同じ判断をしている。
+      iPadOS 13 以降は Macintosh を名乗るので、指で触れるかどうかで見分ける。
+    */
+    const ua = navigator.userAgent || '';
+    const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    setIsIOS(/iPhone|iPad|iPod/.test(ua) || iPadOS);
   }, []);
 
   /* PNG連番の大きさを、1コマ書き出して測る */
@@ -118,6 +133,29 @@ export function SaveSheet({
     );
     return (bits / 8) * seconds;
   })();
+
+  /*
+    共有シートを開く。
+
+    ここは押した指が離れてすぐでないと通らない（利用者の操作から時間が経つと、
+    ブラウザが黙って断る）。だから「押したら開く」以外のことを間に入れない。
+    ファイルは書き出しの時点でもう出来ているので、待たせずに渡せる。
+  */
+  const shareFile = (file: ExportedFile, name: string) => {
+    try {
+      const payload = new File([file.blob], name, { type: file.mime });
+      if (!navigator.canShare?.({ files: [payload] })) {
+        setShareFailed(true);
+        return;
+      }
+      navigator.share({ files: [payload] }).catch((e: DOMException) => {
+        // 利用者が閉じただけのときは、何も言わない
+        if (e?.name !== 'AbortError') setShareFailed(true);
+      });
+    } catch {
+      setShareFailed(true);
+    }
+  };
 
   const run = async (job: Job) => {
     if (busy) return;
@@ -178,9 +216,17 @@ export function SaveSheet({
 
       setBusy(null);
       setResult({ file, name });
+      setShareFailed(false);
       play('done');
-      // 枠の中ではダウンロードが黙って捨てられる。そこでは自分から落とさない
-      if (!embedded) downloadBlob(file.blob, name);
+      /*
+        自分から落とすのは、それが「保存」になる端末だけ。
+
+        ・枠の中（ほかのサイトに埋めこまれている）… ダウンロードは黙って捨てられる
+        ・iPhone / iPad … 落としても「ファイル」アプリ止まりで、写真には入らない。
+          しかも勝手に始まると、何が起きたのか分からないまま画面が切り替わる。
+          こちらでは押してもらう（共有シートを開くのは、指が離れてすぐでないと通らない）。
+      */
+      if (!embedded && !isIOS) downloadBlob(file.blob, name);
     } catch (e) {
       console.warn(e);
       setBusy(null);
@@ -230,29 +276,70 @@ export function SaveSheet({
             <span className="st-file__name">{result.name}</span>
             <span className="st-file__meta">{mb(result.file.blob.size)}</span>
           </p>
+
+          {result.file.warning && <Note tone="warn">{result.file.warning}</Note>}
+
           {embedded ? (
             <Note tone="warn">
               いま、ほかのサイトの枠の中で開かれています。ここでは保存が止められることがあります。
               うまくいかないときは、このページを新しいタブで開いてから保存してください。
             </Note>
+          ) : isIOS ? (
+            /*
+              iPhone では「保存できました」と言い切らない。
+              言い切れるのは、共有シートで写真かファイルを選んでもらったあとだけ。
+            */
+            <Note>
+              {/* 共有シートに並ぶ項目の名前は、渡すものによって変わる。そのまま書く */}
+              {result.file.ext === 'zip'
+                ? '下のボタンから「"ファイル"に保存」を選ぶと、ファイルアプリに入ります。'
+                : result.file.ext === 'png'
+                  ? '下のボタンから「画像を保存」を選ぶと、写真アプリに入ります。'
+                  : '下のボタンから「ビデオを保存」を選ぶと、写真アプリに入ります。'}
+            </Note>
           ) : (
             <Note tone="ok">ダウンロードのフォルダに入りました。</Note>
           )}
+
+          {shareFailed && (
+            <Note tone="warn">
+              共有シートが開けませんでした。下の「ダウンロード」から保存してください（iPhone
+              では「ファイル」アプリに入ります）。
+            </Note>
+          )}
+
           <div className="st-save__actions">
-            <Button variant="primary" onClick={() => downloadBlob(result.file.blob, result.name)}>
-              <IconDownload size={20} /> もう一度ダウンロード
-            </Button>
-            {canShare && (
-              <Button
-                onClick={() => {
-                  const file = new File([result.file.blob], result.name, {
-                    type: result.file.mime,
-                  });
-                  navigator.share({ files: [file] }).catch(() => {});
-                }}
-              >
-                <IconShare size={20} /> ほかのアプリに送る
-              </Button>
+            {/*
+              いちばん大きいボタンの中身を、端末で入れ替える。
+
+              iPhone は共有シートだけが写真アプリへの道で、ダウンロードは
+              「ファイル」行き。ほかの端末では逆に、共有シートに保存の項目が無い。
+              同じ言葉で違う場所に届くので、ボタンの順番のほうを変える。
+            */}
+            {isIOS && canShare ? (
+              <>
+                <Button variant="primary" onClick={() => shareFile(result.file, result.name)}>
+                  <IconShare size={20} />
+                  {result.file.ext === 'zip' ? 'ファイルに保存する' : '写真に保存する'}
+                </Button>
+                <Button onClick={() => downloadBlob(result.file.blob, result.name)}>
+                  <IconDownload size={20} /> ダウンロード（ファイルアプリ）
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  onClick={() => downloadBlob(result.file.blob, result.name)}
+                >
+                  <IconDownload size={20} /> もう一度ダウンロード
+                </Button>
+                {canShare && (
+                  <Button onClick={() => shareFile(result.file, result.name)}>
+                    <IconShare size={20} /> ほかのアプリに送る
+                  </Button>
+                )}
+              </>
             )}
             <Button variant="ghost" onClick={() => setResult(null)}>
               べつの形でも保存する
@@ -285,16 +372,45 @@ export function SaveSheet({
                 accent
               />
             )}
-            {isVideo && container && (
-              <Card
-                icon={<IconFilm size={24} />}
-                title="CapCut などの編集アプリで使う"
-                lead="スマホの編集アプリは、透過の動画を読めないことが多い"
-                meta={`緑の背景つき ・ ${container.toUpperCase()} ・ ${mb(videoBytes)}前後`}
-                note="アプリ側の「クロマキー」で緑を抜くと、切り抜きに戻ります。"
-                onClick={() => run('green')}
-              />
-            )}
+            {/*
+              透過の動画を作れない端末では、その行き先が黙って消える。
+
+              消えたことに気づくのは「配信ソフトに置きたい人」だけで、その人は
+              いちばんそれを必要としている人でもある。
+
+              はじめは「作れません」という札を1枚置いていた。並べてみると、
+              iPhone で保存を開いたとき、**最初に目に入るのが「できません」**になった。
+              できることを先に置いて、事情はその中で説明したほうがいい。
+
+              なので端末を見て、行き先そのものを差し替える。
+              押す先はひとつ（緑の背景つき）で、なぜ緑なのかがその場に書いてある。
+            */}
+            {isVideo &&
+              container &&
+              (alphaOk ? (
+                <Card
+                  icon={<IconFilm size={24} />}
+                  title="CapCut などの編集アプリで使う"
+                  lead="スマホの編集アプリは、透過の動画を読めないことが多い"
+                  meta={`緑の背景つき ・ ${container.toUpperCase()} ・ ${mb(videoBytes)}前後`}
+                  note="アプリ側の「クロマキー」で緑を抜くと、切り抜きに戻ります。"
+                  onClick={() => run('green')}
+                />
+              ) : (
+                <Card
+                  icon={<IconBroadcast size={24} />}
+                  title="配信ソフト・編集アプリで使う"
+                  lead="OBS・TikTok LIVE Studio・CapCut"
+                  meta={`緑の背景つき ・ ${container.toUpperCase()} ・ ${mb(videoBytes)}前後`}
+                  note={`${
+                    isIOS
+                      ? 'iPhone・iPad が録れるのは MP4 だけで、MP4 は透明を持てません。'
+                      : 'このブラウザには、透明を保てる形式で録る仕組みがありません。'
+                  }そのぶん緑で塗って渡すので、置いた先の「クロマキー」で緑を抜いてください。透明のまま渡したいときは、下の PNG連番が確実です。`}
+                  onClick={() => run('green')}
+                  accent
+                />
+              ))}
             {isVideo && (
               <Card
                 icon={<IconArchive size={24} />}

@@ -51,7 +51,13 @@ export type ExportBase = {
   onProgress?: (p: ExportProgress) => void;
 };
 
-export type ExportedFile = { blob: Blob; ext: string; mime: string };
+export type ExportedFile = {
+  blob: Blob;
+  ext: string;
+  mime: string;
+  /** 出来上がりが怪しいときの、そのまま画面に出せる一言 */
+  warning?: string;
+};
 
 /* ---------------- どの形式で録れるか ---------------- */
 
@@ -402,7 +408,108 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
   const blob = new Blob(chunks, { type: actual });
   if (!blob.size) throw new Error('動画を書き出せませんでした');
-  return { blob, ext: actual.startsWith('video/mp4') ? 'mp4' : 'webm', mime: actual };
+
+  /*
+    出来たものを、その場で開いて確かめる。
+
+    ── なぜ確かめるのか ──
+
+    「録れる形式か」は MediaRecorder に聞けば答える。けれど**答えたとおりに
+    録れているか**は別の話で、実際に中身が空のまま返ってくる環境がある
+    （WebKit には canvas の captureStream から録ると真っ白な動画になる、
+    という報告が残っている。bugs.webkit.org 229611）。
+
+    こちらは「配信で使える素材ができた」と言って渡す。渡した先が本番の配信で、
+    そこで初めて空だと分かるのは最悪の順番になる。
+    だから渡す前に、自分で開いて、絵が入っているかを見る。
+
+    ── 見つけても、取り上げはしない ──
+
+    確かめは万能ではない（この端末で開けないだけ、ということもありうる）。
+    だからファイルは必ず渡す。怪しいときは、そう書いた紙を添えるだけにする。
+  */
+  const ext = actual.startsWith('video/mp4') ? 'mp4' : 'webm';
+  const warning = await inspect(blob, {
+    alpha: opts.alpha,
+    coverage: coverageOf(track),
+  });
+  return { blob, ext, mime: actual, warning };
+}
+
+/** マットの中で「残っている」画素の割合。出来上がりと見くらべるための当て */
+function coverageOf(track: MatteTrack): number {
+  const matte = track.frames[Math.floor(track.frames.length / 2)];
+  if (!matte) return 0;
+  let on = 0;
+  for (let i = 0; i < matte.data.length; i++) if (matte.data[i] > 32) on++;
+  return on / Math.max(1, matte.data.length);
+}
+
+/**
+ * 書き出した動画を開いて、絵が入っているかを見る。
+ * 問題なさそうなら undefined、怪しければ画面に出す一言を返す。
+ */
+async function inspect(
+  blob: Blob,
+  expect: { alpha: boolean; coverage: number },
+): Promise<string | undefined> {
+  // そもそも中身がほとんど無いものは、確かめるまでもない
+  if (expect.coverage < 0.01) return undefined;
+
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('video');
+  el.muted = true;
+  el.playsInline = true;
+  el.src = url;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      el.addEventListener('loadeddata', () => resolve(), { once: true });
+      el.addEventListener('error', () => reject(new Error('open')), { once: true });
+      setTimeout(() => reject(new Error('timeout')), 8_000);
+    });
+
+    // 録りながら書き出したものには長さが書かれていない。終わりへ飛ばして確かめる
+    await seekTo(el, 1e101);
+    const end = Number.isFinite(el.duration) ? el.duration : el.currentTime;
+    await seekTo(el, Math.max(0, end / 2));
+
+    const w = 96;
+    const h = Math.max(1, Math.round((w * el.videoHeight) / Math.max(1, el.videoWidth)));
+    const canvas = createCanvas(w, h);
+    const ctx = get2d(canvas, { willReadFrequently: true });
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(el, 0, 0, w, h);
+    const px = ctx.getImageData(0, 0, w, h).data;
+
+    if (expect.alpha) {
+      let on = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 32) on++;
+      const ratio = on / (w * h);
+      // 出来上がりが、当ての 15% にも届かないときは「空」とみなす
+      if (ratio < expect.coverage * 0.15) {
+        return 'この端末では、中身の入った動画にならなかったようです。PNG連番でお試しください。';
+      }
+    } else {
+      // 塗りつぶし1色（＝絵が入っていない）かどうかを、明るさの幅で見る
+      let lo = 255;
+      let hi = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const v = (px[i] + px[i + 1] + px[i + 2]) / 3;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      if (hi - lo < 6) {
+        return 'この端末では、中身の入った動画にならなかったようです。PNG連番でお試しください。';
+      }
+    }
+    return undefined;
+  } catch {
+    return '書き出した動画を、この端末では開き直せませんでした。念のため、渡す先で一度ご確認ください。';
+  } finally {
+    el.removeAttribute('src');
+    el.load();
+    URL.revokeObjectURL(url);
+  }
 }
 
 /** 透過のまま録る（配信ソフト向け） */

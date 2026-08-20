@@ -25,7 +25,13 @@ import {
 import { runMatting, type AiQuality } from '../ai';
 import { createCanvas, fitWithin, get2d } from '../image';
 import { openVideo, readFrames, seekTo, type OpenedVideo } from './source';
-import { estimateBackgroundColor, stabilize, type Matte, type MatteTrack } from './matte';
+import {
+  chromaChannel,
+  estimateBackgroundColor,
+  stabilize,
+  type Matte,
+  type MatteTrack,
+} from './matte';
 import { MATTE_MAX_EDGE, maxFrames } from './budget';
 
 /*
@@ -98,12 +104,32 @@ export function frameToImageData(
 /** 背景が単色かどうかを見て、消しかたを決める。 */
 export function decideEngine(probe: ImageData, requested: Engine) {
   const a = analyze(probe);
+
+  /*
+    地がクロマキー（緑・青）のときは、境目の幅を広く取る。
+
+    ── なぜ広げるのか ──
+
+    もとの見立ては「白い地のイラスト」向けに作ってある。そこでは地の色が
+    はっきりしていて、境目は数画素で終わる。だから幅を狭く取ったほうが、
+    絵を余計に削らずに済む。
+
+    グリーンバックの動画は事情が違う。緑の地は光を反射して被写体のフチを染め、
+    そのうえ動画の圧縮は色情報を間引く（4:2:0）ので、**緑と被写体が混ざった
+    帯が数画素ぶん残る。** 幅を狭く取ると、その帯が「完全に不透明」と判定され、
+    切り抜きの縁が緑に光る。実際、検証用の緑素材でそうなった。
+
+    帯を半透明として拾えば、そのあとの「フチの色を抜く」が働いて緑が落ちる。
+    つまり、広げること自体が目的ではなく、**引き算できる状態にする**のが目的。
+  */
+  const chroma = chromaChannel(a.borderColor) !== null;
+
   const settings: CutoutSettings = {
     ...DEFAULT_SETTINGS,
     mode: 'color',
     keyColor: a.borderColor,
-    tolerance: a.suggestedTolerance,
-    softness: a.suggestedSoftness,
+    tolerance: chroma ? Math.max(a.suggestedTolerance, 0.06) : a.suggestedTolerance,
+    softness: chroma ? Math.max(a.suggestedSoftness, 0.22) : a.suggestedSoftness,
     /*
       「囲まれた背景色を守る」は、輪の内側の白を消さないための仕掛けで、
       アイコンフレーム向けのもの。動画で抜くのは人やぬいぐるみで、
