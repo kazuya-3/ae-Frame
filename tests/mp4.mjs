@@ -285,3 +285,145 @@ export function runBudgetChecks(check) {
     clampRange({ start: 9, end: 3 }, 10).end >= clampRange({ start: 9, end: 3 }, 10).start,
   );
 }
+
+/* ---------------- 黒い地から、光を抜く ---------------- */
+
+import {
+  backgroundLuma,
+  expandBox,
+  glowAlpha,
+  glowKeyFor,
+  glowOutside,
+  mergeGlow,
+  subjectBox,
+} from '../src/lib/video/glow.ts';
+
+/**
+ * 光ものの扱い。
+ *
+ * ここは目で見て決めた仕組みだが、目で見るだけでは守れない。
+ * 「粒子が残る」「地は残らない」「離れた明るいものは拾わない」は、
+ * どれも数で言えることなので、数で見張る。
+ *
+ * 画像は、その場で小さく作る（黒い地・まん中の塊・そばの粒・遠くの印）。
+ */
+function scene() {
+  const width = 64;
+  const height = 40;
+  const data = new Uint8ClampedArray(width * height * 4);
+  const put = (x, y, v) => {
+    const j = (y * width + x) * 4;
+    data[j] = data[j + 1] = data[j + 2] = v;
+    data[j + 3] = 255;
+  };
+  // 地：完全な黒ではなく、少しだけ持ち上げる（本物の撮影に近づける）
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) put(x, y, 12);
+  // まん中の塊（被写体）
+  for (let y = 12; y < 28; y++) for (let x = 20; x < 36; x++) put(x, y, 90);
+  // そばの粒（光もの）
+  for (const [x, y] of [
+    [40, 16],
+    [42, 20],
+    [44, 18],
+  ])
+    put(x, y, 240);
+  // 遠くの印（右下のすみ。生成AIの印を模したもの）
+  put(61, 37, 200);
+  put(62, 37, 200);
+  return { width, height, data };
+}
+
+export function runGlowChecks(check) {
+  const img = scene();
+
+  check(
+    '光：地の明るさを、四辺から読める',
+    Math.abs(backgroundLuma(img) - 12 / 255) < 0.02,
+    `${backgroundLuma(img).toFixed(3)}`,
+  );
+
+  /* つまみの向き。上げるほど、暗いところまで拾う */
+  const low = glowKeyFor(10, 0.05);
+  const high = glowKeyFor(100, 0.05);
+  check(
+    '光：つまみを上げると、暗いところまで拾う',
+    high.black < low.black,
+    `${high.black.toFixed(2)} < ${low.black.toFixed(2)}`,
+  );
+  check('光：地より下は、決して拾わない', high.black > 0.05, `${high.black.toFixed(3)}`);
+
+  /* 明るさが、そのまま透明度になる */
+  const alpha = glowAlpha(img, glowKeyFor(55, 12 / 255));
+  const at = (x, y) => alpha[y * img.width + x];
+  check('光：地は残らない', at(2, 2) === 0, `${at(2, 2)}`);
+  check('光：粒はしっかり残る', at(40, 16) > 200, `${at(40, 16)}`);
+  check(
+    '光：塊は、明るさなりの半端な濃さになる',
+    at(28, 20) > 10 && at(28, 20) < 250,
+    `${at(28, 20)}`,
+  );
+
+  /* 被写体を囲む四角。塊だけを囲み、粒や印は入らない */
+  const base = new Uint8ClampedArray(img.width * img.height);
+  for (let y = 12; y < 28; y++) for (let x = 20; x < 36; x++) base[y * img.width + x] = 255;
+  const box = subjectBox(base, img.width, img.height);
+  check(
+    '光：残っているところを囲める',
+    box && box.x0 === 20 && box.x1 === 35 && box.y0 === 12 && box.y1 === 27,
+    JSON.stringify(box),
+  );
+
+  const wide = expandBox(box, img.width, img.height, 0.18);
+  check(
+    '光：四角を、画面の短い辺の割合で広げる',
+    wide.x1 - box.x1 === Math.round(40 * 0.18),
+    `${wide.x1 - box.x1}`,
+  );
+  check('光：広げても、画面からはみ出さない', wide.x0 >= 0 && wide.y1 <= img.height - 1);
+
+  /*
+    いちばん確かめたいところ。
+
+    そばの粒は足され、遠くの印は足されない。
+    実際の素材（生成AIの印が右下に入っている）で、ここが効いた。
+  */
+  const merged = new Uint8ClampedArray(base);
+  mergeGlow(merged, alpha, img.width, img.height, wide, 6);
+  const m = (x, y) => merged[y * img.width + x];
+  check('光：そばの粒は、足される', m(40, 16) > 200, `${m(40, 16)}`);
+  check('光：遠くの印は、足さない', m(61, 37) === 0, `${m(61, 37)}`);
+  check('光：もとの塊は、濃いまま', m(28, 20) === 255, `${m(28, 20)}`);
+  check('光：地は、足したあとも残らない', m(2, 2) === 0, `${m(2, 2)}`);
+
+  /* 四角の縁で、急に切らない（線が出ないこと） */
+  const soft = new Uint8ClampedArray(img.width * img.height);
+  const bright = new Uint8ClampedArray(img.width * img.height).fill(255);
+  mergeGlow(soft, bright, img.width, img.height, { x0: 20, y0: 12, x1: 35, y1: 27 }, 6);
+  const edge = [0, 1, 2, 3, 4, 5].map((d) => soft[20 * img.width + (35 + d)]);
+  check(
+    '光：四角の外へ、なだらかに弱まる',
+    edge.every((v, i) => i === 0 || v <= edge[i - 1]) && edge[0] > edge[5],
+    edge.join(','),
+  );
+
+  /* 気づく仕組み。消えた側に明るいものが残っているか */
+  check(
+    '光：消えた側の光に気づく',
+    glowOutside(img, base, wide) > 0.0015,
+    `${glowOutside(img, base, wide).toFixed(4)}`,
+  );
+
+  const dark = scene();
+  for (const [x, y] of [
+    [40, 16],
+    [42, 20],
+    [44, 18],
+  ]) {
+    const j = (y * dark.width + x) * 4;
+    dark.data[j] = dark.data[j + 1] = dark.data[j + 2] = 12;
+  }
+  check(
+    '光：光っていない素材では、気づかない（余計なことをしない）',
+    glowOutside(dark, base, wide) < 0.0015,
+  );
+}

@@ -90,7 +90,9 @@ export default function StudioPage() {
   const [track, setTrack] = useState<MatteTrack | null>(null);
   const [progress, setProgress] = useState<ProcessProgress | null>(null);
   const [thumbs, setThumbs] = useState<Thumbs>(() => Array(FILM_SLOTS).fill(null));
-  const [plan, setPlan] = useState<{ engine: EngineUsed; solid: boolean } | null>(null);
+  const [plan, setPlan] = useState<{ engine: EngineUsed; solid: boolean; dark: boolean } | null>(
+    null,
+  );
 
   const [refine, setRefine] = useState<Refine>(DEFAULT_REFINE);
   const [backdrop, setBackdrop] = useState<Backdrop>({ kind: 'none', color: GREEN, image: null });
@@ -100,6 +102,12 @@ export default function StudioPage() {
   const [engine, setEngine] = useState<Engine>('auto');
   const [quality, setQuality] = useState<AiQuality>('balanced');
   const [smooth, setSmooth] = useState<'full' | 'half'>('full');
+  /*
+    光をどこまで残すか。−1 は「まだ人が決めていない」印で、
+    そのときは処理の側が素材を見て決める（決まった値はここに戻ってくる）。
+  */
+  const [glowAmount, setGlowAmount] = useState(-1);
+  const [glowFound, setGlowFound] = useState(false);
   const [stabilizeAmount, setStabilizeAmount] = useState(55);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -167,6 +175,9 @@ export default function StudioPage() {
     setShadow(0);
     setPlaying(false);
     setDirty(false);
+    setGlowAmount(-1);
+    setGlowFound(false);
+    setEngine('auto');
   };
 
   const loadFile = useCallback(async (file: File) => {
@@ -182,6 +193,18 @@ export default function StudioPage() {
     setPlan(null);
     setDirty(false);
     setBackdrop({ kind: 'none', color: GREEN, image: null });
+    setGlowAmount(-1);
+    setGlowFound(false);
+    /*
+      消しかたの指定は、素材のものであって、その人のものではない。
+
+      前の素材で「光だけ」を選んだ人が、次に緑の素材を置いたとき、
+      前の指定のまま処理されると**まるごと消えたように見える**（実際に検証で起きた）。
+      素材が変わったら、見立てからやり直す。
+
+      「きれいさ」「なめらかさ」は端末の速さや待てる時間の話なので、そのまま残す。
+    */
+    setEngine('auto');
 
     const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name);
 
@@ -217,7 +240,7 @@ export default function StudioPage() {
         await seekTo(video.el, Math.min(0.5, video.durationSec / 2));
         const probe = frameToImageData(video.el, video.width, video.height);
         const decided = decideEngine(probe, 'auto');
-        setPlan({ engine: decided.engine, solid: decided.solid });
+        setPlan({ engine: decided.engine, solid: decided.solid, dark: decided.dark });
         void fillPosterThumbs(next, { start: 0, end }, setThumbs);
       } else {
         const bitmap = await fileToBitmap(file);
@@ -235,7 +258,7 @@ export default function StudioPage() {
         play('drop');
         const probe = frameToImageData(bitmap, bitmap.width, bitmap.height);
         const decided = decideEngine(probe, 'auto');
-        setPlan({ engine: decided.engine, solid: decided.solid });
+        setPlan({ engine: decided.engine, solid: decided.solid, dark: decided.dark });
       }
     } catch (e) {
       console.warn(e);
@@ -297,6 +320,7 @@ export default function StudioPage() {
               fps: processFps(media),
               engine,
               quality,
+              glowAmount,
               stabilizeAmount,
               signal: abortRef.current,
               onProgress,
@@ -305,13 +329,21 @@ export default function StudioPage() {
           : await buildImageMatte(media.bitmap, {
               engine,
               quality,
+              glowAmount,
               signal: abortRef.current,
               onProgress,
             });
 
       setTrack(result.track);
       setBgColor(result.bgColor);
-      setPlan({ engine: result.engine, solid: result.engine === 'color' });
+      setPlan((p) => ({
+        engine: result.engine,
+        solid: result.engine === 'color',
+        dark: p?.dark ?? false,
+      }));
+      setGlowFound(result.glowFound);
+      // こちらが決めた値を、つまみに戻す（次からは、その値が人の指示になる）
+      if (glowAmount < 0) setGlowAmount(result.glowUsed ? 55 : 0);
       setPhase('done');
       setProgress(null);
       play('done');
@@ -570,11 +602,15 @@ export default function StudioPage() {
                 {plan && (
                   <p className="st-plan">
                     <IconSparkle size={16} />
-                    {plan.engine === 'ai'
-                      ? 'AIで、背景だけを見分けて消します。'
-                      : plan.engine === 'keep'
-                        ? 'この素材はもう背景がありません。そのまま使えます。'
-                        : '背景が単色なので、色をたよりに一瞬で消します。'}
+                    {plan.engine === 'glow'
+                      ? '明るさをそのまま透明度にします（黒い地の光もの用）。'
+                      : plan.engine === 'ai'
+                        ? plan.dark
+                          ? 'AIで背景を消します。光っているものがあれば、そのまま残します。'
+                          : 'AIで、背景だけを見分けて消します。'
+                        : plan.engine === 'keep'
+                          ? 'この素材はもう背景がありません。そのまま使えます。'
+                          : '背景が単色なので、色をたよりに一瞬で消します。'}
                   </p>
                 )}
                 <Button variant="primary" className="st-go" onClick={start}>
@@ -637,10 +673,12 @@ export default function StudioPage() {
                       { value: 'auto', label: 'おまかせ' },
                       { value: 'ai', label: 'AI' },
                       { value: 'color', label: '色で' },
+                      { value: 'glow', label: '光だけ' },
                     ]}
                   />
                   <p className="st-field-note">
                     「色で」は、背景が1色のときだけ使えます。速さは段ちがいです。
+                    「光だけ」は、黒い地に光っているものだけが写っているとき（火花・きらめき・ネオン）に使います。
                   </p>
                 </div>
 
@@ -701,6 +739,28 @@ export default function StudioPage() {
                       note="重ねたときに、浮いて見えないようにします。"
                     />
                   </>
+                )}
+
+                {/*
+                  光を残すつまみ。
+
+                  黒い地の素材のときだけ出す。ほかの地では、そもそも
+                  「明るさを透明度にする」という考えかたが当てはまらない。
+                */}
+                {plan && (plan.dark || engine === 'glow') && (
+                  <Slider
+                    label="光を残す"
+                    value={Math.max(0, glowAmount)}
+                    min={0}
+                    max={100}
+                    defaultValue={glowFound ? 55 : 0}
+                    onChange={(v) => {
+                      setGlowAmount(v);
+                      markDirty();
+                    }}
+                    format={(v) => `${v}%`}
+                    note="火花・きらめき・光のにじみを、透けたまま残します。0 にすると足しません。"
+                  />
                 )}
 
                 {media.kind === 'video' && (

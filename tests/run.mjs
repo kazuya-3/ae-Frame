@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
-import { runBudgetChecks, runMp4Checks } from './mp4.mjs';
+import { runBudgetChecks, runGlowChecks, runMp4Checks } from './mp4.mjs';
 import { checkDist, checkRepoWords, checkRepoSecrets } from '../tools/check-dist.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -2651,10 +2651,93 @@ try {
     await page.waitForTimeout(350);
     check('とうめいに戻せる', (await stagePixel(0.02, 0.05))[3] < 12);
 
+    /*
+      黒い地の光もの。
+
+      生成AIで作った素材は、発光を保つために黒い地で作られる。
+      そこから抜くとき、ふつうの切り抜きは**光の裾を切り落とす**。
+      芯だけが残って、光が光に見えなくなる。
+
+      「光だけ」は、明るさをそのまま透明度にする道。
+      ここで見るのは、裾が半透明のまま残っているか。
+    */
+    await page.locator('.st-clip__x').click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('.st-drop input[type=file]', join(FIXTURES, 'studio-glow.png'));
+    await page.waitForTimeout(900);
+
+    check(
+      '黒い地のときだけ「光を残す」つまみを出す',
+      (await page.getByText('光を残す', { exact: true }).count()) === 0,
+      'まだ畳んである',
+    );
+    await page.locator('.disclosure__btn').click();
+    await page.waitForTimeout(300);
+    check(
+      '黒い地の素材では、「光を残す」つまみがある',
+      (await page.getByText('光を残す', { exact: true }).count()) === 1,
+    );
+
+    await page.getByRole('button', { name: '光だけ', exact: true }).click();
+    await page.waitForTimeout(200);
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(2800);
+
+    {
+      const shape = await page.evaluate(() => {
+        const c = document.querySelector('.st-stage__canvas');
+        const d = c
+          .getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, c.width, c.height).data;
+        let clear = 0;
+        let semi = 0;
+        let solid = 0;
+        for (let i = 3; i < d.length; i += 4) {
+          if (d[i] < 10) clear++;
+          else if (d[i] > 245) solid++;
+          else semi++;
+        }
+        const n = c.width * c.height;
+        const at = (fx, fy) => {
+          const x = Math.round(c.width * fx);
+          const y = Math.round(c.height * fy);
+          const i = (y * c.width + x) * 4;
+          return [d[i], d[i + 1], d[i + 2], d[i + 3]];
+        };
+        return {
+          clear: clear / n,
+          semi: semi / n,
+          solid: solid / n,
+          corner: at(0.02, 0.04),
+          core: at(0.417, 0.519),
+        };
+      });
+
+      check('光：黒い地は、透明になる', shape.corner[3] < 10, `alpha ${shape.corner[3]}`);
+      check('光：光の芯は、しっかり残る', shape.core[3] > 230, `alpha ${shape.core[3]}`);
+      check(
+        '光：裾が半透明のまま残る（切り落とさない）',
+        shape.semi > 0.01,
+        `半透明 ${(shape.semi * 100).toFixed(1)}%`,
+      );
+      check(
+        '光：画面のほとんどは、ちゃんと空く',
+        shape.clear > 0.8,
+        `透明 ${(shape.clear * 100).toFixed(1)}%`,
+      );
+    }
+
     /* ── 動画：録って、置いて、消して、書き出して、読み直す ── */
     await page.locator('.st-clip__x').click();
     await page.waitForTimeout(400);
     check('素材を外すと、はじめの画面に戻る', (await page.locator('.st-hero').count()) === 1);
+
+    /*
+      前の素材で選んだ消しかたが、次の素材に持ち越されないこと。
+
+      持ち越すと、緑の素材に「光だけ」が掛かって**まるごと消えたように見える**。
+      実際にこの検証で起きた。消しかたは素材のもので、その人のものではない。
+    */
 
     const made = await page.evaluate(async () => {
       const c = document.createElement('canvas');
@@ -3201,6 +3284,10 @@ try {
   /* いちどに引き受ける量。落ちかたが最悪なので、算数のうちに確かめる */
   console.log('\n■ いちどに引き受ける量');
   runBudgetChecks(check);
+
+  /* 黒い地の光もの。目で決めた仕組みを、数で見張る */
+  console.log('\n■ 黒い地から、光を抜く');
+  runGlowChecks(check);
 
   console.log('\n■ お金に触れる要素が無いこと');
   {

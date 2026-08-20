@@ -39,7 +39,9 @@ export type MatteTrack = {
   endSec: number;
   fps: number;
   /** 使った消しかた（画面に出す言葉を決めるのに使う） */
-  engine: 'ai' | 'color' | 'keep';
+  engine: 'ai' | 'color' | 'keep' | 'glow';
+  /** 光を残したか。渡す先での置きかたが変わるので、保存の画面まで持っていく */
+  glow: boolean;
 };
 
 export type Refine = {

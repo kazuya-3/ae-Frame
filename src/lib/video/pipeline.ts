@@ -32,6 +32,17 @@ import {
   type Matte,
   type MatteTrack,
 } from './matte';
+import {
+  backgroundLuma,
+  expandBox,
+  glowAlpha,
+  glowKeyFor,
+  glowOutside,
+  mergeGlow,
+  subjectBox,
+  type Box,
+  type GlowKey,
+} from './glow';
 import { MATTE_MAX_EDGE, maxFrames } from './budget';
 
 /*
@@ -40,10 +51,14 @@ import { MATTE_MAX_EDGE, maxFrames } from './budget';
 */
 export { MATTE_MAX_EDGE, maxSpanSec, maxFrames, clampRange } from './budget';
 
-export type Engine = 'auto' | 'ai' | 'color';
+export type Engine = 'auto' | 'ai' | 'color' | 'glow';
 
-/** 実際に使った消しかた。keep = もともと透明だったので、そのまま通した */
-export type EngineUsed = 'ai' | 'color' | 'keep';
+/**
+ * 実際に使った消しかた。
+ *   keep = もともと透明だったので、そのまま通した
+ *   glow = 明るさをそのまま透明度にした（黒い地の光もの専用）
+ */
+export type EngineUsed = 'ai' | 'color' | 'keep' | 'glow';
 
 export type ProcessPhase = 'look' | 'model' | 'frames' | 'done';
 
@@ -59,6 +74,8 @@ export type ProcessProgress = {
 };
 
 export type ProcessOptions = {
+  /** 0..100 光をどこまで残すか。0 で足さない */
+  glowAmount: number;
   startSec: number;
   endSec: number;
   /** 1秒あたり何コマ処理するか */
@@ -75,6 +92,10 @@ export type ProcessOptions = {
 
 export type ProcessResult = {
   track: MatteTrack;
+  /** 光を足したか（画面の言葉を決めるのに使う） */
+  glowUsed: boolean;
+  /** 光を足すべきだと気づいたか（つまみの既定値を決めるのに使う） */
+  glowFound: boolean;
   /** フチの色抜きに使う背景色 */
   bgColor: [number, number, number];
   /** 自動で選ばれた消しかた */
@@ -148,7 +169,13 @@ export function decideEngine(probe: ImageData, requested: Engine) {
   */
   const engine: EngineUsed =
     requested === 'auto' ? (a.recommended === 'none' ? 'keep' : solid ? 'color' : 'ai') : requested;
-  return { engine, settings, analysis: a, solid };
+
+  /*
+    地が暗いかどうか。光ものは黒い地でしか作れないので、
+    「光も残すか」を考える必要があるのは、この場合だけ。
+  */
+  const bgLuma = backgroundLuma(probe);
+  return { engine, settings, analysis: a, solid, bgLuma, dark: bgLuma < 0.16 };
 }
 
 /**
@@ -188,6 +215,17 @@ export async function buildMatteTrack(
   let bgColor: [number, number, number] = decided.analysis.borderColor;
   let prev: Uint8ClampedArray | null = null;
   let index = 0;
+  /*
+    光を足すかどうかは、1コマ目を見てから決める。
+
+    使う人が「おまかせ」のままなら、こちらで気づいて足す。
+    自分で決めた人（つまみを動かした人）の指示は、そのまま通す。
+  */
+  let glowAmount = opts.glowAmount;
+  let glowFound = false;
+  let glowKey = glowKeyFor(glowAmount, decided.bgLuma);
+  /** 光を拾う範囲。被写体を囲む四角を、少し広げたもの */
+  let glowBox: Box | null = null;
   /** 続けてしくじった回数。一時的なつまずきと、本当の故障を見分けるため */
   let misses = 0;
   const t0 = performance.now();
@@ -227,12 +265,12 @@ export async function buildMatteTrack(
     */
     let alpha: Uint8ClampedArray;
     try {
-      alpha = await matteOf(data, decided, opts.quality);
+      alpha = await matteOf(data, { ...decided, glowKey }, opts.quality);
       misses = 0;
     } catch (e) {
       if (opts.signal.aborted) break;
       try {
-        alpha = await matteOf(data, decided, opts.quality);
+        alpha = await matteOf(data, { ...decided, glowKey }, opts.quality);
         misses = 0;
       } catch (again) {
         misses++;
@@ -242,7 +280,41 @@ export async function buildMatteTrack(
       }
     }
 
-    if (index === 0) bgColor = estimateBackgroundColor(data, alpha);
+    if (index === 0) {
+      bgColor = estimateBackgroundColor(data, alpha);
+
+      /*
+        1コマ目だけ、光ものが混じっていないかを見る。
+
+        見るのは「消えた側に、明るいものが残っていないか」。
+        ぬいぐるみの口の中の光や、宙に浮いた粒子は、AI から見れば
+        被写体ではないので消える。消えた側が真っ暗ならそれでよく、
+        光っているなら、それは残したかったものである可能性が高い。
+      */
+      if (decided.engine !== 'glow' && decided.dark) {
+        const box = subjectBox(alpha, data.width, data.height);
+        glowBox = box ? expandBox(box, data.width, data.height, 0.18) : null;
+        glowFound = glowOutside(data, alpha, glowBox) > 0.0015;
+        if (opts.glowAmount < 0) glowAmount = glowFound ? 55 : 0;
+        glowKey = glowKeyFor(glowAmount, decided.bgLuma);
+      } else if (opts.glowAmount < 0) {
+        glowAmount = decided.engine === 'glow' ? 55 : 0;
+        glowKey = glowKeyFor(glowAmount, decided.bgLuma);
+      }
+    }
+
+    /* 光を足す。塊は塊のまま、まわりの光だけが増える */
+    if (glowAmount > 0 && decided.engine !== 'glow') {
+      mergeGlow(
+        alpha,
+        glowAlpha(data, glowKey),
+        data.width,
+        data.height,
+        glowBox,
+        Math.max(6, Math.round(Math.min(data.width, data.height) * 0.05)),
+      );
+    }
+
     if (prev && prev.length === alpha.length) stabilize(prev, alpha, opts.stabilizeAmount);
     prev = alpha;
 
@@ -282,20 +354,24 @@ export async function buildMatteTrack(
       endSec: times[times.length - 1] ?? opts.endSec,
       fps: opts.fps,
       engine: decided.engine,
+      glow: glowAmount > 0 || decided.engine === 'glow',
     },
     bgColor,
     engine: decided.engine,
     colorSettings: decided.engine === 'color' ? decided.settings : null,
+    glowUsed: glowAmount > 0 || decided.engine === 'glow',
+    glowFound,
   };
 }
 
 /** 1コマぶんのマットを作る。消しかたの違いは、ここだけに閉じている */
 function matteOf(
   data: ImageData,
-  decided: { engine: EngineUsed; settings: CutoutSettings },
+  decided: { engine: EngineUsed; settings: CutoutSettings; glowKey?: GlowKey },
   quality: AiQuality,
 ): Promise<Uint8ClampedArray> | Uint8ClampedArray {
   if (decided.engine === 'keep') return passthroughAlpha(data);
+  if (decided.engine === 'glow') return glowAlpha(data, decided.glowKey ?? glowKeyFor(55, 0));
   if (decided.engine === 'color') return colorKeyAlpha(data, decided.settings);
   return runMatting(data, quality);
 }
@@ -343,6 +419,8 @@ export async function buildImageMatte(
   opts: {
     engine: Engine;
     quality: AiQuality;
+    /** 0..100。負の数なら、こちらで決める */
+    glowAmount: number;
     signal: { aborted: boolean };
     onProgress?: (p: ProcessProgress) => void;
   },
@@ -353,10 +431,16 @@ export async function buildImageMatte(
   const data = frameToImageData(image, image.width, image.height, 1024);
   const decided = decideEngine(data, opts.engine);
 
+  let glowAmount = opts.glowAmount;
+  let glowFound = false;
   let alpha: Uint8ClampedArray;
   if (decided.engine === 'keep') {
     alpha = passthroughAlpha(data);
     report({ phase: 'frames', value: 0.9, label: 'もう透明でした', etaSec: null });
+  } else if (decided.engine === 'glow') {
+    if (glowAmount < 0) glowAmount = 55;
+    alpha = glowAlpha(data, glowKeyFor(glowAmount, decided.bgLuma));
+    report({ phase: 'frames', value: 0.9, label: '光を残しています', etaSec: null });
   } else if (decided.engine === 'color') {
     alpha = colorKeyAlpha(data, decided.settings);
     report({ phase: 'frames', value: 0.9, label: '背景を消しています', etaSec: null });
@@ -372,6 +456,26 @@ export async function buildImageMatte(
   }
   if (opts.signal.aborted) throw new AbortError();
 
+  /* 画像でも、消えた側に光が残っていれば足す（動画と同じ考えかた） */
+  if (decided.engine !== 'glow' && decided.dark) {
+    const box = subjectBox(alpha, data.width, data.height);
+    const glowBox = box ? expandBox(box, data.width, data.height, 0.18) : null;
+    glowFound = glowOutside(data, alpha, glowBox) > 0.0015;
+    if (glowAmount < 0) glowAmount = glowFound ? 55 : 0;
+    if (glowAmount > 0) {
+      mergeGlow(
+        alpha,
+        glowAlpha(data, glowKeyFor(glowAmount, decided.bgLuma)),
+        data.width,
+        data.height,
+        glowBox,
+        Math.max(6, Math.round(Math.min(data.width, data.height) * 0.05)),
+      );
+    }
+  } else if (glowAmount < 0) {
+    glowAmount = 0;
+  }
+
   report({ phase: 'done', value: 1, label: 'できました', etaSec: 0 });
   return {
     track: {
@@ -381,9 +485,12 @@ export async function buildImageMatte(
       endSec: 0,
       fps: 1,
       engine: decided.engine,
+      glow: glowAmount > 0 || decided.engine === 'glow',
     },
     bgColor: estimateBackgroundColor(data, alpha),
     engine: decided.engine,
     colorSettings: decided.engine === 'color' ? decided.settings : null,
+    glowUsed: glowAmount > 0 || decided.engine === 'glow',
+    glowFound,
   };
 }

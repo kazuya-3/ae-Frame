@@ -367,7 +367,11 @@ export function SaveSheet({
                 title="配信ソフトに、そのまま置く"
                 lead="OBS・TikTok LIVE Studio・Streamlabs"
                 meta={`透過WebM ・ ${mb(videoBytes)}前後${withAudio && video?.hasAudio ? ' ・ 音つき' : ''}`}
-                note="背景がない状態のまま置けます。いちばん手数が少ない道です。"
+                note={
+                  track.glow
+                    ? '背景がない状態のまま置けます。光ものは、黒い地のままOBSに置いて「ブレンドモード → スクリーン」にする手もあります（そちらは画質がいっさい落ちません）。'
+                    : '背景がない状態のまま置けます。いちばん手数が少ない道です。'
+                }
                 onClick={() => run('alpha')}
                 accent
               />
