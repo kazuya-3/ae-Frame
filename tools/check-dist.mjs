@@ -21,6 +21,8 @@
  *   2. 決済リンク（buy.stripe.com）が入っていないか
  *   3. 秘密鍵らしきものが入っていないか
  *   4. 誰からも参照されていない古いハッシュ付きファイルが残っていないか
+ *   5. リンクを貼ったときに出る絵が、実在して、申告どおりの大きさか
+ *   6. 配る画像が重すぎないか（1枚ごと・合計）
  *
  * 4 は中身ではなく残りかすの話。--emptyOutDir を付け忘れたビルドや、
  * 手で足したファイルがあると、古い JS が公開先に残る。中身が古いだけに、
@@ -174,7 +176,94 @@ export function checkDist(distDir) {
     );
   }
 
-  /* 5. 重さ。実際に回線を流れる量（gzip したあと）で見る */
+  /*
+    5. リンクを貼ったときに出る絵（og:image）。
+
+    ── なぜファイルの側から見るのか ──
+
+    ここは**この道具が外から見える唯一の場所**で、しかも本人の画面には出ない。
+    TikTok のプロフィールから来る人も、LINE で回ってくる人も、
+    最初に見るのはこの1枚。壊れても、作った人は気づけない。
+
+    通しの検証は「タグがある」「絶対URLである」までしか見ていなかった。
+    それだと、**指した先のファイルが無くても通る**。実際、画像を
+    差し替えたときに拡張子が変わって、タグだけ古いまま、が起きうる。
+
+    実物が在ること、そして宣言した大きさが実物と合っていることまで見る。
+    幅と高さの申告がずれていると、貼られた先で切れたり余白が出たりする。
+  */
+  if (existsSync(entry)) {
+    const html = readFileSync(entry, 'utf8');
+    const meta = (key, attr = 'property') =>
+      html.match(new RegExp(`${attr}="${key}"[^>]*content="([^"]+)"`))?.[1] ??
+      html.match(new RegExp(`content="([^"]+)"[^>]*${attr}="${key}"`))?.[1] ??
+      null;
+
+    const base = meta('og:url');
+    const shots = [
+      ['og:image', meta('og:image')],
+      ['twitter:image', meta('twitter:image', 'name')],
+    ];
+
+    for (const [key, url] of shots) {
+      if (!url || !base) {
+        add(`${key} の指す先が配るものの中にある`, false, url ? 'og:url が無い' : 'タグが無い');
+        continue;
+      }
+      // 公開URL上の位置を、配るものの中の位置に読み替える
+      const rel = new URL(url).pathname.replace(new URL(base).pathname, '');
+      const file = join(distDir, rel);
+      add(`${key} の指す先が配るものの中にある`, existsSync(file), rel);
+    }
+
+    const imgUrl = shots[0][1];
+    const imgFile =
+      imgUrl && base
+        ? join(distDir, new URL(imgUrl).pathname.replace(new URL(base).pathname, ''))
+        : null;
+    if (imgFile && existsSync(imgFile)) {
+      const got = imageSize(readFileSync(imgFile));
+      const want = { w: Number(meta('og:image:width')), h: Number(meta('og:image:height')) };
+      add(
+        'og:image の大きさが、申告と実物で合っている',
+        !!got && got.w === want.w && got.h === want.h,
+        got ? `実物 ${got.w}×${got.h} / 申告 ${want.w}×${want.h}` : '大きさを読めない形式',
+      );
+    }
+  }
+
+  /*
+    6. 配る画像の重さ。
+
+    JS と CSS には上限があったが、画像には無かった。
+    その隙に 935KB の PNG（写真の中身を PNG で持っていた）が
+    リンクの絵として入り、誰も気づかないまま配られていた。
+    数字を出す場所が無いと、画像は際限なく増える。
+
+    gzip では測らない。画像はもう圧縮済みで、gzip してもほぼ縮まない。
+    回線を流れるのは生のバイト数そのもの。
+  */
+  const images = all.filter((f) => IMAGE_EXT.has(extname(f)));
+  if (images.length) {
+    const sized = images
+      .map((f) => [relative(distDir, f), statSync(f).size / 1024])
+      .sort((a, b) => b[1] - a[1]);
+    const total = sized.reduce((s, [, kb]) => s + kb, 0);
+    const [heaviestName, heaviestKb] = sized[0];
+
+    add(
+      '画像が1枚も重すぎない',
+      heaviestKb <= IMAGE_BUDGET_KB.each,
+      `いちばん重いのは ${heaviestName} ${heaviestKb.toFixed(1)} KB / 上限 ${IMAGE_BUDGET_KB.each} KB`,
+    );
+    add(
+      '配る画像の合計が上限に収まっている',
+      total <= IMAGE_BUDGET_KB.total,
+      `${total.toFixed(1)} KB / 上限 ${IMAGE_BUDGET_KB.total} KB（${images.length} 枚）`,
+    );
+  }
+
+  /* 7. 重さ。実際に回線を流れる量（gzip したあと）で見る */
   const gzipKb = (f) => gzipSync(readFileSync(f)).length / 1024;
   for (const [kind, re, label] of [
     ['js', /index-[^/]*\.js$/, '本体の JS'],
@@ -209,6 +298,47 @@ export function checkDist(distDir) {
   まず中身を疑う**。上げるときは、なぜ必要かをコミットに書く。
 */
 const WEIGHT_BUDGET_KB = { js: 95, css: 12 };
+
+/**
+ * 配る画像の上限（生のバイト数の KB）。
+ *
+ * each  … 1枚あたり。リンクの絵の実務上の天井が 300KB あたりなので、そこに合わせる。
+ * total … 全部の合計。いまの実測は 8割ほどが「知らせるページ」の飾り。
+ *          飾りを軽くすれば、そのぶん余裕が戻る。
+ *
+ * **超えたら、上限を上げる前にまず中身を疑う。**
+ * 写真の中身を PNG で持っていないか、長辺が必要より大きくないか。
+ */
+const IMAGE_BUDGET_KB = { each: 300, total: 850 };
+
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif']);
+
+/**
+ * 画像の幅と高さを、ファイルの頭だけ読んで取る（PNG / JPEG）。
+ * 申告した大きさと実物が合っているかを見るためだけのもの。
+ */
+function imageSize(buf) {
+  // PNG: 8バイトの署名 → IHDR。幅と高さは 16 バイト目から
+  if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504e47) {
+    return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  }
+  // JPEG: SOF マーカー（0xFFC0〜0xFFCF のうち C4/C8/CC を除く）に入っている
+  if (buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < buf.length) {
+      if (buf[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      const marker = buf[i + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+        return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
 
 /*
   禁止語を「登録している」ファイル。ここだけは当たって当たり前なので外す。
@@ -266,6 +396,36 @@ export function checkRepoWords() {
   };
 }
 
+/**
+ * リンクの絵の版下が、画面の言葉とずれていないこと。
+ *
+ * ── なぜ要るのか ──
+ *
+ * 前の絵は、実物と違うものを見せていた。フレームの一覧、色のえらび方、
+ * 「100種類以上」、4工程。どれもこの道具には無い。
+ * それでも半年ちかく貼られ続けた。**絵の中身は、機械にも人にも読めない**からで、
+ * 作った本人の画面にはそもそも出てこない。
+ *
+ * 中の絵は読めないが、**版下は文字で書いてある**。せめて工程の名前だけは、
+ * App.tsx の STEPS と同じであることを見ておく。
+ * 画面の言葉を変えたときに、ここが取り残されたら気づける。
+ */
+export function checkOgSource() {
+  const app = join(ROOT, 'src', 'App.tsx');
+  const source = join(ROOT, 'tools', 'og', 'og.html');
+  if (!existsSync(app) || !existsSync(source)) {
+    return { name: 'リンクの絵の版下がある', ok: false, detail: '版下か App.tsx が無い' };
+  }
+  const labels = [...readFileSync(app, 'utf8').matchAll(/label:\s*'([^']+)'/g)].map((m) => m[1]);
+  const html = readFileSync(source, 'utf8');
+  const missing = labels.filter((l) => !html.includes(l));
+  return {
+    name: 'リンクの絵が、画面と同じ工程を見せている',
+    ok: labels.length > 0 && missing.length === 0,
+    detail: missing.length ? `版下に無い：${missing.join(' / ')}` : `${labels.length} 工程ぶん確認`,
+  };
+}
+
 /** リポジトリ側に秘密鍵が入っていないこと。配るものとは別に見る */
 export function checkRepoSecrets() {
   const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tips', 'assets-src']);
@@ -299,7 +459,7 @@ export function checkRepoSecrets() {
 /* 単体で走らせたとき */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = join(ROOT, process.argv[2] ?? 'dist');
-  const results = [...checkDist(dir), checkRepoWords(), checkRepoSecrets()];
+  const results = [...checkDist(dir), checkOgSource(), checkRepoWords(), checkRepoSecrets()];
   let bad = 0;
   console.log(`\n■ 配るものの点検（${relative(ROOT, dir) || '.'}）`);
   for (const r of results) {

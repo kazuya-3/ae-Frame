@@ -12,7 +12,8 @@
     "test": "node tests/run.mjs",
     "test:fixtures": "node tests/fixtures.mjs",
     "build:demo": "DEMO=1 vite build --outDir dist-demo --emptyOutDir",
-    "check:dist": "node tools/check-dist.mjs"
+    "check:dist": "node tools/check-dist.mjs",
+    "og": "node tools/make-og.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",

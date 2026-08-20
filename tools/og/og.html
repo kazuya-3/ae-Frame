@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      リンクを貼ったときに出る絵（1200×630）の版下。
+      tools/make-og.mjs が Chromium で開いて、そのまま撮る。
+
+      ── なぜ画像を直接置かないのか ──
+
+      前の絵は、実物と違うものを見せていた。フレームの一覧、色のえらび方、
+      「100種類以上」、4工程。どれもこの道具には無い。押して来た人は
+      フレーム置き場を探し、最初の画面で「写真をえらぶ」に出会う。
+      画像は差し替えるとき中身が分からないので、こういうずれに気づけない。
+
+      版下を HTML にしておけば、画面の言葉が変わったときここも直せる。
+      工程の名前は App.tsx の STEPS と同じものを書く。
+
+      ── 書いてよいこと ──
+
+      この道具が実際にできることだけ。ここは広告ではなく説明。
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=block"
+      rel="stylesheet"
+    />
+    <style>
+      /* 本体（src/styles.css）と同じ値。線で作る・実線の影・強調色は1か所だけ */
+      :root {
+        --paper: #fbfaf6;
+        --paper-2: #ffffff;
+        --paper-3: #f2f0e9;
+        --ink: #16161d;
+        --ink-soft: #5f5f6b;
+        --ink-faint: #a9a8a0;
+        --accent: #ff2d55;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Zen Maru Gothic', 'IPAGothic', sans-serif;
+        font-weight: 700;
+        /* 本体の背景と同じ方眼。うっすらだけ入れる */
+        background-image:
+          linear-gradient(rgba(22, 22, 29, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(22, 22, 29, 0.035) 1px, transparent 1px);
+        background-size: 26px 26px;
+      }
+
+      .sheet {
+        width: 1200px;
+        height: 630px;
+        padding: 44px 54px;
+        display: grid;
+        /* minmax(0,...) が要る。既定の min-width:auto だと、
+           折り返せない見出しが左の枠を押し広げて右がはみ出す */
+        grid-template-columns: minmax(0, 1fr) 444px;
+        gap: 30px;
+        align-items: center;
+      }
+
+      /* ---------------- 左：言葉 ---------------- */
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+        margin-bottom: 30px;
+      }
+      .brand__name {
+        font-size: 27px;
+        letter-spacing: 0.02em;
+      }
+
+      .lede {
+        font-size: 58px;
+        line-height: 1.24;
+        letter-spacing: -0.01em;
+        margin-bottom: 10px;
+      }
+      .lede em {
+        font-style: normal;
+        color: var(--accent);
+      }
+
+      .sub {
+        font-size: 25px;
+        line-height: 1.6;
+        font-weight: 500;
+        color: var(--ink-soft);
+        margin-bottom: 40px;
+      }
+
+      /* 工程。App.tsx の STEPS と同じ名前・同じ数 */
+      .steps {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 36px;
+      }
+      .step {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 12px 19px 12px 12px;
+        background: var(--paper-2);
+        border: 2.4px solid var(--ink);
+        border-radius: 999px;
+        box-shadow: 4px 4px 0 var(--ink);
+        font-size: 22px;
+        white-space: nowrap;
+      }
+      .step__num {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: var(--paper-2);
+        font-size: 17px;
+        display: grid;
+        place-items: center;
+      }
+      .step__arrow {
+        color: var(--ink-faint);
+        font-size: 20px;
+      }
+
+      .facts {
+        display: flex;
+        gap: 26px;
+        font-size: 21px;
+        font-weight: 500;
+        color: var(--ink-soft);
+      }
+      .facts b {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      /* ---------------- 右：まえとあと ---------------- */
+
+      .demo {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 15px;
+      }
+      .demo__arrow {
+        font-size: 34px;
+        color: var(--ink-faint);
+      }
+      .shot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      .shot__cap {
+        font-size: 19px;
+        color: var(--ink-soft);
+        font-weight: 500;
+      }
+      /* まえ：スクショのまま（白地・まわりに時刻やキャプションが写っている） */
+      .shot__frame {
+        width: 188px;
+        height: 188px;
+        border: 2.4px solid var(--ink);
+        border-radius: 14px;
+        box-shadow: 5px 5px 0 var(--ink);
+        overflow: hidden;
+        background: #fff;
+        position: relative;
+      }
+      .shot__ui {
+        position: absolute;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        padding: 0 11px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #b7b6ae;
+      }
+      .shot__ui--top {
+        top: 7px;
+      }
+      .shot__ui--bottom {
+        bottom: 7px;
+      }
+      /* あと：まるく切りぬかれた、できあがり */
+      .shot__round {
+        width: 188px;
+        height: 188px;
+        border-radius: 999px;
+        border: 2.4px solid var(--ink);
+        box-shadow: 5px 5px 0 var(--ink);
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div>
+        <div class="brand">
+          <!-- 本体の IconFrame と同じかたち（線だけ・塗りなし） -->
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="#16161d" stroke-width="1.8" />
+            <circle cx="12" cy="12" r="4.6" stroke="#16161d" stroke-width="1.8" />
+            <path
+              d="M12 1.9v2.6M12 19.5v2.6M1.9 12h2.6M19.5 12h2.6"
+              stroke="#16161d"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span class="brand__name">アイコンフレーム メーカー</span>
+        </div>
+
+        <h1 class="lede">アイコンフレームを、<br /><em>もっと簡単に。</em></h1>
+        <!-- 折り返しはこちらで決める。半端なところで切れると読みにくい -->
+        <p class="sub">スクリーンショットのままでOK。<br />背景は自動でとうめいになります。</p>
+
+        <div class="steps">
+          <span class="step"><span class="step__num">1</span>アイコン写真</span>
+          <span class="step__arrow">→</span>
+          <span class="step"><span class="step__num">2</span>背景をけす</span>
+          <span class="step__arrow">→</span>
+          <span class="step"><span class="step__num">3</span>重ねて保存</span>
+        </div>
+
+        <p class="facts">
+          <span><b>ぜんぶ無料</b></span>
+          <span><b>インストール不要</b></span>
+          <span><b>画像は端末から出ません</b></span>
+        </p>
+      </div>
+
+      <div class="demo">
+        <div class="shot">
+          <div class="shot__frame">
+            <canvas id="before" width="356" height="356"></canvas>
+            <div class="shot__ui shot__ui--top"><span>9:41</span><span>●●●</span></div>
+            <div class="shot__ui shot__ui--bottom"><span>@example</span><span>♡ 1.2万</span></div>
+          </div>
+          <span class="shot__cap">スクショのまま</span>
+        </div>
+
+        <span class="demo__arrow">→</span>
+
+        <div class="shot">
+          <div class="shot__round"><canvas id="after" width="356" height="356"></canvas></div>
+          <span class="shot__cap">できあがり</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /*
+        絵は描いて作る。素材ファイルを増やさないため。
+        かたちは tests/fixtures.mjs の neon.png と同じ考えかた
+        （上が水色・下がピンクのグロー＋濃い線のリング）。
+      */
+      const S = 356;
+      const C = S / 2;
+      const R = S * 0.365;
+      const TH = S * 0.05;
+
+      function ring(ctx) {
+        const g = ctx.createLinearGradient(0, C - R, 0, C + R);
+        g.addColorStop(0, '#22e2e2');
+        g.addColorStop(1, '#ff2d6e');
+
+        // グロー
+        ctx.save();
+        ctx.filter = 'blur(9px)';
+        ctx.strokeStyle = g;
+        ctx.lineWidth = TH * 2.1;
+        ctx.beginPath();
+        ctx.arc(C, C, R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // 本体の線
+        ctx.strokeStyle = g;
+        ctx.lineWidth = TH;
+        ctx.beginPath();
+        ctx.arc(C, C, R, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(16,16,22,0.9)';
+        ctx.lineWidth = TH * 0.42;
+        ctx.beginPath();
+        ctx.arc(C, C, R, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // まえ：白地に描かれた、ただの画像
+      {
+        const ctx = document.getElementById('before').getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, S, S);
+        ring(ctx);
+      }
+
+      // あと：写真の上に、背景をけしたフレームが重なっている
+      {
+        const ctx = document.getElementById('after').getContext('2d');
+        const p = ctx.createLinearGradient(0, 0, S, S);
+        p.addColorStop(0, '#6e7bd8');
+        p.addColorStop(0.5, '#c58ec2');
+        p.addColorStop(1, '#e8b48a');
+        ctx.fillStyle = p;
+        ctx.fillRect(0, 0, S, S);
+        // 人がいるように見せるための、ゆるい影
+        ctx.fillStyle = 'rgba(22,22,29,0.16)';
+        ctx.beginPath();
+        ctx.arc(C, C * 0.86, S * 0.135, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(C, C * 1.62, S * 0.23, S * 0.2, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ring(ctx);
+      }
+    </script>
+  </body>
+</html>

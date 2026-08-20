@@ -13,7 +13,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
-import { checkDist, checkRepoWords, checkRepoSecrets } from '../tools/check-dist.mjs';
+import {
+  checkDist,
+  checkOgSource,
+  checkRepoWords,
+  checkRepoSecrets,
+} from '../tools/check-dist.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -2793,7 +2798,12 @@ try {
     そのまま入っていた。画面を見る検証では永久に捕まえられない壊れかた。
   */
   console.log('\n■ 配るものの点検');
-  for (const r of [...checkDist(join(root, 'dist')), checkRepoWords(), checkRepoSecrets()]) {
+  for (const r of [
+    ...checkDist(join(root, 'dist')),
+    checkOgSource(),
+    checkRepoWords(),
+    checkRepoSecrets(),
+  ]) {
     check(r.name, r.ok, r.detail);
   }
 } finally {
