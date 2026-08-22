@@ -1120,3 +1120,31 @@ body.studio-theme::before {
 .st-save__busy[data-paused='true'] .st-save__busyLabel {
   color: var(--ink-soft);
 }
+
+/* 上の帯の右がわ（音のオンオフと、つくる画面への行き先） */
+.st-top__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.st-top__icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.st-top__icon:hover,
+.st-top__icon[aria-pressed='false'] {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}

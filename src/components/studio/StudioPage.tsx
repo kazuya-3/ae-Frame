@@ -29,7 +29,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fileToBitmap, fitWithin } from '../../lib/image';
-import { play } from '../../lib/sound';
+import { isSoundOn, play, setSoundOn } from '../../lib/sound';
 import { navigate } from '../../lib/route';
 import {
   DEFAULT_REFINE,
@@ -62,6 +62,8 @@ import {
   IconPhoto,
   IconScissors,
   IconSliders,
+  IconSoundOff,
+  IconSoundOn,
   IconSparkle,
   IconX,
 } from '../Icons';
@@ -111,6 +113,7 @@ export default function StudioPage() {
   const [stabilizeAmount, setStabilizeAmount] = useState(55);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sound, setSound] = useState(isSoundOn);
 
   const abortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const mediaRef = useRef<Media | null>(null);
@@ -396,10 +399,31 @@ export default function StudioPage() {
           <b>STUDIO</b>
           <span className="st-brand__sub">うごく素材の背景けし</span>
         </span>
-        <button type="button" className="st-top__link" onClick={() => navigate('maker')}>
-          <IconArrowLeft size={16} />
-          アイコンフレームをつくる
-        </button>
+        <span className="st-top__right">
+          {/*
+            音のオンオフ。つくる画面には前からあるのに、この画面だけ無かった。
+            動画を扱うと同じ音が何度も鳴るので、むしろこちらのほうが要る。
+          */}
+          <button
+            type="button"
+            className="st-top__icon"
+            aria-pressed={sound}
+            aria-label={sound ? '音を消す' : '音を出す'}
+            title={sound ? '音を消す' : '音を出す'}
+            onClick={() => {
+              const next = !sound;
+              setSoundOn(next);
+              setSound(next);
+              if (next) play('toggleOn');
+            }}
+          >
+            {sound ? <IconSoundOn size={18} /> : <IconSoundOff size={18} />}
+          </button>
+          <button type="button" className="st-top__link" onClick={() => navigate('maker')}>
+            <IconArrowLeft size={16} />
+            アイコンフレームをつくる
+          </button>
+        </span>
       </header>
 
       {!media ? (

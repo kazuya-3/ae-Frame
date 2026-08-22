@@ -230,7 +230,6 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
   const span = Math.max(0.001, end - start);
 
   await seekTo(el, start);
-  recorder.start(250);
 
   /*
     再生しながら、出てきたコマをそのつど組み立てて canvas に置く。
@@ -288,6 +287,16 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
       if (opts.signal.aborted) return finish();
       // 止めているあいだは描かない。再開はこちらからではなく、戻ってきた側から
       if (held) return;
+      /*
+        録りはじめるのは、1コマ目を渡せるようになってから。
+
+        先に録音機を回してしまうと、再生が始まるまでの数十〜数百ミリ秒ぶん、
+        **音だけが先に進む。** 絵は静止したままなので、出来上がりは
+        音が先行した動画になる。口の動きと声がずれる、いちばん気づかれる壊れかた。
+
+        音と絵は、同じ瞬間から録りはじめる。
+      */
+      if (recorder.state === 'inactive') recorder.start(250);
       drawOne();
       if (el.currentTime >= end - 0.001 || el.ended) return finish();
       schedule();
@@ -401,8 +410,10 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
   // 最後のコマが取りこぼされないよう、少しだけ録り続けてから止める
   await new Promise((r) => setTimeout(r, 260));
-  if (recorder.state !== 'inactive') recorder.stop();
-  await stopped;
+  if (recorder.state !== 'inactive') {
+    recorder.stop();
+    await stopped;
+  }
   el.muted = wasMuted;
   for (const t of stream.getTracks()) if (t.kind === 'video') t.stop();
 

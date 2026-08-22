@@ -2545,6 +2545,29 @@ try {
       asked.some((u) => /StudioPage/.test(u)),
     );
 
+    /*
+      音のオンオフ。つくる画面には前からあるのに、この画面だけ無かった。
+      動画を扱うと同じ音が何度も鳴るので、むしろこちらのほうが要る。
+      設定は端末に覚えさせるので、そこまで見る。
+    */
+    {
+      check(
+        '音のオンオフが、この画面にもある',
+        (await page.locator('.st-top__icon').count()) === 1,
+      );
+      const before = await page.locator('.st-top__icon').getAttribute('aria-pressed');
+      await page.locator('.st-top__icon').click();
+      await page.waitForTimeout(200);
+      const after = await page.locator('.st-top__icon').getAttribute('aria-pressed');
+      check('押すと切り替わる', before !== after, `${before} → ${after}`);
+      check(
+        '次に開いたときのために、覚えておく',
+        (await page.evaluate(() => localStorage.getItem('aeframe.sound'))) === '0',
+      );
+      await page.locator('.st-top__icon').click(); // 元に戻す
+      await page.waitForTimeout(200);
+    }
+
     /* 置き場所が、この画面でいちばん大きい面であること（視線の起点） */
     {
       const drop = await page.locator('.st-drop .drop').boundingBox();
@@ -3108,6 +3131,211 @@ try {
     );
 
     check('通しで、エラーが1件も出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
+    await page.close();
+  }
+
+  /*
+    ■ 音と絵が、ずれずに書き出される
+
+    画面には「音はそのまま入ります」と書いてある。**書いてある以上、確かめる。**
+
+    ここで見るのは3つ。
+      ・音のトラックが入っているか
+      ・本当に鳴っているか（無音のトラックが入っているだけ、を弾く）
+      ・音と絵がずれていないか
+
+    ずれは、いちばん気づかれる壊れかたなのに、いちばん気づきにくい。
+    録音機を先に回してしまうと、再生が始まるまでのぶん音だけが進む。
+    見た目には何も起きないので、渡した先で「口と声が合っていない」と言われて
+    はじめて分かる。
+
+    確かめかたは、合図を入れた素材を作ること。
+    1.0 秒のところで**音が鳴りはじめ、同時に色が変わる**素材を録り、
+    書き出したものから、音の合図と絵の合図の時刻をそれぞれ measure する。
+  */
+  console.log('\n■ 音と絵が、ずれずに書き出される');
+  {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e.message)));
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(BASE + '#/studio', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+
+    const CUE = 1.0;
+    await page.evaluate(async (cue) => {
+      const c = document.createElement('canvas');
+      c.width = 320;
+      c.height = 180;
+      const x = c.getContext('2d');
+      const stream = c.captureStream(30);
+
+      const ac = new AudioContext();
+      const osc = ac.createOscillator();
+      osc.frequency.value = 660;
+      const gain = ac.createGain();
+      gain.gain.value = 0; // はじめは無音
+      const dest = ac.createMediaStreamDestination();
+      osc.connect(gain).connect(dest);
+      osc.start();
+      for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+
+      const rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const stopped = new Promise((r) => (rec.onstop = r));
+      rec.start();
+      const t0 = performance.now();
+      await new Promise((done) => {
+        const draw = () => {
+          const t = (performance.now() - t0) / 1000;
+          if (t >= cue && gain.gain.value === 0) gain.gain.setValueAtTime(0.6, ac.currentTime);
+          x.fillStyle = '#00b140';
+          x.fillRect(0, 0, 320, 180);
+          x.fillStyle = t < cue ? '#e2384f' : '#3f6fd8'; // 合図で色が変わる
+          x.fillRect(110, 45, 100, 90);
+          if (t > 2) done();
+          else requestAnimationFrame(draw);
+        };
+        draw();
+      });
+      rec.stop();
+      await stopped;
+      osc.stop();
+      const file = new File([new Blob(chunks, { type: 'video/webm' })], 'cue.webm', {
+        type: 'video/webm',
+      });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document
+        .querySelector('.st-drop .drop')
+        .dispatchEvent(
+          new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }),
+        );
+    }, CUE);
+
+    await page.waitForTimeout(3200);
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(7000);
+    await page.getByRole('button', { name: 'ほぞんする' }).click();
+    await page.waitForTimeout(800);
+
+    check(
+      '音のある素材のときだけ、音の選びかたを出す',
+      (await page.locator('.st-opt__label').allInnerTexts()).some((t) => t === '音'),
+    );
+
+    /* 書き出したものを測る道具（音の合図・絵の合図） */
+    const measure = (bytes) =>
+      page.evaluate(async (b64) => {
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'video/webm' });
+        const out = {};
+
+        const v = document.createElement('video');
+        v.muted = true;
+        v.src = URL.createObjectURL(blob);
+        await new Promise((r) => {
+          v.onloadeddata = r;
+          setTimeout(r, 8000);
+        });
+        try {
+          out.tracks = v.captureStream().getAudioTracks().length;
+        } catch {
+          out.tracks = -1;
+        }
+
+        try {
+          const ac = new AudioContext();
+          const buf = await ac.decodeAudioData(arr.buffer.slice(0));
+          const ch = buf.getChannelData(0);
+          let sum = 0;
+          for (let i = 0; i < ch.length; i++) sum += ch[i] * ch[i];
+          out.rms = Math.sqrt(sum / ch.length);
+          out.seconds = buf.duration;
+          // 鳴りはじめた時刻
+          out.audioCue = -1;
+          const win = Math.round(buf.sampleRate * 0.01);
+          for (let i = 0; i + win < ch.length; i += win) {
+            let s = 0;
+            for (let k = 0; k < win; k++) s += ch[i + k] * ch[i + k];
+            if (Math.sqrt(s / win) > 0.1) {
+              out.audioCue = i / buf.sampleRate;
+              break;
+            }
+          }
+        } catch (e) {
+          out.decodeError = String(e.message || e);
+        }
+
+        // 色が変わった時刻（間をはさんで探す）
+        const cvs = document.createElement('canvas');
+        cvs.width = 32;
+        cvs.height = 18;
+        const g = cvs.getContext('2d', { willReadFrequently: true });
+        const isBlue = async (t) => {
+          v.currentTime = t;
+          await new Promise((r) => {
+            v.onseeked = r;
+            setTimeout(r, 1500);
+          });
+          g.clearRect(0, 0, 32, 18);
+          g.drawImage(v, 0, 0, 32, 18);
+          const d = g.getImageData(16, 9, 1, 1).data;
+          return d[2] > d[0];
+        };
+        let lo = 0;
+        let hi = Math.min(out.seconds || 2.4, 2.4);
+        out.videoCue = -1;
+        if (await isBlue(hi)) {
+          for (let i = 0; i < 9; i++) {
+            const mid = (lo + hi) / 2;
+            if (await isBlue(mid)) hi = mid;
+            else lo = mid;
+          }
+          out.videoCue = (lo + hi) / 2;
+        }
+        return out;
+      }, bytes.toString('base64'));
+
+    /* 音つきで書き出す */
+    const [withSound] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: /配信ソフトに、そのまま置く/ }).click(),
+    ]);
+    const heard = await measure(readFileSync(await withSound.path()));
+
+    check('音のトラックが入っている', heard.tracks === 1, `${heard.tracks} 本`);
+    check(
+      '無音ではなく、ちゃんと鳴っている',
+      (heard.rms ?? 0) > 0.05,
+      `RMS ${heard.rms?.toFixed(3)}`,
+    );
+    check(
+      '音と絵の合図が、同じところに来る',
+      heard.audioCue > 0 && heard.videoCue > 0 && Math.abs(heard.audioCue - heard.videoCue) < 0.15,
+      `音 ${heard.audioCue?.toFixed(3)}秒 ／ 絵 ${heard.videoCue?.toFixed(3)}秒 ／ ずれ ${Math.round((heard.audioCue - heard.videoCue) * 1000)}ミリ秒`,
+    );
+
+    /* 「音なしにする」を選んだら、本当に入らない */
+    await page.getByRole('button', { name: 'べつの形でも保存する' }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: '音なしにする' }).click();
+    await page.waitForTimeout(200);
+    const [silent] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: /配信ソフトに、そのまま置く/ }).click(),
+    ]);
+    const quiet = await measure(readFileSync(await silent.path()));
+    check(
+      '「音なし」を選んだら、音は入らない',
+      quiet.tracks === 0 || (quiet.rms ?? 0) < 0.005,
+      `トラック ${quiet.tracks} ／ RMS ${quiet.rms?.toFixed(4)}`,
+    );
+
+    check('音の通しで、エラーが出ていない', errors.length === 0, errors.slice(0, 3).join(' / '));
     await page.close();
   }
 
