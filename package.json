@@ -14,7 +14,8 @@
     "build:demo": "DEMO=1 vite build --outDir dist-demo --emptyOutDir",
     "check:dist": "node tools/check-dist.mjs",
     "og": "node tools/make-og.mjs",
-    "build:tip": "tsc -b && VITE_TIP_URL=https://example.com/tip-dummy vite build --outDir dist-tip --emptyOutDir"
+    "build:tip": "tsc -b && VITE_TIP_URL=https://example.com/tip-dummy vite build --outDir dist-tip --emptyOutDir",
+    "build:notip": "tsc -b && VITE_TIP_URL= vite build --outDir dist-notip --emptyOutDir"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",

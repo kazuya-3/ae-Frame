@@ -2745,16 +2745,32 @@ try {
   console.log('\n■ お礼（チップ）');
   {
     const TIP_DUMMY = 'https://example.com/tip-dummy';
-    console.log('  （送り先ありのビルドを作っています…）');
-    const built = spawnSync('npm', ['run', 'build:tip'], {
-      cwd: root,
-      stdio: 'ignore',
-      env: { ...process.env },
-    });
-    check('送り先ありのビルドが作れる', built.status === 0);
+
+    /*
+      ── なぜ dist を使わないのか ──
+
+      はじめ、空の側の確認に dist（このスクリプトの既定の配信元）を使っていた。
+      手もとでは通る。**本番で落ちる。**
+
+      公開の仕組みは、送り先の変数が入っていれば dist を**入りで**ビルドする。
+      すると「空のときは入口を出さない」が dist に対して走り、当然落ちる。
+      変数を入れた瞬間に公開が止まる、といういちばん困る形だった。
+
+      ここで見たいのは「dist がどちらか」ではなく「**空ならこう、入りならこう**」。
+      だから両方をこの場で作って、それぞれを見る。
+      dist がどちらで作られていても、この塊の答えは変わらない。
+    */
+    console.log('  （送り先あり・なしの2本を作っています…）');
+    const build = (script) =>
+      spawnSync('npm', ['run', script], { cwd: root, stdio: 'ignore', env: { ...process.env } })
+        .status === 0;
+    check('送り先ありのビルドが作れる', build('build:tip'));
+    check('送り先なしのビルドが作れる', build('build:notip'));
 
     const tipServer = serve('dist-tip', PORT + 1);
+    const noTipServer = serve('dist-notip', PORT + 2);
     const TIP_BASE = `http://127.0.0.1:${PORT + 1}/`;
+    const NOTIP_BASE = `http://127.0.0.1:${PORT + 2}/`;
     await new Promise((r) => setTimeout(r, 900));
 
     /** つくる画面の見えている文字。足もとの帯だけ外す */
@@ -2867,7 +2883,7 @@ try {
 
     /* ---- いちばん大事な1件：つくる画面が変わらない ---- */
     {
-      const plain = await open(BASE);
+      const plain = await open(NOTIP_BASE);
       const withTip = await open(TIP_BASE);
       check(
         'つくる画面（1枚目）が、入口の有無で変わらない',
@@ -2891,7 +2907,7 @@ try {
       };
       check(
         '重ねて保存の画面が、入口の有無で変わらない',
-        (await step3Text(BASE)) === (await step3Text(TIP_BASE)),
+        (await step3Text(NOTIP_BASE)) === (await step3Text(TIP_BASE)),
       );
     }
 
@@ -2899,8 +2915,12 @@ try {
     for (const r of checkDist(join(root, 'dist-tip'), { tipUrl: TIP_DUMMY })) {
       check(`送り先あり：${r.name}`, r.ok, r.detail);
     }
+    for (const r of checkDist(join(root, 'dist-notip'))) {
+      check(`送り先なし：${r.name}`, r.ok, r.detail);
+    }
 
     tipServer.kill();
+    noTipServer.kill();
   }
 
   console.log('\n■ お金に触れる要素が無いこと');
