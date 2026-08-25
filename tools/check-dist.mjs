@@ -505,22 +505,56 @@ export function checkOgSource() {
  * `src/components/Tip.tsx` の画面に出る文字。
  * どちらかを直したら、もう片方も直るまで通らない。
  *
- * ── なぜ「目印のある枠を全部見る」だけでは足りないのか ──
+ * ── 枠の見分けかたで2回外している ──
  *
- * はじめそう書いた。そして**目印を消すと、黙って通った**。
- * 見張られなくなったのに検証は緑のまま、といういちばん悪い形で、
- * 「消せば静かになる」道を自分で用意していた。
+ * 1回目：目印（HTML コメント）を枠の直前に置いて、それを探す形にした。
+ *   **目印を消すと黙って通った。** 見張られなくなったのに検証は緑のまま、
+ *   という形で「消せば静かになる」道を自分で用意していた。
  *
- * なので、**どのファイルが掲載文面を持つか**を下に宣言しておく。
- * 宣言したファイルに枠が無ければ落ちる。ファイルごと消しても落ちる。
- * 置き場所が増えたら、この一覧に足すのが「見張ってください」の意思表示になる。
+ * 2回目：目印を消されても落ちるように、持つべきファイルを宣言する形にした。
+ *   ところが目印は問い合わせ文の**送る枠の中**に入ってしまい、
+ *   貼り付けたら相手に見えてしまう。外へ出すと今度は枠から離れ、
+ *   「目印のあとの最初の枠」が**別の枠**（Payment Link の説明）に当たった。
+ *   しかも説明文の中に目印の文字列を書いていたので、そこからも拾っていた。
+ *
+ * 目印をやめた。枠は**中身で見分ける**。掲載文面には必ず見出しの1行が
+ * 入っているので、それを含む枠だけを読む。文書に目印は1文字も要らない。
+ * どのファイルが持つべきかは、下の一覧が正。
  */
 
 /**
  * 掲載文面を持つと宣言した文書（`docs/` からの相対）。
- * ここに載っているファイルは、`<!-- tip-copy -->` の枠を必ず持っていること。
+ * ここに載っているファイルは、掲載文面の枠を必ず持っていること。
+ * 置き場所が増えたら、ここに足すのが「見張ってください」の意思表示になる。
  */
 const TIP_COPY_DOCS = ['tip-stripe-setup.md', 'tip-stripe-inquiry.md'];
+
+/** 掲載文面の枠を、ほかの枠と見分けるための1行（画面の見出しでもある） */
+const TIP_COPY_ANCHOR = '作った人にお礼を送る';
+
+/**
+ * 消えてはいけない断り。**画面にも、Stripe に出す文書にも、全部あること。**
+ *
+ * ── なぜ別に持つのか ──
+ *
+ * はじめ「文書に書いてある行が、画面にもあること」だけを見ていた。
+ * それだと**文書から1行消しても通る**。見る行が減るだけなので、
+ * 残った行は全部一致したままだから。
+ *
+ * しかも消える方向は、いちばん危ないほうへ働く。
+ * 「払わないと使えない機能もありません」が1行消えても、検証は緑のまま
+ * 審査に出せてしまう。**弱めるのを黙って許す検証**になっていた。
+ *
+ * だからここに、消えては困る文を別に置く。足す・書き換えるは上の突き合わせが、
+ * 消すはこちらが見る。
+ */
+const TIP_COPY_LINES = [
+  'このツールはぜんぶ無料で使えます。',
+  'このツールをすでに使っていただいたことへの任意のお礼として、好きな金額を送れます。',
+  '送っても、送らなくても、できることは1つも変わりません。',
+  '払うと増える機能はありません。払わないと使えない機能もありません。',
+  'お返しするものもありません。',
+];
 export function checkTipCopy() {
   const name = 'お礼の文面が、Stripe に出すものと同じ';
   const tsx = join(ROOT, 'src', 'components', 'Tip.tsx');
@@ -543,12 +577,15 @@ export function checkTipCopy() {
     }
     // 引用（>）の中に置かれることがあるので、先に行頭の > を落としてから読む
     const text = readFileSync(path, 'utf8').replace(/^> ?/gm, '');
-    const found = [...text.matchAll(/<!-- tip-copy -->\s*```\n([\s\S]*?)```/g)];
+    const found = [...text.matchAll(/```\n([\s\S]*?)```/g)]
+      .map((m) => m[1])
+      // 掲載文面の枠だけを取る。同じ文書にはほかの枠もある
+      .filter((b) => b.includes(TIP_COPY_ANCHOR));
     if (!found.length) {
-      noBlock.push(`${f}（目印の付いた枠が無い）`);
+      noBlock.push(`${f}（掲載文面の枠が無い）`);
       continue;
     }
-    for (const m of found) blocks.push([f, m[1]]);
+    for (const b of found) blocks.push([f, b]);
   }
   if (noBlock.length) return { name, ok: false, detail: noBlock.join(' / ') };
 
@@ -574,16 +611,24 @@ export function checkTipCopy() {
     .join('')
     .replace(/\s+/g, '');
 
+  const flat = (t) => t.replace(/[【】［］]/g, '').replace(/\s+/g, '');
   const missing = [];
   let lines = 0;
+
+  // 足された・書き換えられた：文書にある行が、画面にもあること
   for (const [file, block] of blocks) {
-    const rows = block
-      .split('\n')
-      // 枠の中の飾り（強調の【】、ボタンを表す［］）は画面には出ない文字
-      .map((l) => l.replace(/[【】［］]/g, '').replace(/\s+/g, ''))
-      .filter(Boolean);
+    const rows = block.split('\n').map(flat).filter(Boolean);
     lines += rows.length;
     for (const r of rows) if (!visible.includes(r)) missing.push(`${file}：${r}`);
+  }
+
+  // 消された：断りの文が、画面にも、どの文書にも残っていること
+  for (const line of TIP_COPY_LINES) {
+    const want = flat(line);
+    if (!visible.includes(want)) missing.push(`画面から消えている：${line}`);
+    for (const [file, block] of blocks) {
+      if (!flat(block).includes(want)) missing.push(`${file} から消えている：${line}`);
+    }
   }
 
   return {
