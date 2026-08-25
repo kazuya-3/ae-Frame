@@ -489,6 +489,74 @@ export function checkOgSource() {
   };
 }
 
+/**
+ * 画面に出る文面と、Stripe に出す文面が同じであること。
+ *
+ * ── なぜ要るのか ──
+ *
+ * 審査には「実際に掲載する文面」を添えて出す。そのあと画面の言葉だけを
+ * 直すと、**出したものと配っているものが食い違う**。しかもその食い違いは、
+ * 直した本人にはいちばん見えない（手もとでは新しいほうしか見ない）。
+ *
+ * 前回、画面の言葉と条件分岐の向こうの言葉が食い違ったまま公開して
+ * 止められている。同じ形の事故なので、機械に見張らせる。
+ *
+ * 見るのは `docs/tip-stripe-setup.md` の「実際に画面に出る文面」の枠と、
+ * `src/components/Tip.tsx` の画面に出る文字。
+ * どちらかを直したら、もう片方も直るまで通らない。
+ */
+export function checkTipCopy() {
+  const doc = join(ROOT, 'docs', 'tip-stripe-setup.md');
+  const tsx = join(ROOT, 'src', 'components', 'Tip.tsx');
+  if (!existsSync(doc) || !existsSync(tsx)) {
+    return { name: 'お礼の文面が、Stripe に出すものと同じ', ok: false, detail: '文書か実装が無い' };
+  }
+
+  // 文書：見出しのすぐ下にある枠の中身
+  const block = readFileSync(doc, 'utf8').match(/## 2\.[^\n]*\n[\s\S]*?```\n([\s\S]*?)```/)?.[1];
+  if (!block) {
+    return {
+      name: 'お礼の文面が、Stripe に出すものと同じ',
+      ok: false,
+      detail: '文書の枠が読めない',
+    };
+  }
+
+  /*
+    実装：画面に出る文字だけにする。
+
+    はじめ「タグと波かっこを消す」で書いて、盛大に外した。
+    JSX の本体は波かっこで包まれているので、釣り合った波かっこを
+    繰り返し消すと**中身ごと消える**。しかも消えたぶんは
+    「画面に無い」と報告されるので、検証としては正しく見えてしまう。
+
+    素直に、**タグとタグのあいだの文字**（JSX のテキストノード）だけを拾う。
+    波かっこと山かっこを含まない範囲に限れば、式や属性は入ってこない。
+
+    空白は消す。残すと、折り返しの位置を変えただけで落ちてしまう。
+  */
+  const source = readFileSync(tsx, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  const visible = (source.match(/>[^<>{}]+</g) ?? [])
+    // 拾った両端の山かっこは、文字ではないので落とす（残すと <b> のところで途切れる）
+    .map((m) => m.slice(1, -1))
+    .join('')
+    .replace(/\s+/g, '');
+
+  const lines = block
+    .split('\n')
+    .map((l) => l.replace(/[【】［］]/g, '').replace(/\s+/g, ''))
+    .filter(Boolean);
+  const missing = lines.filter((l) => !visible.includes(l));
+
+  return {
+    name: 'お礼の文面が、Stripe に出すものと同じ',
+    ok: lines.length > 0 && missing.length === 0,
+    detail: missing.length ? `画面に無い：${missing.join(' / ')}` : `${lines.length} 行ぶん確認`,
+  };
+}
+
 /** リポジトリ側に秘密鍵が入っていないこと。配るものとは別に見る */
 export function checkRepoSecrets() {
   const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'assets-src']);
@@ -525,6 +593,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const results = [
     ...checkDist(dir, { tipUrl: process.env.VITE_TIP_URL ?? '' }),
     checkOgSource(),
+    checkTipCopy(),
     checkRepoWords(),
     checkRepoSecrets(),
   ];

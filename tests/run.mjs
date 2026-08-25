@@ -16,6 +16,7 @@ import { build } from './fixtures.mjs';
 import {
   checkDist,
   checkOgSource,
+  checkTipCopy,
   checkRepoWords,
   checkRepoSecrets,
 } from '../tools/check-dist.mjs';
@@ -2985,6 +2986,7 @@ try {
     // 「頼んだとおりに作れているか」を見る。空で作ったなら空、入りで作ったなら入り
     ...checkDist(join(root, 'dist'), { tipUrl: process.env.VITE_TIP_URL ?? '' }),
     checkOgSource(),
+    checkTipCopy(),
     checkRepoWords(),
     checkRepoSecrets(),
   ]) {
