@@ -2798,14 +2798,14 @@ try {
 
     /* ---- 送り先が空のビルド ---- */
     {
-      const page = await open(BASE);
+      const page = await open(NOTIP_BASE);
       check(
         '空のときは、足もとに入口を出さない',
         (await page.getByRole('button', { name: /お礼を送る/ }).count()) === 0,
       );
       await page.close();
 
-      const direct = await open(BASE, '#/tip');
+      const direct = await open(NOTIP_BASE, '#/tip');
       check(
         '空のときに #/tip を開くと、つくる画面が出る',
         (await direct.locator('.steps').count()) === 1,
