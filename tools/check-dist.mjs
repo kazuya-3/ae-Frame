@@ -501,26 +501,56 @@ export function checkOgSource() {
  * 前回、画面の言葉と条件分岐の向こうの言葉が食い違ったまま公開して
  * 止められている。同じ形の事故なので、機械に見張らせる。
  *
- * 見るのは `docs/tip-stripe-setup.md` の「実際に画面に出る文面」の枠と、
+ * 見るのは `docs/` の中で `<!-- tip-copy -->` の目印が付いた枠と、
  * `src/components/Tip.tsx` の画面に出る文字。
  * どちらかを直したら、もう片方も直るまで通らない。
+ *
+ * ── なぜ「目印のある枠を全部見る」だけでは足りないのか ──
+ *
+ * はじめそう書いた。そして**目印を消すと、黙って通った**。
+ * 見張られなくなったのに検証は緑のまま、といういちばん悪い形で、
+ * 「消せば静かになる」道を自分で用意していた。
+ *
+ * なので、**どのファイルが掲載文面を持つか**を下に宣言しておく。
+ * 宣言したファイルに枠が無ければ落ちる。ファイルごと消しても落ちる。
+ * 置き場所が増えたら、この一覧に足すのが「見張ってください」の意思表示になる。
  */
+
+/**
+ * 掲載文面を持つと宣言した文書（`docs/` からの相対）。
+ * ここに載っているファイルは、`<!-- tip-copy -->` の枠を必ず持っていること。
+ */
+const TIP_COPY_DOCS = ['tip-stripe-setup.md', 'tip-stripe-inquiry.md'];
 export function checkTipCopy() {
-  const doc = join(ROOT, 'docs', 'tip-stripe-setup.md');
+  const name = 'お礼の文面が、Stripe に出すものと同じ';
   const tsx = join(ROOT, 'src', 'components', 'Tip.tsx');
-  if (!existsSync(doc) || !existsSync(tsx)) {
-    return { name: 'お礼の文面が、Stripe に出すものと同じ', ok: false, detail: '文書か実装が無い' };
+  const docsDir = join(ROOT, 'docs');
+  if (!existsSync(tsx) || !existsSync(docsDir)) {
+    return { name, ok: false, detail: '文書か実装が無い' };
   }
 
-  // 文書：見出しのすぐ下にある枠の中身
-  const block = readFileSync(doc, 'utf8').match(/## 2\.[^\n]*\n[\s\S]*?```\n([\s\S]*?)```/)?.[1];
-  if (!block) {
-    return {
-      name: 'お礼の文面が、Stripe に出すものと同じ',
-      ok: false,
-      detail: '文書の枠が読めない',
-    };
+  /*
+    文書：目印のあとに来る枠の中身。
+    引用（>）の中に置かれることがあるので、先に行頭の > を落としてから読む。
+  */
+  const blocks = [];
+  const noBlock = [];
+  for (const f of TIP_COPY_DOCS) {
+    const path = join(docsDir, f);
+    if (!existsSync(path)) {
+      noBlock.push(`${f}（ファイルが無い）`);
+      continue;
+    }
+    // 引用（>）の中に置かれることがあるので、先に行頭の > を落としてから読む
+    const text = readFileSync(path, 'utf8').replace(/^> ?/gm, '');
+    const found = [...text.matchAll(/<!-- tip-copy -->\s*```\n([\s\S]*?)```/g)];
+    if (!found.length) {
+      noBlock.push(`${f}（目印の付いた枠が無い）`);
+      continue;
+    }
+    for (const m of found) blocks.push([f, m[1]]);
   }
+  if (noBlock.length) return { name, ok: false, detail: noBlock.join(' / ') };
 
   /*
     実装：画面に出る文字だけにする。
@@ -544,16 +574,24 @@ export function checkTipCopy() {
     .join('')
     .replace(/\s+/g, '');
 
-  const lines = block
-    .split('\n')
-    .map((l) => l.replace(/[【】［］]/g, '').replace(/\s+/g, ''))
-    .filter(Boolean);
-  const missing = lines.filter((l) => !visible.includes(l));
+  const missing = [];
+  let lines = 0;
+  for (const [file, block] of blocks) {
+    const rows = block
+      .split('\n')
+      // 枠の中の飾り（強調の【】、ボタンを表す［］）は画面には出ない文字
+      .map((l) => l.replace(/[【】［］]/g, '').replace(/\s+/g, ''))
+      .filter(Boolean);
+    lines += rows.length;
+    for (const r of rows) if (!visible.includes(r)) missing.push(`${file}：${r}`);
+  }
 
   return {
-    name: 'お礼の文面が、Stripe に出すものと同じ',
-    ok: lines.length > 0 && missing.length === 0,
-    detail: missing.length ? `画面に無い：${missing.join(' / ')}` : `${lines.length} 行ぶん確認`,
+    name,
+    ok: lines > 0 && missing.length === 0,
+    detail: missing.length
+      ? `画面に無い：${missing.join(' / ')}`
+      : `${blocks.length} か所 / ${lines} 行ぶん確認`,
   };
 }
 
