@@ -396,13 +396,19 @@ try {
     見えるのは**何を取りにいったか**で、順番の話はそれで足りる。
     切り替えたのに前のモデルを取りにいく、という壊れかたが実際にあり得る
     （設定を変えた直後の再計算が、変える前の設定を閉じこめた関数で走る）。
+
+    あわせて、**非商用ライセンスのモデルを取りにいかないこと**も見る。
+    お礼を受け取る形にした以上、条件付きのものが黙って動く経路を残さない。
+    どちらの側を選んでも、どの控えに落ちても、一度も出てこないことを数える。
   */
   console.log('\n■ どちらのAIを先に試すか');
   {
     const page = await browser.newPage({ viewport: PHONE });
     let asked = [];
+    const askedAll = [];
     await page.route('**huggingface.co/**', (r) => {
       asked.push(r.request().url());
+      askedAll.push(r.request().url());
       r.abort();
     });
     await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
@@ -418,7 +424,7 @@ try {
     // 色では抜けないデザイン。自動で AI に切り替わる。
     await page.setInputFiles('input[type=file]', join(FIXTURES, 'glass.png'));
     await waitFor(() => asked.length > 0, 20000);
-    check('はじめは RMBG-1.4 を取りにいく', /RMBG-1\.4/i.test(asked[0] ?? ''), asked[0] ?? 'なし');
+    check('はじめは BiRefNet を取りにいく', /BiRefNet/i.test(asked[0] ?? ''), asked[0] ?? 'なし');
 
     await page.waitForTimeout(2500);
     await page.getByRole('button', { name: /うまく消えないときは/ }).click();
@@ -430,9 +436,16 @@ try {
     await alt.click();
     await waitFor(() => asked.length > 0, 20000);
     check(
-      '切り替えると、こんどは BiRefNet を取りにいく',
-      /BiRefNet/i.test(asked[0] ?? ''),
+      '切り替えると、こんどは MODNet を取りにいく',
+      /modnet/i.test(asked[0] ?? ''),
       asked[0] ?? 'なし',
+    );
+
+    const nc = askedAll.filter((u) => /rmbg/i.test(u));
+    check(
+      '非商用ライセンスのモデルは、どちらの側でも取りにいかない',
+      askedAll.length > 0 && nc.length === 0,
+      nc[0] ?? `${askedAll.length}件、どれもRMBGではない`,
     );
     await page.close();
   }

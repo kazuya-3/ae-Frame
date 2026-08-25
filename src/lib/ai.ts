@@ -25,9 +25,8 @@ export type AiQuality = 'balanced' | 'high';
  * ── なぜ選べるようにしたか ──
  *
  * どちらが上かは、**渡されるフレーム次第**で入れ替わる。
- * RMBG-1.4 は輪郭が素直で、髪や細い線に強い。BiRefNet はうすい色や
- * グローの境目を粘る。手もとには本物のフレームが1枚も無いので、
- * こちらでどちらが良いとは決められない。
+ * BiRefNet はうすい色やグローの境目を粘る。MODNet は人物の輪郭に強い。
+ * 手もとには本物のフレームが1枚も無いので、こちらでどちらが良いとは決められない。
  *
  * 順番を黙って入れ替えることもできるが、それは「測っていないほうへ賭ける」だけで、
  * 良くなったかどうかは誰にも分からないままになる。
@@ -44,24 +43,20 @@ type ModelSpec = {
   processorConfig?: Record<string, unknown>;
 };
 
-const RMBG: ModelSpec = {
-  id: 'briaai/RMBG-1.4',
-  label: 'RMBG-1.4',
-  modelOptions: {
-    config: { model_type: 'custom', is_encoder_decoder: false },
-  },
-  processorConfig: {
-    do_normalize: true,
-    do_pad: false,
-    do_rescale: true,
-    do_resize: true,
-    image_mean: [0.5, 0.5, 0.5],
-    image_std: [1, 1, 1],
-    resample: 2,
-    rescale_factor: 1 / 255,
-    size: { width: 1024, height: 1024 },
-  },
-};
+/*
+  ── ここに RMBG-1.4 を置いていた（1番手だった）──
+
+  切り抜きの質は良かったが、ライセンスが**非商用**の条件付きだった。
+  無料で配っているだけなら関係が無い。お礼（チップ）を受け取る形にした時点で、
+  「これは商用か」を自分で判断する立場になる。**争うより避けるほうが安い**ので外した。
+
+  控えに残すこともしない。控えは「1番手が落ちたときに黙って動くもの」で、
+  黙って動く場所に条件付きのものを置いたら、外した意味が無くなる。
+
+  いま使う2つはどちらも制限なし：
+    - BiRefNet  … MIT（ZhengPeng7/BiRefNet の LICENSE）
+    - MODNet    … Apache-2.0（ZHKKKe/MODNet。コード・モデル・デモとも）
+*/
 
 const BIREFNET: ModelSpec = {
   id: 'onnx-community/BiRefNet_lite',
@@ -89,7 +84,7 @@ const MODNET: ModelSpec = { id: 'Xenova/modnet', label: 'MODNet' };
  * ハブ側の都合で1つ落ちても、ツール全体が使えなくならないようにするため。
  */
 function order(pick: AiModel): ModelSpec[] {
-  return pick === 'alt' ? [BIREFNET, RMBG, MODNET] : [RMBG, BIREFNET, MODNET];
+  return pick === 'alt' ? [MODNET, BIREFNET] : [BIREFNET, MODNET];
 }
 
 type Loaded = {
