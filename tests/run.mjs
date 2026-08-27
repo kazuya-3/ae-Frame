@@ -2522,7 +2522,16 @@ try {
     const page = await browser.newPage({ viewport: { width: 1180, height: 940 } });
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e.message)));
-    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return;
+      /*
+        AI を取りにいけない状況は、こちらが意図して作っている（下で通信を止めている）。
+        そのときブラウザが出す「読み込めなかった」は、探している不具合ではない。
+        ここで拾ってしまうと、**わざと起こした失敗のせいで検証が落ちる**ことになる。
+      */
+      if (/net::ERR_FAILED|huggingface/i.test(m.text())) return;
+      errors.push(m.text());
+    });
     await page.route('**huggingface.co/**', (r) => r.abort());
 
     const asked = [];
@@ -2673,6 +2682,61 @@ try {
     await page.getByRole('button', { name: 'とうめい' }).click();
     await page.waitForTimeout(350);
     check('とうめいに戻せる', (await stagePixel(0.02, 0.05))[3] < 12);
+
+    /*
+      AI を取りにいけないとき。
+
+      通信が塞がれている端末、機内モード、そして**お試し版**
+      （HTML1枚に詰めた版。20MB のモデルは積めないので、そもそも入っていない）。
+
+      つくる画面は前から色キーに落ちる作りだったのに、こちらだけ落ちる道が無く、
+      赤い字が出て終わっていた。その人にとっては「何も出来ない道具」になる。
+
+      検証では huggingface.co を止めてあるので、この状況がそのまま作れる。
+      地がばらついた絵（＝自動判定が AI を選ぶ絵）を置いて、
+      **終わりまで進むこと**と、**落ちたことを黙っていないこと**を見る。
+    */
+    await page.locator('.st-clip__x').click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('.st-drop input[type=file]', join(FIXTURES, 'studio-uneven.png'));
+    await page.waitForTimeout(900);
+    check(
+      'ばらついた地では、AI を選ぶ',
+      /AIで/.test(await page.locator('.st-plan').innerText()),
+      await page.locator('.st-plan').innerText(),
+    );
+
+    await page.getByRole('button', { name: '背景をけす' }).click();
+    await page.waitForTimeout(3000);
+
+    check(
+      'AI を取りにいけなくても、終わりまで進む',
+      (await page.getByRole('button', { name: 'ほぞんする' }).count()) === 1,
+      (await page.locator('.st-work__rail').innerText()).slice(0, 60),
+    );
+    check(
+      '落ちたことを、黙っていない',
+      /色をたよりに消しました/.test(await page.locator('.st-work__rail').innerText()),
+      (
+        await page
+          .locator('.note--warn')
+          .first()
+          .innerText()
+          .catch(() => '(注意書きなし)')
+      ).slice(0, 60),
+    );
+    check(
+      'それでも、絵は出来ている',
+      await page.evaluate(() => {
+        const c = document.querySelector('.st-stage__canvas');
+        const d = c
+          .getContext('2d', { willReadFrequently: true })
+          .getImageData(0, 0, c.width, c.height).data;
+        let on = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 200) on++;
+        return on / (c.width * c.height) > 0.02;
+      }),
+    );
 
     /*
       黒い地の光もの。

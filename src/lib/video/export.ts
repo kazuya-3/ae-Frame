@@ -228,6 +228,8 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
   const start = track.startSec;
   const end = track.endSec;
   const span = Math.max(0.001, end - start);
+  /** 再生が進まないまま諦めたか */
+  let stalled = false;
 
   await seekTo(el, start);
 
@@ -268,19 +270,23 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
     let gen = 0;
     /** 止めているあいだだけ動く見張り */
     let watch = 0;
+    /** 終わったか（見張りを空回りさせないため） */
+    let done = false;
 
-    const drawOne = () => {
+    const drawOne = (push = true) => {
       const t = el.currentTime;
       const found = matteAt(track, t);
       const matteCanvas = found
         ? mc.update(found.matte, look.refine, `${found.index}|${rkey}`)
         : null;
       renderComposite(ctx, { image: el, matteCanvas, look, width, height });
-      if (canPush) videoTrack.requestFrame();
-      opts.onProgress?.({
-        value: Math.min(1, (t - start) / span),
-        label: '書き出しています',
-      });
+      if (push && canPush) videoTrack.requestFrame();
+      if (push) {
+        opts.onProgress?.({
+          value: Math.min(1, (t - start) / span),
+          label: '書き出しています',
+        });
+      }
     };
 
     const tick = () => {
@@ -296,7 +302,18 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
         音と絵は、同じ瞬間から録りはじめる。
       */
-      if (recorder.state === 'inactive') recorder.start(250);
+      if (recorder.state === 'inactive') {
+        /*
+          録りはじめる前に、1枚描いておく。
+
+          canvas が空のまま録音機を回すと、**先頭に透明なだけのコマが入る。**
+          出来上がりを開いた人が最初に見るのがその1枚で、
+          「中身が空だ」と受け取られる（検証でも、書き出しの頭を読んで落ちた）。
+          渡すものの1コマ目は、ちゃんと絵が入っているものにする。
+        */
+        drawOne(false);
+        recorder.start(250);
+      }
       drawOne();
       if (el.currentTime >= end - 0.001 || el.ended) return finish();
       schedule();
@@ -339,12 +356,45 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
     };
 
     const finish = () => {
+      done = true;
       cancelAnimationFrame(raf);
       clearInterval(watch);
+      clearInterval(pulse);
       document.removeEventListener('visibilitychange', onVisibility);
       el.pause();
       resolve();
     };
+
+    /*
+      再生が進まなくなったときの見張り。
+
+      書き出しは「実際に再生された時間」で進むので、端末が重いと
+      再生そのものが始まらない・止まることがある（ほかのアプリが CPU を
+      持っていった、メモリが苦しい、など）。そのとき画面は
+      「書き出しています 1%」のまま**永久に動かない**。
+      検証でも、ほかのビルドと重なったときに2回ここで止まった。
+
+      1秒ごとに時計を見て、
+        ・3秒進まなければ、もう一度そっと再生をうながす（たいていはこれで戻る）
+        ・12秒進まなければ、諦めて、その旨を伝える（黙って待たせ続けない）
+    */
+    let seen = -1;
+    let stuck = 0;
+    const pulse = setInterval(() => {
+      if (held || opts.signal.aborted || done) return;
+      const t = el.currentTime;
+      if (Math.abs(t - seen) > 0.001) {
+        seen = t;
+        stuck = 0;
+        return;
+      }
+      stuck++;
+      if (stuck === 3) void el.play().catch(() => {});
+      if (stuck >= 12) {
+        stalled = true;
+        finish();
+      }
+    }, 1000) as unknown as number;
 
     /** 再生を始めて、コマ送りを繋ぐ。隠れているあいだは始めない */
     const begin = () => {
@@ -419,6 +469,15 @@ async function record(opts: RecordOptions): Promise<ExportedFile> {
 
   const blob = new Blob(chunks, { type: actual });
   if (!blob.size) throw new Error('動画を書き出せませんでした');
+  /*
+    途中で止まったまま返すと、短い動画が「出来たもの」として渡ってしまう。
+    半分も録れていないなら、それは失敗として伝える（直しかたも一緒に）。
+  */
+  if (stalled && el.currentTime - start < span * 0.6) {
+    throw new Error(
+      '書き出しが途中で止まりました。ほかのアプリやタブを閉じてから、もう一度おためしください。',
+    );
+  }
 
   /*
     出来たものを、その場で開いて確かめる。

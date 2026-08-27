@@ -110,6 +110,8 @@ export default function StudioPage() {
   */
   const [glowAmount, setGlowAmount] = useState(-1);
   const [glowFound, setGlowFound] = useState(false);
+  /** AI を取りにいけず、色で消す道に落ちたか（落ちたことは、黙って隠さない） */
+  const [fellBack, setFellBack] = useState(false);
   const [stabilizeAmount, setStabilizeAmount] = useState(55);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -180,6 +182,7 @@ export default function StudioPage() {
     setDirty(false);
     setGlowAmount(-1);
     setGlowFound(false);
+    setFellBack(false);
     setEngine('auto');
   };
 
@@ -345,6 +348,7 @@ export default function StudioPage() {
         dark: p?.dark ?? false,
       }));
       setGlowFound(result.glowFound);
+      setFellBack(result.fellBack);
       // こちらが決めた値を、つまみに戻す（次からは、その値が人の指示になる）
       if (glowAmount < 0) setGlowAmount(result.glowUsed ? 55 : 0);
       setPhase('done');
@@ -659,6 +663,18 @@ export default function StudioPage() {
 
             {phase === 'done' && (
               <>
+                {/*
+                  AI を取りにいけなかったことは、黙って隠さない。
+                  仕上がりが変わる（フチの精度が落ちる）ので、
+                  「なぜこの出来なのか」が分からないまま渡さない。
+                */}
+                {fellBack && (
+                  <Note tone="warn">
+                    AIを取りにいけなかったので、<b>色をたよりに消しました</b>
+                    。背景が単色でないときは、フチが荒くなります。通信できる場所で、
+                    もう一度おためしください。
+                  </Note>
+                )}
                 {dirty && (
                   <Button variant="ghost" onClick={start}>
                     設定を変えました。もう一度けす

@@ -420,6 +420,28 @@ export function build() {
     }),
   );
 
+  /*
+    地がばらついていて、色では消しようがない絵。
+
+    これを置くと、自動判定は AI を選ぶ。検証では通信を止めてあるので
+    AI は取りにいけない。**そのときに赤い字で終わらず、色で消して続けるか**を
+    見るための絵。お試し版（AI を積んでいない1枚のHTML）と同じ状況になる。
+  */
+  write(
+    'studio-uneven.png',
+    png(480, 270, (x, y) => {
+      const t = x / 480;
+      const u = y / 270;
+      // 斜めのグラデーション＋斑（四辺の色がそろわないようにする）
+      const r = clamp(40 + 150 * t + 40 * Math.sin(x / 23) * Math.cos(y / 17));
+      const g = clamp(70 + 120 * u + 30 * Math.sin((x + y) / 31));
+      const b = clamp(160 - 90 * t + 35 * Math.cos(x / 19));
+      const d = Math.hypot(x - 240, y - 135);
+      if (d < 70) return [245, 240, 232, 255]; // まん中の被写体
+      return [r, g, b, 255];
+    }),
+  );
+
   return OUT;
 }
 

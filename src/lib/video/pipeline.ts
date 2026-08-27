@@ -92,6 +92,8 @@ export type ProcessOptions = {
 
 export type ProcessResult = {
   track: MatteTrack;
+  /** AI を取りにいけず、色で消す道に落ちたか */
+  fellBack: boolean;
   /** 光を足したか（画面の言葉を決めるのに使う） */
   glowUsed: boolean;
   /** 光を足すべきだと気づいたか（つまみの既定値を決めるのに使う） */
@@ -194,18 +196,39 @@ export async function buildMatteTrack(
   report({ phase: 'look', value: 0.02, label: '動画を見ています', etaSec: null });
   await seekTo(video.el, opts.startSec + (opts.endSec - opts.startSec) * 0.4);
   const probe = frameToImageData(video.el, video.width, video.height);
-  const decided = decideEngine(probe, opts.engine);
+  const decided = { ...decideEngine(probe, opts.engine) };
+  let fellBack = false;
 
   /* ── 2. AI なら、先にモデルを用意する ── */
   if (decided.engine === 'ai') {
-    await runMatting(shrinkForWarmup(probe), opts.quality, (p) => {
-      report({
-        phase: 'model',
-        value: 0.02 + p.progress * 0.1,
-        label: p.phase === 'download' ? p.label : 'AIを起こしています',
-        etaSec: null,
+    try {
+      await runMatting(shrinkForWarmup(probe), opts.quality, (p) => {
+        report({
+          phase: 'model',
+          value: 0.02 + p.progress * 0.1,
+          label: p.phase === 'download' ? p.label : 'AIを起こしています',
+          etaSec: null,
+        });
       });
-    });
+    } catch (e) {
+      /*
+        AI を取りにいけない場所がある。
+
+        通信が塞がれている端末、機内モード、社内の回線、
+        そして HTML1枚に詰めた「お試し版」（モデルを埋め込めないので、
+        そもそも積んでいない）。
+
+        ここで諦めると、その人にとっては**何も出来ない道具**になる。
+        つくる画面は前から色キーに落ちる作りだったのに、
+        こちらだけ落ちる道が無く、赤い字が出て終わっていた。
+
+        色で消す道に落として、そのまま続ける。落ちたことは画面に一言出す
+        （黙って質の違うものを渡さない）。
+      */
+      console.warn('AI を用意できませんでした。色で消す道に落とします', e);
+      decided.engine = 'color';
+      fellBack = true;
+    }
   }
   if (opts.signal.aborted) throw new AbortError();
 
@@ -359,6 +382,7 @@ export async function buildMatteTrack(
     bgColor,
     engine: decided.engine,
     colorSettings: decided.engine === 'color' ? decided.settings : null,
+    fellBack,
     glowUsed: glowAmount > 0 || decided.engine === 'glow',
     glowFound,
   };
@@ -429,7 +453,8 @@ export async function buildImageMatte(
   report({ phase: 'look', value: 0.05, label: '画像を見ています', etaSec: null });
 
   const data = frameToImageData(image, image.width, image.height, 1024);
-  const decided = decideEngine(data, opts.engine);
+  const decided = { ...decideEngine(data, opts.engine) };
+  let fellBack = false;
 
   let glowAmount = opts.glowAmount;
   let glowFound = false;
@@ -445,14 +470,22 @@ export async function buildImageMatte(
     alpha = colorKeyAlpha(data, decided.settings);
     report({ phase: 'frames', value: 0.9, label: '背景を消しています', etaSec: null });
   } else {
-    alpha = await runMatting(data, opts.quality, (p) => {
-      report({
-        phase: p.phase === 'download' ? 'model' : 'frames',
-        value: 0.1 + p.progress * 0.85,
-        label: p.label,
-        etaSec: null,
+    try {
+      alpha = await runMatting(data, opts.quality, (p) => {
+        report({
+          phase: p.phase === 'download' ? 'model' : 'frames',
+          value: 0.1 + p.progress * 0.85,
+          label: p.label,
+          etaSec: null,
+        });
       });
-    });
+    } catch (e) {
+      // 動画と同じ。AI を取りにいけないときは、色で消して続ける
+      console.warn('AI を用意できませんでした。色で消す道に落とします', e);
+      decided.engine = 'color';
+      fellBack = true;
+      alpha = colorKeyAlpha(data, decided.settings);
+    }
   }
   if (opts.signal.aborted) throw new AbortError();
 
@@ -490,6 +523,7 @@ export async function buildImageMatte(
     bgColor: estimateBackgroundColor(data, alpha),
     engine: decided.engine,
     colorSettings: decided.engine === 'color' ? decided.settings : null,
+    fellBack,
     glowUsed: glowAmount > 0 || decided.engine === 'glow',
     glowFound,
   };
