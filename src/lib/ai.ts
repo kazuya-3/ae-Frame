@@ -87,6 +87,30 @@ function order(pick: AiModel): ModelSpec[] {
   return pick === 'alt' ? [MODNET, BIREFNET] : [BIREFNET, MODNET];
 }
 
+/**
+ * このモデルは、すでにこの端末に取ってあるか。
+ *
+ * 取ってあるなら、動かすのに通信は要らない。だから何も聞かずに動かしてよい。
+ * 取っていないなら数十MBのダウンロードになるので、勝手に始めない。
+ * 「必要ないときは読み込まない」を、この1つの問いで決めている。
+ *
+ * transformers.js は `caches` の `transformers-cache` に貯める。
+ * URL の組み立てかたには踏み込まず、**鍵のどれかにモデル名が入っているか**だけを見る。
+ * 向こうの都合で名前が変わったら「取っていない」と答える。
+ * そのときは1回よけいに聞かれるだけで、黙って数十MB落とすことにはならない。
+ */
+export async function isModelCached(pick: AiModel = 'default'): Promise<boolean> {
+  const id = order(pick)[0].id;
+  try {
+    if (!('caches' in globalThis)) return false;
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+    return keys.some((r) => r.url.includes(id));
+  } catch {
+    return false;
+  }
+}
+
 type Loaded = {
   spec: ModelSpec;
   model: any;

@@ -362,10 +362,10 @@ try {
   console.log('\n■ クリスタル（白いガラスを白地に＝色では判別不能）');
   {
     const { page, aiRequested } = await openFrame(browser, 'glass.png');
-    // AI への切り替えは、検算 → 動的 import → 取得 と段を踏むので、
-    // 固定待ちだと取りこぼす。条件が立つまで待つ。
-    await waitFor(aiRequested, 15000);
-    check('絵が消えたら AI に切り替える', aiRequested());
+    const offer = page.getByRole('button', { name: /AIできれいにする/ });
+    await waitFor(async () => (await offer.count()) === 1, 15000);
+    check('絵が消えたら AI をすすめる', (await offer.count()) === 1);
+    check('すすめただけでは、まだ取りにいかない', !aiRequested());
     check(
       'AIが使えなくても次へ進める',
       await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
@@ -376,11 +376,86 @@ try {
   console.log('\n■ ざらざらした背景（色キーでは抜けない）');
   {
     const { page, aiRequested } = await openFrame(browser, 'noisy-bg.png');
-    await waitFor(aiRequested, 15000);
-    check('背景が残ったら AI に切り替える', aiRequested());
+    const offer = page.getByRole('button', { name: /AIできれいにする/ });
+    await waitFor(async () => (await offer.count()) === 1, 15000);
+    check('背景が残ったら AI をすすめる', (await offer.count()) === 1);
+    check('すすめただけでは、まだ取りにいかない', !aiRequested());
     check(
       'AIが使えなくても次へ進める',
       await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
+    );
+    await page.close();
+  }
+
+  /*
+    AI は数十MB。**押されるまで取りにいかない。**
+
+    前は、色キーで抜けなかったら黙って AI に回していた。画面には
+    「AIできれいにしています」としか出ないので、スマホの回線で数十MB落ちていることが
+    利用者に分からない。しかも色キーの結果は画面に出ているので、
+    数字や筆で直せば済んだ人まで巻き込んでいた。
+
+    いまは、取ってあるかどうかで態度を変える。
+      - 取っていない … すすめるだけで止まる。押されたら取りにいく
+      - 取ってある   … 通信は起きないので、何も聞かずに動かす
+  */
+  console.log('\n■ AIは、押されるまで取りにいかない');
+  {
+    const { page, aiRequested } = await openFrame(browser, 'glass.png');
+    const offer = page.getByRole('button', { name: /AIできれいにする/ });
+    await waitFor(async () => (await offer.count()) === 1, 15000);
+
+    check('押す前は、1バイトも取りにいっていない', !aiRequested());
+    check(
+      '待たせない（すすめている間も、次へ進める）',
+      await page.getByRole('button', { name: /これでOK/ }).isEnabled(),
+    );
+    check(
+      '通信が要ることを、押す前に言っている',
+      /数十MB/.test(await page.locator('.stack').first().innerText()),
+    );
+
+    await offer.click();
+    await waitFor(aiRequested, 20000);
+    check('押したら、そこで初めて取りにいく', aiRequested());
+    await page.close();
+  }
+
+  {
+    /*
+      すでにこの端末に取ってある場合。通信は起きないので、聞かずに動かす。
+      transformers.js の貯め先（caches の 'transformers-cache'）に鍵を1本置いて再現する。
+    */
+    const page = await browser.newPage({ viewport: PHONE });
+    let aiRequested = false;
+    await page.route('**huggingface.co/**', (r) => {
+      aiRequested = true;
+      r.abort();
+    });
+    await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+    await page.addInitScript(async () => {
+      const cache = await caches.open('transformers-cache');
+      await cache.put(
+        'https://huggingface.co/onnx-community/BiRefNet_lite/resolve/main/config.json',
+        new Response('{}'),
+      );
+    });
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page
+      .getByRole('button', { name: 'はじめる' })
+      .click()
+      .catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(250);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'glass.png'));
+
+    await waitFor(() => aiRequested, 20000);
+    check('もう取ってあるなら、聞かずに動かす', aiRequested);
+    check(
+      'そのときは、すすめる文を出さない',
+      (await page.getByRole('button', { name: /AIできれいにする/ }).count()) === 0,
     );
     await page.close();
   }
@@ -421,8 +496,11 @@ try {
     await page.waitForTimeout(500);
     await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
     await page.waitForTimeout(250);
-    // 色では抜けないデザイン。自動で AI に切り替わる。
+    // 色では抜けないデザイン。AI をすすめられるので、押して取りにいかせる。
     await page.setInputFiles('input[type=file]', join(FIXTURES, 'glass.png'));
+    const offer = page.getByRole('button', { name: /AIできれいにする/ });
+    await waitFor(async () => (await offer.count()) === 1, 20000);
+    await offer.click();
     await waitFor(() => asked.length > 0, 20000);
     check('はじめは BiRefNet を取りにいく', /BiRefNet/i.test(asked[0] ?? ''), asked[0] ?? 'なし');
 

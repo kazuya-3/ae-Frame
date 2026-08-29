@@ -113,6 +113,11 @@ export function CutoutStudio({
   const [quality, setQuality] = useState<AiQuality>('balanced');
   const [aiModel, setAiModel] = useState<AiModel>('default');
   const [aiTried, setAiTried] = useState(false);
+  /*
+    色キーで抜けなかったが、AI をまだこの端末に取っていない状態。
+    ここで勝手に数十MB落とさず、押してもらってから取りにいく。
+  */
+  const [aiOffer, setAiOffer] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
   const [backdrop, setBackdrop] = useState<Backdrop>('checker');
 
@@ -187,6 +192,13 @@ export function CutoutStudio({
       forceAi = false,
       /** 結果を検算して、失敗していたら AI に切り替えてよいか（初回の自動実行のみ） */
       allowEscalate = false,
+      /**
+       * AI をこの端末に取ってきてよいか（数十MBの通信が起きる）。
+       *
+       * 押した人が待っている場面（「AIできれいにする」「けしかたを変える」
+       * AI のスイッチ）だけ true。自動で始まる計算からは決して true にしない。
+       */
+      allowDownload = false,
     ) => {
       const runId = ++runIdRef.current;
       let mode = requested;
@@ -197,20 +209,18 @@ export function CutoutStudio({
         /*
           出した結果を自分で検算する。
           白いガラスを白地に描いたようなデザインは、色だけでは背景と区別できず、
-          絵がほとんど消えるか粉々の断片になる。そうなっていたら黙って AI に回す。
-          ユーザーには「AIできれいにしています」としか見えない。
+          絵がほとんど消えるか粉々の断片になる。そうなっていたら AI に回す。
+
+          回す先が「この端末にもう有る」なら、黙って回してよい（通信が起きない）。
+          無いなら数十MBのダウンロードになるので、下の関所で止めて聞く。
         */
         const q = allowEscalate ? measureQuality(alpha, source.width, source.height) : null;
+        baseAlphaRef.current = alpha;
         if (q?.suspicious) {
-          mode = 'ai';
-          setAiTried(true);
-          setSettings((prev) => ({ ...prev, mode: 'ai' }));
-          // AI を待つ間、暫定の結果を出しておく。画面が真っ白にならない。
-          baseAlphaRef.current = alpha;
+          // 色キーの結果はそのまま出しておく。画面が真っ白にならない。
           finishedRef.current = finishAlpha(alpha, source.width, source.height, s);
           scheduleDraw();
-        } else {
-          baseAlphaRef.current = alpha;
+          mode = 'ai';
         }
       }
 
@@ -220,6 +230,43 @@ export function CutoutStudio({
         if (aiAlphaRef.current && !forceAi) {
           baseAlphaRef.current = aiAlphaRef.current;
         } else {
+          /*
+            ここが「必要ないときは読み込まない」の関所。
+
+            AI は数十MBある。自動で回ってきただけの計算に、それを勝手に始めさせない。
+            すでにこの端末に取ってあるなら通信は起きないので、その場合だけ黙って進む。
+            取っていなければ、色キーの結果を出したまま「AIできれいにする」を出して待つ。
+
+            色キーの結果は、失敗していても**画面には出ている**。
+            そのまま数字や筆で直せる人はそれで済むし、通信を使いたくない人も
+            行き止まりにならない。
+          */
+          if (!allowDownload) {
+            const { isModelCached } = await import('../lib/ai');
+            const cached = await isModelCached(aiOptsRef.current.model);
+            if (runIdRef.current !== runId) return;
+            if (!cached) {
+              setAiOffer(true);
+              if (!baseAlphaRef.current) baseAlphaRef.current = passthroughAlpha(source);
+              finishedRef.current = finishAlpha(
+                baseAlphaRef.current,
+                source.width,
+                source.height,
+                s,
+              );
+              scheduleDraw();
+              setStatus({ kind: 'ready' });
+              return;
+            }
+          }
+          /*
+            ここまで来て初めて「AIを使う」と言う。
+            関所で止めたときに言ってしまうと、けしかたの表示が「AIでけす」に
+            なったまま AI は動いていない、という食い違いが残る。
+          */
+          setAiOffer(false);
+          setAiTried(true);
+          setSettings((prev) => (prev.mode === 'ai' ? prev : { ...prev, mode: 'ai' }));
           setStatus({
             kind: 'working',
             label: 'AIを準備しています',
@@ -275,12 +322,18 @@ export function CutoutStudio({
     [source, scheduleDraw],
   );
 
-  // 初回：判定してそのまま実行する（ユーザーに何も聞かない）。
-  // 色キーで済むと踏んだ場合も、結果を検算して駄目なら AI に自動で切り替える。
+  /*
+    初回：判定してそのまま実行する。
+
+    色キーで済むと踏んだ場合も、結果を検算して駄目なら AI に回す。
+    ただし **allowDownload は渡さない**。ここは自動で走る計算で、
+    押した人が待っているわけではない。AI がこの端末に無ければ、
+    落としにいかずに「AIできれいにする」を出して止まる。
+  */
   useEffect(() => {
-    const mode = analysis.recommended;
-    setAiTried(mode === 'ai');
-    void computeBase(mode, initialSettings(analysis), false, true);
+    setAiTried(false);
+    setAiOffer(false);
+    void computeBase(analysis.recommended, initialSettings(analysis), false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
@@ -337,7 +390,8 @@ export function CutoutStudio({
       setSettings(next);
       if (resolved === 'ai') setAiTried(true);
       setStatus({ kind: 'working', label: '切り替えています', progress: 0.1 });
-      void computeBase(resolved, next);
+      // 「AIでけす」を自分で選んだのだから、取りにいってよい
+      void computeBase(resolved, next, false, false, resolved === 'ai');
     },
     [analysis.recommended, settings, computeBase],
   );
@@ -504,7 +558,21 @@ export function CutoutStudio({
     const next = { ...settings, mode: 'ai' as const };
     setSettings(next);
     setStatus({ kind: 'working', label: 'AIを準備しています', progress: 0.02 });
-    void computeBase('ai', next, true);
+    // 押した人が待っている。取りにいってよい。
+    void computeBase('ai', next, true, false, true);
+  };
+
+  /**
+   * 「AIできれいにする」。ここが、数十MBを取りにいってよい唯一の入口。
+   * 自動で走る計算からは決して呼ばれない。
+   */
+  const acceptAi = () => {
+    play('tap');
+    setAiOffer(false);
+    const next = { ...settings, mode: 'ai' as const, decontaminate: decontaminateFor('ai') };
+    setSettings(next);
+    setStatus({ kind: 'working', label: 'AIを準備しています', progress: 0.02 });
+    void computeBase('ai', next, true, false, true);
   };
 
   const resetAll = () => {
@@ -513,7 +581,7 @@ export function CutoutStudio({
     setSettings(next);
     setTool(null);
     setStatus({ kind: 'working', label: 'もとに戻しています', progress: 0.1 });
-    void computeBase(analysis.recommended, next);
+    void computeBase(analysis.recommended, next, false, true);
   };
 
   /* --------------- 次へ --------------- */
@@ -660,6 +728,35 @@ export function CutoutStudio({
         )}
 
         {status.kind === 'error' && <Note tone="warn">{status.message}</Note>}
+
+        {/*
+          色キーでは抜けなかった。ここで黙って数十MBを取りにいかない。
+
+          このフレームは、画面には**出ている**（消し残ったまま、でも見えている）。
+          だから行き止まりではない。数字と筆で直せる人はそのまま直せるし、
+          通信を使いたくない人は使わずに終われる。AI はその上の選択肢として置く。
+
+          押しどころを2つにしない。「これでOK！」が強調色を持っている場所なので、
+          こちらは ghost のまま、囲いと言葉で目立たせる。
+        */}
+        {aiOffer && !working && (
+          <Note tone="warn">
+            <span>
+              <b>この背景は、かんたん処理では消しきれませんでした。</b>
+              <br />
+              AIを使うときれいになりますが、はじめの1回だけ読み込みに
+              数十MBの通信がかかります（2回目からは要りません）。
+              <br />
+              下の「うまく消えないときは」で、数字や筆で直すこともできます。
+            </span>
+          </Note>
+        )}
+        {aiOffer && !working && (
+          <Button variant="ghost" onClick={acceptAi}>
+            <IconWand size={18} />
+            AIできれいにする（数十MB）
+          </Button>
+        )}
 
         <Button variant="primary" onClick={handleDone} disabled={working}>
           <IconCheck size={20} />
