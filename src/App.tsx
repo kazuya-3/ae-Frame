@@ -70,6 +70,8 @@ export default function App({ active = true }: { active?: boolean }) {
     自分で作ったフレームでは null で、いままでどおり全部さわれる。
   */
   const [lock, setLock] = useState<RecipeLock | null>(null);
+  /** 配った人がつけた名前。無いことのほうが多い */
+  const [frameName, setFrameName] = useState('');
   /*
     もらったフレームの**元のバイト列**。
 
@@ -175,6 +177,7 @@ export default function App({ active = true }: { active?: boolean }) {
         setFrameBytes(file);
         setHole(recipe.hole ?? findHole(bitmapToImageData(bmp)));
         setLock(recipe.lock ?? null);
+        setFrameName(recipe.name ?? '');
         setFrameKept(false);
         setFrameSource(null);
         setFrameFull(null);
@@ -212,6 +215,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameBytes(null);
     setHole(findHole(result));
     setLock(null);
+    setFrameName('');
     // 切りぬいたばかりのものは、まだ覚えていない
     setFrameKept(false);
     setStep(3);
@@ -236,6 +240,7 @@ export default function App({ active = true }: { active?: boolean }) {
       setHole(keptRecipe?.hole ?? findHole(bitmapToImageData(bmp)));
       // 置きかたごと覚えてあったなら、それも一緒に戻す
       setLock(keptRecipe?.lock ?? null);
+      setFrameName(keptRecipe?.name ?? '');
       setFrameKept(true);
       /*
         背景けしは通さない。覚えてあるのは**けし終わったあと**のもので、
@@ -295,6 +300,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameBytes(null);
     setHole(null);
     setLock(null);
+    setFrameName('');
     setFrameKept(false);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -509,6 +515,7 @@ export default function App({ active = true }: { active?: boolean }) {
             frame={frameResult}
             hole={hole}
             lock={lock}
+            frameName={frameName}
             active={step === 3}
             onBack={() => goto(2)}
             onChangePhoto={() => goto(1)}

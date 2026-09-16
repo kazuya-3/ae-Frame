@@ -900,6 +900,9 @@ try {
         const sw = page.getByRole('button', { name: /みんなの見た目をそろえる/ });
         await sw.click();
         await page.waitForTimeout(250);
+        // 名前をつけて配る。もらった人の画面に出るはず。
+        await page.getByLabel('フレームの名前').fill('よるの枠');
+        await page.waitForTimeout(200);
       }
       const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
       await page.getByRole('button', { name: /とうめいにしたフレームだけを保存する|^保存する$/ }).click();
@@ -953,7 +956,11 @@ try {
       );
       check(
         'もらったフレームだと分かる',
-        (await page.getByText(/見え方は、配った人が決めています/).count()) === 1,
+        (await page.getByText(/見え方は配った人が決めています/).count()) === 1,
+      );
+      check(
+        '配った人がつけた名前が出る',
+        (await page.getByText('もらったフレーム：よるの枠').count()) === 1,
       );
       check(
         '配った人が決めた項目は、画面から消えている',
@@ -1004,7 +1011,11 @@ try {
       );
       check(
         'そろえずに渡したフレームでは、案内も出さない',
-        (await page.getByText(/見え方は、配った人が決めています/).count()) === 0,
+        (await page.getByText(/見え方は配った人が決めています/).count()) === 0,
+      );
+      check(
+        '名前の入力は、そろえるときだけ出す',
+        (await page.getByLabel('フレームの名前').count()) === 0,
       );
       await page.close();
     }
@@ -3021,7 +3032,7 @@ try {
 
     check(
       '覚えたものを呼び出しても、もらったフレームのまま',
-      (await page.getByText(/見え方は、配った人が決めています/).count()) === 1,
+      (await page.getByText(/見え方は配った人が決めています/).count()) === 1,
     );
     check(
       '配った人が決めた項目は、呼び出したあとも画面に出ない',

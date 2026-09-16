@@ -740,6 +740,28 @@ input.field__value:focus {
 }
 
 /*
+  名前のような、幅の要る打ち込み。
+
+  数値のほう（.field__value）と同じ見た目にして、幅だけ変える。
+  打てるものが2種類あるように見せない。
+*/
+input.field__text {
+  width: 100%;
+  padding: 8px 10px;
+  border: var(--lw) solid var(--ink-faint);
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font: inherit;
+  min-height: 40px;
+}
+
+input.field__text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/*
   「もどす」は、変えたものにだけ出る。
   触っていない項目に出しておくと、押すところが増えるだけで助けにならない。
   出ていること自体が「ここを触った」という印になる。

@@ -205,6 +205,7 @@ export function ComposeStudio({
   frame,
   hole,
   lock,
+  frameName: givenName = '',
   active,
   onBack,
   onChangePhoto,
@@ -221,6 +222,8 @@ export function ComposeStudio({
    * 入っているあいだ、そこは**画面から消す**（押せないものを見せない）。
    */
   lock: RecipeLock | null;
+  /** 配った人がつけた名前。無ければ空 */
+  frameName?: string;
   /** この画面が表示されているか。隠れている間は幅が0なので描き直さない。 */
   active: boolean;
   onBack: () => void;
@@ -286,6 +289,14 @@ export function ComposeStudio({
     **そろえたい人が、そろえたいときに押す**もの。
   */
   const [lockOnShare, setLockOnShare] = useState(false);
+  /*
+    フレームの名前。なくてよい。
+
+    もらった人は、Discord で降ってきたファイルを開くまで
+    「これで合っているのか」が分からない。名前が出れば、そこで分かる。
+    覚えてもらう決まりを増やしたくないので、**空のままでも通す**。
+  */
+  const [frameName, setFrameName] = useState('');
 
   /*
     配った人が決めた見た目を、いまの画面にあてる。
@@ -1077,7 +1088,9 @@ export function ComposeStudio({
     const blob = frameReadyRef.current ?? (await bitmapToPngBlob(frame));
     if (!lockOnShare) return blob;
     const lock: RecipeLock = { move: 'free', rotate: false, gap, round };
-    const recipe: Recipe = { v: 1, ...(hole ? { hole } : {}), lock };
+    // 名前は長さで切る。長いものを渡されても、もらった人の画面が崩れないように。
+    const name = frameName.trim().slice(0, 40);
+    const recipe: Recipe = { v: 1, ...(name ? { name } : {}), ...(hole ? { hole } : {}), lock };
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const out = embedRecipe(bytes, recipe);
     return new Blob([out.buffer as ArrayBuffer], { type: 'image/png' });
@@ -1136,9 +1149,12 @@ export function ComposeStudio({
       {lock && (
         <Note tone="ok">
           <span>
-            <b>もらったフレームです。見え方は、配った人が決めています。</b>
+            <b>
+              {givenName ? `もらったフレーム：${givenName}` : 'もらったフレームです。'}
+            </b>
             <br />
-            そろうように作られているので、<b>写真の位置と大きさ</b>だけ決めてください。
+            見え方は配った人が決めています。そろうように作られているので、
+            <b>写真の位置と大きさ</b>だけ決めてください。
           </span>
         </Note>
       )}
@@ -1630,6 +1646,27 @@ export function ComposeStudio({
               <>受け取った人が、位置も大きさも自由に決められます。</>
             )}
           </p>
+
+          {lockOnShare && (
+            <div className="field">
+              <div className="field__row">
+                <span className="field__label">フレームの名前（なくてもOK）</span>
+              </div>
+              <input
+                className="field__text"
+                type="text"
+                maxLength={40}
+                value={frameName}
+                onChange={(e) => setFrameName(e.target.value)}
+                placeholder="れい：○○の枠"
+                aria-label="フレームの名前"
+              />
+              <p className="field__note">
+                受け取った人の画面に出ます。Discordで降ってきたファイルが
+                <b>どの枠のものか</b>、開いた時点で分かります。
+              </p>
+            </div>
+          )}
           {canShare ? (
             <div className="btn-row">
               <Button variant="ghost" onClick={shareFrameOnly} sound="tap" disabled={busy}>
