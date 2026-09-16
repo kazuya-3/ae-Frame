@@ -2938,6 +2938,108 @@ try {
        札だけ下ろして中身が残る、という壊れかたを見つけたい。
        札が下りていれば入口は出ないので、画面からは気づけない。
   */
+  /*
+    もらったフレームを「覚えておく」と、置きかたまで残るか。
+
+    ここは**静かに壊れる**場所だった。覚えるときに絵から作り直していたので、
+    置きかたを書いてあるところ（tEXt）が落ちていた。画面は何も変わらないのに、
+    次に呼び出した人だけ、そろわなくなる。
+
+    もらったものは、もらったまま置く。
+  */
+  console.log('\n■ もらったフレームを、覚えておく');
+  {
+    const ctx = await browser.newContext({ viewport: PHONE });
+    const dir = mkdtempSync(join(tmpdir(), 'aeframe-keep-'));
+
+    // --- 配る人が、そろえて渡す ---
+    let page = await ctx.newPage();
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+    await page.waitForTimeout(4000);
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+    /*
+      既定と違う見た目にしてから配る。
+
+      既定のまま配ると、固定が落ちても受け取った側の既定と同じ絵になるので、
+      **壊れても仕上がりが一致してしまう**。ここを既定のままにしていたら、
+      落ちるはずの検証が通ってしまった。
+    */
+    await page.getByRole('button', { name: /まるく切りぬく/ }).click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
+    await page.waitForTimeout(250);
+    let dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page
+      .getByRole('button', { name: /とうめいにしたフレームだけを保存する|^保存する$/ })
+      .click();
+    let got = await dl;
+    const framePath = join(dir, got.suggestedFilename());
+    await got.saveAs(framePath);
+    await page.close();
+
+    // --- もらう人が、受け取って覚えておく ---
+    page = await ctx.newPage();
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('input[type=file]', framePath);
+    await page.waitForTimeout(2500);
+
+    dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする/ }).click();
+    got = await dl;
+    const before = join(dir, 'before-' + got.suggestedFilename());
+    await got.saveAs(before);
+
+    await page.getByRole('button', { name: /この端末に覚えておく/ }).click();
+    await page.waitForTimeout(900);
+    await page.close();
+
+    // --- 次の日。覚えたものを呼び出す ---
+    page = await ctx.newPage();
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(400);
+    await page.getByRole('button', { name: /前に覚えたフレームをつかう/ }).click();
+    await page.waitForTimeout(2000);
+
+    check(
+      '覚えたものを呼び出しても、もらったフレームのまま',
+      (await page.getByText(/見え方は、配った人が決めています/).count()) === 1,
+    );
+    check(
+      '配った人が決めた項目は、呼び出したあとも画面に出ない',
+      (await page.getByRole('button', { name: /まるく切りぬく|しかくいまま/ }).count()) === 0,
+    );
+
+    dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする/ }).click();
+    got = await dl;
+    const after = join(dir, 'after-' + got.suggestedFilename());
+    await got.saveAs(after);
+    const same = Buffer.compare(readFileSync(before), readFileSync(after)) === 0;
+    check('覚える前と、呼び出したあとで、仕上がりが変わらない', same, same ? '1バイト違わない' : 'ちがう');
+
+    await page.close();
+    await ctx.close();
+  }
+
   console.log('\n■ 前に作ったフレームを覚えておく');
   {
     const ctx = await browser.newContext({ viewport: PHONE });

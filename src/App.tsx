@@ -70,6 +70,15 @@ export default function App({ active = true }: { active?: boolean }) {
     自分で作ったフレームでは null で、いままでどおり全部さわれる。
   */
   const [lock, setLock] = useState<RecipeLock | null>(null);
+  /*
+    もらったフレームの**元のバイト列**。
+
+    覚えておくときに、これをそのまま置く。絵から作り直すと、
+    置きかたを書いてあるところ（tEXt）が落ちて、**次に開いたときだけ
+    そろわなくなる**。しかも画面は何も変わらないので気づけない。
+    受け取ったものは、受け取ったまま置く。
+  */
+  const [frameBytes, setFrameBytes] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const [sound, setSound] = useState(isSoundOn);
@@ -163,6 +172,7 @@ export default function App({ active = true }: { active?: boolean }) {
       if (recipe) {
         const bmp = await fileToBitmap(file);
         setFrameResult(bmp);
+        setFrameBytes(file);
         setHole(recipe.hole ?? findHole(bitmapToImageData(bmp)));
         setLock(recipe.lock ?? null);
         setFrameKept(false);
@@ -199,6 +209,7 @@ export default function App({ active = true }: { active?: boolean }) {
   const handleCutoutDone = useCallback(async (result: ImageData) => {
     const bmp = await createImageBitmap(imageDataToCanvas(result));
     setFrameResult(bmp);
+    setFrameBytes(null);
     setHole(findHole(result));
     setLock(null);
     // 切りぬいたばかりのものは、まだ覚えていない
@@ -219,9 +230,12 @@ export default function App({ active = true }: { active?: boolean }) {
         return;
       }
       const bmp = await fileToBitmap(kept.blob);
+      const keptRecipe = readRecipe(new Uint8Array(await kept.blob.arrayBuffer()));
       setFrameResult(bmp);
-      setHole(findHole(bitmapToImageData(bmp)));
-      setLock(null);
+      setFrameBytes(keptRecipe ? kept.blob : null);
+      setHole(keptRecipe?.hole ?? findHole(bitmapToImageData(bmp)));
+      // 置きかたごと覚えてあったなら、それも一緒に戻す
+      setLock(keptRecipe?.lock ?? null);
       setFrameKept(true);
       /*
         背景けしは通さない。覚えてあるのは**けし終わったあと**のもので、
@@ -252,7 +266,8 @@ export default function App({ active = true }: { active?: boolean }) {
       try {
         if (next) {
           if (!frameResult) throw new Error('フレームがありません');
-          await keepFrame(await bitmapToPngBlob(frameResult));
+          // もらったものは、もらったまま置く（作り直すと置きかたが落ちる）
+          await keepFrame(frameBytes ?? (await bitmapToPngBlob(frameResult)));
         } else {
           await forgetFrame();
         }
@@ -268,7 +283,7 @@ export default function App({ active = true }: { active?: boolean }) {
         play('error');
       }
     },
-    [frameResult],
+    [frameResult, frameBytes],
   );
 
   const restart = useCallback(() => {
@@ -277,6 +292,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameFull(null);
     setAutoCropped(false);
     setFrameResult(null);
+    setFrameBytes(null);
     setHole(null);
     setLock(null);
     setFrameKept(false);
