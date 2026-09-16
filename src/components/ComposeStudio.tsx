@@ -15,6 +15,7 @@ import {
 } from '../lib/image';
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
+import type { Hole } from '../lib/hole';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -201,6 +202,7 @@ const IDENTITY: Transform = { x: 0, y: 0, scale: 1, rotation: 0, flipped: false 
 export function ComposeStudio({
   photo,
   frame,
+  hole,
   active,
   onBack,
   onChangePhoto,
@@ -210,6 +212,8 @@ export function ComposeStudio({
 }: {
   photo: ImageBitmap;
   frame: ImageBitmap;
+  /** フレームのまん中の穴（比）。見つからなかったフレームでは null */
+  hole: Hole | null;
   /** この画面が表示されているか。隠れている間は幅が0なので描き直さない。 */
   active: boolean;
   onBack: () => void;
@@ -306,10 +310,73 @@ export function ComposeStudio({
     差し替え以外では走らない。画面のあいだを行き来しても photo は同じものなので、
     手なおしが消えることはない（そこは検証でも見ている）。
   */
+  /* --------------- 画像の基準倍率 --------------- */
+
+  // 写真は画面いっぱい（cover）、フレームは全体が入る（contain）が基準。
+  const photoBase = useMemo(
+    () => Math.max(EXPORT_SIZE / photo.width, EXPORT_SIZE / photo.height),
+    [photo],
+  );
+  const frameBase = useMemo(
+    () => Math.min(EXPORT_SIZE / frame.width, EXPORT_SIZE / frame.height),
+    [frame],
+  );
+
+  /*
+    写真の置きはじめ。**穴の中心に合わせる。大きさは縮めない。**
+
+    ── いちど間違えた ──
+
+    はじめ「穴の大きさまで写真を縮める」ことにした。穴が画面の7割しかない
+    フレームなら、写真も7割にすれば全部見える、という理屈。
+    実際に並べて見たら、**前のほうが良かった。**
+
+    縮めると、写真の四角い角が穴の外に出る。角は穴の半径の1.41倍の位置に来るので、
+    リングがそれより細いと角がはみ出て、直線のフチが見える。
+    しかも写真が画面の端まで届かなくなるので、リングの外側が
+    「すきまの色」になる。**アラを2つ増やして、得たものが無い。**
+
+    ── では何のためにあるのか ──
+
+    **穴が中心に無いフレームのため。** 穴が左上にあるフレームだと、
+    いままでは写真の中心が画面の中心に置かれるので、顔は穴の外に落ちる。
+    中心を穴に合わせれば、そこは直る。
+
+    そのうえで、**ずらしたぶんだけ大きくして、画面全体を覆いきる**。
+    こうすれば写真のフチは絶対に出ない。
+
+    穴がまん中にあるフレーム（ほとんどがそう）では、ずれが0なので
+    **いままでとまったく同じ**になる。見た目を変えずに、外れた場合だけ直る。
+
+    ── そろえる本体はこれではない ──
+
+    はじめ「これで全員が同じ場所から始まるからそろう」と書いたが、
+    **もともと全員が同じ場所から始まっていた**（cover・倍率1・中央）。
+    バラつくのは、そこから各自が指で動かすから。
+    **そろえるのは、次にやる「置きかたを固定する」ほう。**
+    ここでやっているのは、その固定に要る「穴」を出すことと、
+    中心が外れたフレームを直すこと。
+  */
+  const fitToHole = useMemo<Transform>(() => {
+    if (!hole) return IDENTITY;
+    // フレームは contain で、書き出しの中央に描かれる
+    const fw = frame.width * frameBase;
+    const fh = frame.height * frameBase;
+    // 穴の中心が、画面の中心からどれだけずれているか
+    const x = (hole.cx - 0.5) * fw;
+    const y = (hole.cy - 0.5) * fh;
+    // そこに中心を置いたまま、書き出し全体を覆いきる大きさ
+    const needW = EXPORT_SIZE + 2 * Math.abs(x);
+    const needH = EXPORT_SIZE + 2 * Math.abs(y);
+    const need = Math.max(needW / photo.width, needH / photo.height);
+    if (!Number.isFinite(need) || need <= 0) return IDENTITY;
+    return { x, y, scale: need / photoBase, rotation: 0, flipped: false };
+  }, [hole, frame, photo, frameBase, photoBase]);
+
   useEffect(() => {
-    setPhotoT(IDENTITY);
+    setPhotoT(fitToHole);
     setCrop(CENTER);
-  }, [photo]);
+  }, [photo, fitToHole]);
 
   /*
     「共有できるか」は navigator.share の有無だけでは分からない。
@@ -375,18 +442,6 @@ export function ComposeStudio({
     const id = setTimeout(() => setTouched(true), 6000);
     return () => clearTimeout(id);
   }, [active, touched]);
-
-  /* --------------- 画像の基準倍率 --------------- */
-
-  // 写真は画面いっぱい（cover）、フレームは全体が入る（contain）が初期状態。
-  const photoBase = useMemo(
-    () => Math.max(EXPORT_SIZE / photo.width, EXPORT_SIZE / photo.height),
-    [photo],
-  );
-  const frameBase = useMemo(
-    () => Math.min(EXPORT_SIZE / frame.width, EXPORT_SIZE / frame.height),
-    [frame],
-  );
 
   /* --------------- 描画 --------------- */
 
@@ -768,7 +823,8 @@ export function ComposeStudio({
 
   const resetTarget = () => {
     play('back');
-    setT(IDENTITY);
+    // 写真の「もどす先」は、穴に合わせた場所。初期表示と同じところへ戻す。
+    setT(target === 'frame' ? IDENTITY : fitToHole);
   };
 
   /* --------------- 書き出し --------------- */

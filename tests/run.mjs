@@ -839,6 +839,86 @@ try {
     ステップ3の道具立て。ここは「無い」と思われがちだが実は全部ある、という
     状態が続いていたので、動くことを機械で押さえておく。
   */
+  /*
+    穴がまん中に無いフレーム。
+
+    写真を「画面のまん中」に置く作りだと、こういうフレームでは顔が穴の外に落ちる。
+    穴の中心に合わせれば、そこだけが直る。
+
+    読みかたは色で決める。photo-mark.png はまん中が赤、まわりが青。
+    **赤がどこに来たか**を数えれば、写真のまん中がどこに置かれたかが分かる。
+    穴は左寄りなので、赤の重心も左に寄っていなければならない。
+
+    大きさは縮めない（縮めると写真の角が穴の外に出る。実際に見て戻した）。
+    なので **写真のフチが1本も見えないこと**も一緒に数える。
+    フチが見えるというのは、穴の外に「写真でないもの」が出るということ。
+  */
+  console.log('\n■ 穴がまん中に無いフレーム');
+  {
+    const { page } = await openFrame(browser, 'offset-hole.png', 'photo-mark.png');
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    const look = () =>
+      page.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let rx = 0;
+        let ry = 0;
+        let red = 0;
+        let clear = 0;
+        for (let y = 0; y < c.height; y++) {
+          for (let x = 0; x < c.width; x++) {
+            const i = (y * c.width + x) * 4;
+            const [r, g, b, a] = [px[i], px[i + 1], px[i + 2], px[i + 3]];
+            /*
+              まるく切りぬかれる外側は数に入れない。
+              いちばん外のふちは、丸く切るときに半端な色になる（アンチエイリアス）。
+              そこを数えると1〜2画素の差で落ちたり通ったりするので、少し内側から見る。
+            */
+            const d = Math.hypot(x - c.width / 2, y - c.height / 2);
+            if (d > c.width / 2 - 4) continue;
+            /*
+              写真が届かなかったところ。
+
+              はじめ「透明かどうか」で数えていたが、**それでは何も見張れない**。
+              すきまの色（白）が先に塗られるので、写真が届いていなくても
+              アルファは 255 のまま。縮める版を入れても落ちなかった。
+
+              写真は青と赤しか持たない。だから **白っぽい画素**を数えれば、
+              そこは「写真が届かなかったところ」だと言い切れる。
+            */
+            if (a > 200 && r > 225 && g > 225 && b > 225) clear++;
+            if (r > 150 && g < 110 && b < 110) {
+              rx += x;
+              ry += y;
+              red++;
+            }
+          }
+        }
+        return {
+          red,
+          cx: red ? rx / red / c.width : 0.5,
+          cy: red ? ry / red / c.height : 0.5,
+          clear,
+        };
+      });
+
+    const a = await look();
+    check('写真のまん中（赤）が見えている', a.red > 200, `${a.red} 画素`);
+    check(
+      '写真のまん中が、穴のほう（左）に寄っている',
+      a.cx < 0.44,
+      `赤の重心 x=${a.cx.toFixed(3)}（画面のまん中なら 0.5）`,
+    );
+    check(
+      '写真が画面いっぱいに届いている（フチが出ない）',
+      a.clear === 0,
+      `写真の届かないところ ${a.clear} 画素`,
+    );
+    await page.close();
+  }
+
   console.log('\n■ 位置あわせの道具');
   {
     const { page } = await openFrame(browser, 'lineart.png');
@@ -1282,15 +1362,28 @@ try {
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1400);
 
+    const sizeNow = () =>
+      page.evaluate(() => {
+        const el = document.querySelector('input[type=range]');
+        return el ? el.value : null;
+      });
+
+    /*
+      初期の大きさは、決め打ちの100%ではない。
+
+      写真の置きはじめはフレームの穴に合わせるので、穴が中心から少しずれた
+      フレームでは、ずらしたぶんだけ大きくなる（そうしないと写真のフチが出る）。
+      **戻る先はフレームごとに違う。** だから数字を決め打ちせず、
+      「いま幾つか」を先に控えて、それに戻ることを見る。
+    */
+    const initial = await sizeNow();
+
     /* 写真を動かして、あとで初期に戻ることを見られるようにする */
     await page.getByRole('button', { name: /^大きくする$/ }).click();
     await page.getByRole('button', { name: /^大きくする$/ }).click();
     await page.waitForTimeout(400);
-    const zoomed = await page.evaluate(() => {
-      const el = document.querySelector('input[type=range]');
-      return el ? el.value : null;
-    });
-    check('写真を大きくした', zoomed !== '100', `${zoomed}%`);
+    const zoomed = await sizeNow();
+    check('写真を大きくした', zoomed !== initial, `${initial}% → ${zoomed}%`);
 
     const change = page.getByRole('button', { name: /写真だけ変える/ });
     check('「写真だけ変える」がある', (await change.count()) === 1);
@@ -1323,15 +1416,16 @@ try {
     */
     await page.getByRole('button', { name: 'アイコン写真' }).click();
     await page.waitForTimeout(500);
-    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-color.png'));
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-tall.png'));
     await page.waitForTimeout(900);
     await page.getByRole('button', { name: /つぎへ：位置をあわせる/ }).click();
     await page.waitForTimeout(900);
-    const afterSwap = await page.evaluate(() => {
-      const el = document.querySelector('input[type=range]');
-      return el ? el.value : null;
-    });
-    check('差し替えたら、写真の大きさは初期に戻る', afterSwap === '100', `${afterSwap}%`);
+    const afterSwap = await sizeNow();
+    check(
+      '差し替えたら、写真の大きさは初期に戻る',
+      afterSwap === initial,
+      `${afterSwap}%（初期は ${initial}%）`,
+    );
 
     /*
       そして**フレームは残っていること**。ここがこの機能の全部。

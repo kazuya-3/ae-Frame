@@ -18,6 +18,7 @@ import {
   hasHapticsSupport,
 } from './lib/sound';
 import { autoCropToSubject } from './lib/cutout';
+import { findHole, type Hole } from './lib/hole';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
@@ -56,6 +57,13 @@ export default function App({ active = true }: { active?: boolean }) {
   const [frameFull, setFrameFull] = useState<ImageData | null>(null);
   const [autoCropped, setAutoCropped] = useState(false);
   const [frameResult, setFrameResult] = useState<ImageBitmap | null>(null);
+  /*
+    フレームの「まん中の穴」。写真をどこに置くかの基準になる。
+
+    フレームは3つの入口（けしたばかり／覚えてあるもの／人からもらったもの）から
+    来るので、**出来上がりの絵から探す**。入口ごとに別の道を作らない。
+  */
+  const [hole, setHole] = useState<Hole | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const [sound, setSound] = useState(isSoundOn);
@@ -160,6 +168,7 @@ export default function App({ active = true }: { active?: boolean }) {
   const handleCutoutDone = useCallback(async (result: ImageData) => {
     const bmp = await createImageBitmap(imageDataToCanvas(result));
     setFrameResult(bmp);
+    setHole(findHole(result));
     // 切りぬいたばかりのものは、まだ覚えていない
     setFrameKept(false);
     setStep(3);
@@ -179,6 +188,7 @@ export default function App({ active = true }: { active?: boolean }) {
       }
       const bmp = await fileToBitmap(kept.blob);
       setFrameResult(bmp);
+      setHole(findHole(bitmapToImageData(bmp)));
       setFrameKept(true);
       /*
         背景けしは通さない。覚えてあるのは**けし終わったあと**のもので、
@@ -234,6 +244,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameFull(null);
     setAutoCropped(false);
     setFrameResult(null);
+    setHole(null);
     setFrameKept(false);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -446,6 +457,7 @@ export default function App({ active = true }: { active?: boolean }) {
           <ComposeStudio
             photo={photo}
             frame={frameResult}
+            hole={hole}
             active={step === 3}
             onBack={() => goto(2)}
             onChangePhoto={() => goto(1)}
