@@ -16,6 +16,7 @@ import {
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
+import { embedRecipe, type Recipe, type RecipeLock } from '../lib/recipe';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -203,6 +204,7 @@ export function ComposeStudio({
   photo,
   frame,
   hole,
+  lock,
   active,
   onBack,
   onChangePhoto,
@@ -214,6 +216,11 @@ export function ComposeStudio({
   frame: ImageBitmap;
   /** フレームのまん中の穴（比）。見つからなかったフレームでは null */
   hole: Hole | null;
+  /**
+   * 配った人が決めた見た目。人からもらったフレームにだけ入っている。
+   * 入っているあいだ、そこは**画面から消す**（押せないものを見せない）。
+   */
+  lock: RecipeLock | null;
   /** この画面が表示されているか。隠れている間は幅が0なので描き直さない。 */
   active: boolean;
   onBack: () => void;
@@ -270,6 +277,33 @@ export function ComposeStudio({
 
   /* 「他の人と並べてみる」を開いているか。既定は畳む（FEED のところに理由） */
   const [feedOpen, setFeedOpen] = useState(false);
+
+  /*
+    渡すフレームに、いまの置きかたを焼きこむか。
+
+    既定は切っておく。自分用に保存し直すだけの人まで固定すると、
+    次に自分で開いたときに自分の設定が動かせなくなる。
+    **そろえたい人が、そろえたいときに押す**もの。
+  */
+  const [lockOnShare, setLockOnShare] = useState(false);
+
+  /*
+    配った人が決めた見た目を、いまの画面にあてる。
+
+    フレームが差し替わったときだけ走らせる。毎回あてると、
+    受け取った人が触れる項目まで押し戻してしまう。
+  */
+  useEffect(() => {
+    if (!lock) return;
+    if (lock.gap !== null) setGap(lock.gap);
+    if (lock.round !== null) setRound(lock.round);
+    if (!lock.rotate) {
+      setPhotoT((t0) => ({ ...t0, rotation: 0 }));
+      setFrameT(IDENTITY);
+    }
+    setTarget('photo');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame, lock]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
@@ -1031,7 +1065,23 @@ export function ComposeStudio({
 
   const frameFileName = () => timestampName('frame_toka', 'png');
 
-  const buildFrameBlob = async () => frameReadyRef.current ?? (await bitmapToPngBlob(frame));
+  /*
+    渡すフレームを作る。
+
+    「そろえる」が入っているときだけ、いまの見た目を PNG の中に書き添える。
+    書き添えるのは**フレームの見え方**（すきまの色・まるく切りぬく・かたむき・
+    フレームの置き場所）だけで、写真の位置と大きさは相手に残す。
+    そろえたいのはフレームであって、中の人ではない。
+  */
+  const buildFrameBlob = async () => {
+    const blob = frameReadyRef.current ?? (await bitmapToPngBlob(frame));
+    if (!lockOnShare) return blob;
+    const lock: RecipeLock = { move: 'free', rotate: false, gap, round };
+    const recipe: Recipe = { v: 1, ...(hole ? { hole } : {}), lock };
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const out = embedRecipe(bytes, recipe);
+    return new Blob([out.buffer as ArrayBuffer], { type: 'image/png' });
+  };
 
   /** フレームを人に渡す。共有シートが使えないときは、落として渡してもらう */
   const shareFrameOnly = async () => {
@@ -1072,9 +1122,26 @@ export function ComposeStudio({
       </div>
       <p className="card__hint">
         写真は<b>指でつまんで動かせます</b>
-        。大きさとかたむきは、下のボタンやスライダーでも変えられます。
+        {lock ? '。大きさは、下のボタンやスライダーでも変えられます。' : '。大きさとかたむきは、下のボタンやスライダーでも変えられます。'}
         {round ? '暗いところは、まるく切りぬかれる部分です。' : ''}
       </p>
+
+      {/*
+        もらったフレームだと言うのは、ここ1か所でいい。
+
+        触れない項目は画面から消してあるので、探して迷うことは無い。
+        代わりに「なぜ少ないのか」が分からなくなるので、理由を1行置く。
+        できないことではなく、**できること**を書く。
+      */}
+      {lock && (
+        <Note tone="ok">
+          <span>
+            <b>もらったフレームです。見え方は、配った人が決めています。</b>
+            <br />
+            そろうように作られているので、<b>写真の位置と大きさ</b>だけ決めてください。
+          </span>
+        </Note>
+      )}
 
       {/*
         プレビューを画面に貼り付けておくための台。
@@ -1235,6 +1302,12 @@ export function ComposeStudio({
           切りぬかないときは窓が無いので、選んでも何も起きない選択肢になる。
           押して何も起きないものを並べない。
         */}
+        {/*
+          配った人が見た目を決めているときは、フレームを動かせない。
+          動かせるものが写真しか無いのに切り替えを出すと、
+          押して何も起きない選択肢になる。
+        */}
+        {!lock && (
         <Segmented<Target>
           ariaLabel="うごかすもの"
           value={target}
@@ -1252,6 +1325,7 @@ export function ComposeStudio({
                 ]
           }
         />
+        )}
 
         <div className="btn-row">
           <Button
@@ -1308,15 +1382,18 @@ export function ComposeStudio({
           onChange={(v) => setT((t0) => ({ ...t0, scale: v / 100 }))}
           format={(v) => `${v}%`}
         />
-        <Slider
-          label="かたむき"
-          value={Math.round(t.rotation)}
-          defaultValue={0}
-          min={-180}
-          max={180}
-          onChange={(v) => setT((t0) => ({ ...t0, rotation: v }))}
-          format={(v) => `${v}°`}
-        />
+        {/* かたむきが固定されているなら、つまみごと消す */}
+        {(!lock || lock.rotate) && (
+          <Slider
+            label="かたむき"
+            value={Math.round(t.rotation)}
+            defaultValue={0}
+            min={-180}
+            max={180}
+            onChange={(v) => setT((t0) => ({ ...t0, rotation: v }))}
+            format={(v) => `${v}°`}
+          />
+        )}
 
         <div className="field">
           <div className="field__row">
@@ -1389,6 +1466,7 @@ export function ComposeStudio({
           )}
         </div>
 
+        {(!lock || lock.gap === null) && (
         <div className="field">
           <div className="field__row">
             <span className="field__label">すきまの色</span>
@@ -1408,15 +1486,18 @@ export function ComposeStudio({
             SNSによっては黒く表示されることがあります。
           </p>
         </div>
+        )}
 
-        <Toggle
-          on={round}
-          onChange={(v) => {
-            play(v ? 'toggleOn' : 'toggleOff');
-            setRound(v);
-          }}
-          label={round ? 'まるく切りぬく（SNSのアイコン用）' : 'しかくいまま保存する'}
-        />
+        {(!lock || lock.round === null) && (
+          <Toggle
+            on={round}
+            onChange={(v) => {
+              play(v ? 'toggleOn' : 'toggleOff');
+              setRound(v);
+            }}
+            label={round ? 'まるく切りぬく（SNSのアイコン用）' : 'しかくいまま保存する'}
+          />
+        )}
 
         {/*
           いちばん大きいボタンは、その端末で「ほんとうに保存できる道」にする。
@@ -1520,6 +1601,34 @@ export function ComposeStudio({
           </p>
           <p className="group__note">
             背景をけしたフレームそのものを渡せます。受け取った人は、自分の写真で同じものを作れます。
+          </p>
+
+          {/*
+            そろえるスイッチ。
+
+            渡すだけなら、いままでどおり渡せる。受け取った人は自由に置ける。
+            けれど「みんなでつけよう」というときは、それだと**人によって
+            大きさも位置も変わる**。そこをそろえるためのもの。
+
+            固定するのはフレームの見え方だけで、**写真の位置と大きさは相手に残す**。
+            顔の入れかたまで奪うと、顔が切れた人が直せなくなる。
+          */}
+          <Toggle
+            on={lockOnShare}
+            onChange={setLockOnShare}
+            label="みんなの見た目をそろえる"
+          />
+          <p className="field__note">
+            {lockOnShare ? (
+              <>
+                <b>いまの見え方を、フレームに焼きこんで渡します。</b>
+                受け取った人の画面では、すきまの色・まるく切りぬく・かたむき・
+                フレームの置き場所が<b>このまま</b>になります。
+                写真の位置と大きさだけ、その人が決められます。
+              </>
+            ) : (
+              <>受け取った人が、位置も大きさも自由に決められます。</>
+            )}
           </p>
           {canShare ? (
             <div className="btn-row">

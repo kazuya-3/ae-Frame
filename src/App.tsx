@@ -19,6 +19,7 @@ import {
 } from './lib/sound';
 import { autoCropToSubject } from './lib/cutout';
 import { findHole, type Hole } from './lib/hole';
+import { readRecipe, type RecipeLock } from './lib/recipe';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
@@ -64,6 +65,11 @@ export default function App({ active = true }: { active?: boolean }) {
     来るので、**出来上がりの絵から探す**。入口ごとに別の道を作らない。
   */
   const [hole, setHole] = useState<Hole | null>(null);
+  /*
+    配った人が決めた見た目。人からもらったフレームにだけ入っている。
+    自分で作ったフレームでは null で、いままでどおり全部さわれる。
+  */
+  const [lock, setLock] = useState<RecipeLock | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const [sound, setSound] = useState(isSoundOn);
@@ -144,6 +150,31 @@ export default function App({ active = true }: { active?: boolean }) {
   const loadFrame = useCallback(async (file: File) => {
     setError(null);
     try {
+      /*
+        人からもらったフレームかどうかを、先に見る。
+
+        置きかたが焼きこんであるなら、そのフレームは**もう背景がけしてある**。
+        もう一度けしにかける意味が無いどころか、けし直すと配った人の絵が変わる。
+        だから背景けしの画面を通さず、そのまま位置あわせへ送る。
+        受け取った人にとっては、工程が3つから2つに減る。
+      */
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const recipe = readRecipe(bytes);
+      if (recipe) {
+        const bmp = await fileToBitmap(file);
+        setFrameResult(bmp);
+        setHole(recipe.hole ?? findHole(bitmapToImageData(bmp)));
+        setLock(recipe.lock ?? null);
+        setFrameKept(false);
+        setFrameSource(null);
+        setFrameFull(null);
+        setAutoCropped(false);
+        play('done');
+        setStep(3);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
       const bmp = await fileToBitmap(file);
       const full = bitmapToImageData(bmp);
       bmp.close?.();
@@ -169,6 +200,7 @@ export default function App({ active = true }: { active?: boolean }) {
     const bmp = await createImageBitmap(imageDataToCanvas(result));
     setFrameResult(bmp);
     setHole(findHole(result));
+    setLock(null);
     // 切りぬいたばかりのものは、まだ覚えていない
     setFrameKept(false);
     setStep(3);
@@ -189,6 +221,7 @@ export default function App({ active = true }: { active?: boolean }) {
       const bmp = await fileToBitmap(kept.blob);
       setFrameResult(bmp);
       setHole(findHole(bitmapToImageData(bmp)));
+      setLock(null);
       setFrameKept(true);
       /*
         背景けしは通さない。覚えてあるのは**けし終わったあと**のもので、
@@ -245,6 +278,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setAutoCropped(false);
     setFrameResult(null);
     setHole(null);
+    setLock(null);
     setFrameKept(false);
     setError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -458,6 +492,7 @@ export default function App({ active = true }: { active?: boolean }) {
             photo={photo}
             frame={frameResult}
             hole={hole}
+            lock={lock}
             active={step === 3}
             onBack={() => goto(2)}
             onChangePhoto={() => goto(1)}

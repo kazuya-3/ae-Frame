@@ -8,8 +8,9 @@
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from './fixtures.mjs';
@@ -853,6 +854,162 @@ try {
     なので **写真のフチが1本も見えないこと**も一緒に数える。
     フチが見えるというのは、穴の外に「写真でないもの」が出るということ。
   */
+  /*
+    フレームを、置きかたごと人にわたす。
+
+    いちばん大事なのは **往復で同じものが出ること**。
+    作った人が渡して、もらった人が開いて、そのまま保存したものが、
+    作った人の画面と同じ見た目になる。そこが合わないと「そろう」と言えない。
+
+    覗き窓は作らない。**実際にダウンロードしたファイルを、そのまま渡す。**
+    途中に足場を置くと、足場のほうが正しいことしか分からない。
+
+    置きかたは PNG の中（tEXt）に入れて配る。置き場所を借りずに、
+    誰でも今すぐ配れるようにするため。
+  */
+  console.log('\n■ 置きかたごと、人にわたす');
+  {
+    /*
+      仕上がりの画像を落とす。
+
+      比べるのは**保存されるもの**にする。画面の写真ではない。
+      プレビューの画素の大きさは、その画面に何行あるかで変わる
+      （もらった側には案内が1行増える）。見た目が同じでも数字は違うので、
+      そこを比べると「ちがう」としか言わない検証になる。
+    */
+    const saveIcon = async (page, dir) => {
+      const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+      await page.getByRole('button', { name: /画像をほぞんする/ }).click();
+      const got = await dl;
+      if (!got) return null;
+      const out = join(dir, 'icon-' + got.suggestedFilename());
+      await got.saveAs(out);
+      return out;
+    };
+
+    const handOff = async (lockIt) => {
+      const { page } = await openFrame(browser, 'neon.png', 'photo-mark.png');
+      await page.getByRole('button', { name: /これでOK/ }).click();
+      await page.waitForTimeout(1300);
+
+      // 既定と違う見た目にしておく（渡ったかどうかを見分けるため）
+      await page.getByRole('button', { name: /まるく切りぬく/ }).click();
+      await page.waitForTimeout(300);
+
+      if (lockIt) {
+        const sw = page.getByRole('button', { name: /みんなの見た目をそろえる/ });
+        await sw.click();
+        await page.waitForTimeout(250);
+      }
+      const dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+      await page.getByRole('button', { name: /とうめいにしたフレームだけを保存する|^保存する$/ }).click();
+      const got = await dl;
+      /*
+        落ちてきたファイルは、ページを閉じると消える（Playwright が片づける）。
+        もらった人の側で渡し直すので、消えない場所へ移しておく。
+      */
+      const dir = mkdtempSync(join(tmpdir(), 'aeframe-'));
+      let file = null;
+      if (got) {
+        file = join(dir, got.suggestedFilename());
+        await got.saveAs(file);
+      }
+      const icon = await saveIcon(page, dir);
+      await page.close();
+      return { file, icon };
+    };
+
+    const plain = await handOff(false);
+    const locked = await handOff(true);
+    check('そろえずに渡したフレームを保存できた', !!plain.file);
+    check('そろえて渡したフレームを保存できた', !!locked.file);
+    check(
+      '焼きこんでも、絵はほとんど重くならない',
+      statSync(locked.file).size - statSync(plain.file).size < 1024,
+      `+${statSync(locked.file).size - statSync(plain.file).size} バイト`,
+    );
+
+    /* --- もらった人。もらったファイルを、フレームとして渡す --- */
+    const open = async (framePath) => {
+      const page = await browser.newPage({ viewport: PHONE });
+      await page.route('**huggingface.co/**', (r) => r.abort());
+      await page.route('**cdn.jsdelivr.net/**', (r) => r.abort());
+      await page.goto(BASE, { waitUntil: 'networkidle' });
+      await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+      await page.waitForTimeout(600);
+      await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+      await page.waitForTimeout(400);
+      await page.setInputFiles('input[type=file]', framePath);
+      await page.waitForTimeout(2500);
+      return page;
+    };
+
+    {
+      const page = await open(locked.file);
+      check(
+        'もらった人は、背景けしを通らずに位置あわせに着く',
+        (await page.getByRole('heading', { name: /位置をあわせる/ }).count()) >= 1,
+      );
+      check(
+        'もらったフレームだと分かる',
+        (await page.getByText(/見え方は、配った人が決めています/).count()) === 1,
+      );
+      check(
+        '配った人が決めた項目は、画面から消えている',
+        (await page.getByRole('button', { name: /まるく切りぬく|しかくいまま/ }).count()) === 0 &&
+          (await page.getByText('すきまの色').count()) === 0,
+      );
+      check(
+        'かたむきのつまみも消えている',
+        (await page.getByText('かたむき').count()) === 0,
+      );
+      check(
+        'フレームは動かせない（切り替えを出さない）',
+        (await page.getByRole('button', { name: /フレームをうごかす/ }).count()) === 0,
+      );
+      check('写真の大きさは、もらった人が決められる', (await page.getByText('写真の大きさ').count()) === 1);
+
+      /* 往復して同じ見た目になっているか */
+      /*
+        ここが「そろう」の定義そのもの。
+        作った人と、もらった人が、同じ写真から**1バイト違わない画像**を出す。
+      */
+      const mine = await saveIcon(page, mkdtempSync(join(tmpdir(), 'aeframe-')));
+      const same =
+        !!mine && !!locked.icon && Buffer.compare(readFileSync(mine), readFileSync(locked.icon)) === 0;
+      check(
+        '作った人と、もらった人の仕上がりが一致する',
+        same,
+        same ? '1バイト違わない' : 'ちがう',
+      );
+      await page.close();
+    }
+
+    {
+      // そろえずに渡したほうは、置きかたが入っていないので、いままでどおり
+      // 背景けしを通る（もう透過ずみなので、そこは素通りになる）。
+      const page = await open(plain.file);
+      check(
+        'そろえずに渡したフレームは、いままでどおり背景けしを通る',
+        (await page.getByRole('button', { name: /これでOK/ }).count()) === 1,
+      );
+      await page.getByRole('button', { name: /これでOK/ }).click();
+      await page.waitForTimeout(1300);
+      check(
+        'そろえずに渡したフレームでは、もらった人が全部決められる',
+        (await page.getByText('すきまの色').count()) >= 1 &&
+          (await page.getByRole('button', { name: /まるく切りぬく|しかくいまま/ }).count()) === 1 &&
+          (await page.getByRole('button', { name: /フレームをうごかす/ }).count()) === 1,
+      );
+      check(
+        'そろえずに渡したフレームでは、案内も出さない',
+        (await page.getByText(/見え方は、配った人が決めています/).count()) === 0,
+      );
+      await page.close();
+    }
+  }
+
   console.log('\n■ 穴がまん中に無いフレーム');
   {
     const { page } = await openFrame(browser, 'offset-hole.png', 'photo-mark.png');
