@@ -30,6 +30,17 @@ function newId() {
   return [...bytes].map((b) => 'abcdefghijkmnpqrstuvwxyz23456789'[b & 31]).join('');
 }
 
+/*
+  CORS。
+
+  **これは鍵ではない。** ブラウザが「よその画面から呼ぶな」と守ってくれるだけで、
+  curl やスクリプトから直に叩かれれば素通りする。
+  「公開URLからしか置けなくなる」と思ってはいけない。
+
+  ここが守っているのは「他人のサイトに貼られた画面から、勝手に置かれる」形だけ。
+  本当に効いているのは、この下の**大きさの上限**と**PNGかどうか**、
+  そして期限が切れること。
+*/
 function cors(origin, allowed) {
   // 設定していなければ、どこからでも読める（画像を配るだけなので）
   const allow = allowed && allowed !== '*' ? allowed : '*';
