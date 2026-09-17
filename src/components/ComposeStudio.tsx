@@ -17,7 +17,7 @@ import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
 import { embedRecipe, type Recipe, type RecipeLock } from '../lib/recipe';
-import { SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
+import { CONTACT_URL, SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -1198,6 +1198,22 @@ export function ComposeStudio({
       )}
 
       {/*
+        もらったフレームについて知らせる口。
+
+        押しどころにはしない（強調色は「画像をほぞんする」の1か所だけ）。
+        それでも、**このフレームを見ている人の画面**に無ければ意味が無い。
+        権利の連絡は、たいていフレームを見た人から来る。
+      */}
+      {lock && SHARE_ON && (
+        <p className="card__hint" style={{ marginTop: -6 }}>
+          <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer">
+            このフレームについて知らせる
+          </a>
+          （いまのURLを一緒に書いてください）
+        </p>
+      )}
+
+      {/*
         プレビューを画面に貼り付けておくための台。
 
         貼り付けるのは中の .stage だが、画面が短いと .stage は正方形のまま
@@ -1750,6 +1766,23 @@ export function ComposeStudio({
                   <p className="field__note">
                     <b>このフレームだけがインターネットに送られます。</b>
                     あなたの写真は送られません。90日で自動的に消えます。
+                  </p>
+                  {/*
+                    上げてよいものの決まり。
+
+                    どこかに畳んだ規約ではなく、**押す直前**に置く。
+                    読まれる場所に置いていないものは、書いていないのと同じ。
+                    長く書かない。2行で言えることを2行で言う。
+                  */}
+                  <p className="field__note">
+                    自分で作ったフレームか、配ってよいと分かっているものだけにしてください。
+                    <b>他の人の絵やキャラクターを、許可なく配らないでください。</b>
+                    <br />
+                    連絡をもらえば消します（
+                    <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer">
+                      相談・連絡はこちら
+                    </a>
+                    ）。
                   </p>
                 </div>
               )}

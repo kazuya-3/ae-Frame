@@ -3045,6 +3045,15 @@ try {
         (await page.getByText(/あなたの写真は送られません/).count()) === 1,
     );
     check('押すまでは、1枚も置きにいかない', putCount === 0);
+    check(
+      '上げてよいものの決まりが、押す直前に書いてある',
+      (await page.getByText(/他の人の絵やキャラクターを、許可なく配らないでください/).count()) === 1,
+    );
+    check(
+      '連絡の口が、押す直前にある',
+      (await page.getByRole('link', { name: '相談・連絡はこちら' }).getAttribute('href')) ===
+        'https://kazuworks.net/contact',
+    );
 
     await makeBtn().click();
     await waitFor(() => putCount > 0, 15000);
@@ -3091,6 +3100,23 @@ try {
       '配った人が決めた見た目が効いている',
       (await page.getByText(/見え方は配った人が決めています/).count()) === 1,
     );
+    check(
+      'もらった人の画面に、知らせる口がある',
+      (await page.getByRole('link', { name: 'このフレームについて知らせる' }).getAttribute('href')) ===
+        'https://kazuworks.net/contact',
+    );
+    /*
+      もらった人の画面でも、目を引くものは1つだけ。
+
+      この画面には、ふつうの画面に無いものが2つ増えている
+      （もらったことの案内と、知らせる口）。どちらも押しどころにしない。
+      数えかたは、ふつうの画面のときと同じ物差しを使う（styles.css の決まり）。
+    */
+    const loud = await page.evaluate(() => {
+      const c = [...document.querySelectorAll('.card')].find((x) => x.querySelector('.stage'));
+      return c ? c.querySelectorAll('.btn--primary, .note--warn').length : -1;
+    });
+    check('もらった人の画面でも、目を引くものは1つだけ', loud === 1, `${loud} 個`);
 
     dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
     await page.getByRole('button', { name: /画像をほぞんする/ }).click();
