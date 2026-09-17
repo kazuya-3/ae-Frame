@@ -77,6 +77,14 @@ export const BANNED_WORDS = [
  * 入口を出すと決めたのに、束ねる側の都合で文が落ちていたら、
  * 「払っても何も変わらない」という肝心の断りが消える。
  */
+/**
+ * 歩かないところ。
+ *
+ * **ビルドの出口を1か所で持つ。** 増やしたときに直す場所が2つあると、
+ * 片方だけ直る（実際そうなった）。
+ */
+const BUILD_DIRS = ['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'dist-notip', 'dist-link'];
+
 export const TIP_MARKERS = [
   '作った人にお礼を送る',
   'お礼を送る',
@@ -427,10 +435,17 @@ const WORD_ALLOWLIST = ['tools/check-dist.mjs', 'docs/stripe-compliance.md'];
  * という状態だった。
  */
 export function checkRepoWords() {
-  // 配るものは checkDist が別に読む。ここはリポジトリ側だけを見る。
-  // （'dist-tips' という綴りが残っていた。実際のフォルダは dist-tip なので
-  //  素通りしていた。中に決済リンクが入るのは、まさにこの版）
-  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip']);
+  /*
+    配るものは checkDist が別に読む。ここはリポジトリ側だけを見る。
+
+    ビルドの出口は**ひとつ残らず**ここに並べる。1つ漏らすと、その版に入った
+    決済リンクをリポジトリの禁止語として拾ってしまう。
+
+    漏らしたことが二度ある。
+      - 'dist-tips' という綴り違い（実際は dist-tip）。決済リンクが入る、まさにその版
+      - dist-link を足したとき。検証を足した直後にここで落ちて気づいた
+  */
+  const skip = new Set(BUILD_DIRS);
   const exts = ['.ts', '.tsx', '.js', '.mjs', '.css', '.html', '.md', '.json', '.yml', '.yaml'];
   const files = [];
   const walkRepo = (dir) => {
@@ -645,7 +660,7 @@ export function checkTipCopy() {
 
 /** リポジトリ側に秘密鍵が入っていないこと。配るものとは別に見る */
 export function checkRepoSecrets() {
-  const skip = new Set(['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'assets-src']);
+  const skip = new Set([...BUILD_DIRS, 'assets-src']);
   const files = [];
   const walkRepo = (dir) => {
     for (const name of readdirSync(dir)) {

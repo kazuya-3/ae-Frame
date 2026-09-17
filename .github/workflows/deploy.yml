@@ -54,6 +54,7 @@ jobs:
       - run: npm run build
         env:
           VITE_TIP_URL: ${{ vars.TIP_URL }}
+          VITE_FRAME_API: ${{ vars.FRAME_API }}
 
       # 透過の品質は、壊れても型では気づけない。実ブラウザで確かめてから公開する。
       #
@@ -63,6 +64,7 @@ jobs:
       - run: npm test
         env:
           VITE_TIP_URL: ${{ vars.TIP_URL }}
+          VITE_FRAME_API: ${{ vars.FRAME_API }}
 
       # Pages のスイッチ（Settings → Pages → Source を「GitHub Actions」に）は、
       # 一度だけ人が手で入れる必要がある。ここは自動化できない。

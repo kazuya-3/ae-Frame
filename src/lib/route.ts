@@ -61,6 +61,20 @@ export function isLegacyHash(hash: string) {
   return LEGACY_HASH.includes(normalize(hash));
 }
 
+/**
+ * リンクで配られたフレームの合言葉（`#/f/<id>`）。
+ *
+ * 画面は増やさない。**つくる画面のまま**、フレームだけが先に入っている状態にする。
+ * 受け取った人にとっては「リンクを押したら、もう用意できていた」だけで、
+ * 新しい画面を覚える必要はない。
+ *
+ * 読めない形は null。知らないURLで来た人も、ふつうのつくる画面に落ちる。
+ */
+export function readFrameId(hash = window.location.hash): string | null {
+  const m = /^#\/f\/([A-Za-z0-9_-]{4,40})$/.exec(hash.split('?')[0].replace(/\/+$/, ''));
+  return m ? m[1] : null;
+}
+
 /** 現在のURLから画面を決める。知らないものは、つくる画面に落とす。 */
 export function readRoute(hash = window.location.hash, search = window.location.search): Route {
   const h = normalize(hash);

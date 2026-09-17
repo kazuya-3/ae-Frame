@@ -8,6 +8,7 @@
  * 出力画素のアルファを読めば機械的に確かめられる。ここではそれをやっている。
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -2958,6 +2959,168 @@ try {
 
     もらったものは、もらったまま置く。
   */
+  /*
+    リンクで配る。
+
+    ファイルで配る道はもうあるが、もらう側の手数が多い。
+      ファイル : 長押しで保存 → アプリを開く → 写真 → 「フレームをえらぶ」
+                 → さっき保存したものを探す → 調整 → 保存
+      リンク   : リンクを押す → 写真をえらぶ → 保存
+
+    配る相手の年齢も慣れもばらばらなら、この差は大きい。
+
+    置き場所は本物を使わない。**同じ約束ごとで動く小さな入れ物**を立てて、
+    そこへ置かせる。見たいのは「置いて、取って、フレームが入った状態で開くか」で、
+    向こう側が Cloudflare かどうかは関係が無い。
+  */
+  console.log('\n■ リンクで配る');
+  {
+    const STORE_PORT = 4199;
+    const kept = new Map();
+    let putCount = 0;
+    const store = createServer(async (req, res) => {
+      const head = {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET,POST,OPTIONS',
+        'access-control-allow-headers': 'content-type',
+      };
+      if (req.method === 'OPTIONS') return res.writeHead(204, head).end();
+      if (req.method === 'POST' && req.url === '/f') {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const body = Buffer.concat(chunks);
+        // 本物と同じで、PNG でなければ受けない
+        const png = [137, 80, 78, 71, 13, 10, 26, 10].every((b, i) => body[i] === b);
+        if (!png) return res.writeHead(415, head).end('{}');
+        const id = 'test' + ++putCount;
+        kept.set(id, body);
+        res.writeHead(201, { ...head, 'content-type': 'application/json' });
+        return res.end(JSON.stringify({ id }));
+      }
+      const m = /^\/f\/([A-Za-z0-9_-]+)$/.exec(req.url ?? '');
+      if (req.method === 'GET' && m) {
+        const body = kept.get(m[1]);
+        if (!body) return res.writeHead(404, head).end('{}');
+        return res.writeHead(200, { ...head, 'content-type': 'image/png' }).end(body);
+      }
+      res.writeHead(404, head).end('{}');
+    });
+    await new Promise((ok) => store.listen(STORE_PORT, ok));
+
+    console.log('  （リンクの送り先を入れたビルドを作っています…）');
+    check(
+      'リンクの送り先を入れたビルドが作れる',
+      spawnSync('npm', ['run', 'build:link'], { cwd: root, stdio: 'ignore', env: { ...process.env } })
+        .status === 0,
+    );
+    const linkServer = serve('dist-link', PORT + 5);
+    const LINK_BASE = `http://localhost:${PORT + 5}/`;
+    await new Promise((r) => setTimeout(r, 900));
+
+    // --- 配る人：リンクを作る ---
+    let page = await browser.newPage({ viewport: PHONE });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(LINK_BASE, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+    await page.waitForTimeout(4000);
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+
+    const makeBtn = () => page.getByRole('button', { name: /^リンクを作る$/ });
+    check('そろえる前は、リンクを作る口を出さない', (await makeBtn().count()) === 0);
+
+    await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
+    await page.waitForTimeout(250);
+    await page.getByLabel('フレームの名前').fill('よるの枠');
+    await page.waitForTimeout(200);
+    check('そろえると、リンクを作る口が出る', (await makeBtn().count()) === 1);
+    check(
+      '何が送られるかを、押す前に書いてある',
+      (await page.getByText(/このフレームだけがインターネットに送られます/).count()) === 1 &&
+        (await page.getByText(/あなたの写真は送られません/).count()) === 1,
+    );
+    check('押すまでは、1枚も置きにいかない', putCount === 0);
+
+    await makeBtn().click();
+    await waitFor(() => putCount > 0, 15000);
+    const link = await page.getByLabel('配るリンク').inputValue();
+    check('リンクができる', /#\/f\/[A-Za-z0-9_-]{4,40}$/.test(link), link);
+
+    // 仕上がりを控えておく（もらった人と突き合わせる）
+    let dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする/ }).click();
+    let got = await dl;
+    const dir = mkdtempSync(join(tmpdir(), 'aeframe-link-'));
+    const mine = join(dir, 'maker.png');
+    await got.saveAs(mine);
+    await page.close();
+
+    // --- もらう人：リンクを押すだけ ---
+    page = await browser.newPage({ viewport: PHONE });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    const hash = link.slice(link.indexOf('#'));
+    await page.goto(LINK_BASE + hash, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.waitForTimeout(2000);
+
+    check(
+      'リンクを開くと、フレームが用意できている',
+      (await page.getByText(/「よるの枠」が用意できました/).count()) === 1,
+    );
+    check(
+      'やることは写真をえらぶことだけ、と言っている',
+      (await page.getByText(/あとは/).count()) >= 1 &&
+        (await page.getByText(/背景をけす手間はありません/).count()) === 1,
+    );
+
+    // 写真をえらぶ → そのまま位置あわせへ
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(900);
+    await page.getByRole('button', { name: /つぎへ：位置をあわせる/ }).click();
+    await page.waitForTimeout(1500);
+    check(
+      '背景けしを通らずに位置あわせへ着く',
+      (await page.getByRole('heading', { name: /位置をあわせる/ }).count()) >= 1,
+    );
+    check(
+      '配った人が決めた見た目が効いている',
+      (await page.getByText(/見え方は配った人が決めています/).count()) === 1,
+    );
+
+    dl = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+    await page.getByRole('button', { name: /画像をほぞんする/ }).click();
+    got = await dl;
+    const theirs = join(dir, 'taker.png');
+    await got.saveAs(theirs);
+    const same = Buffer.compare(readFileSync(mine), readFileSync(theirs)) === 0;
+    check('配った人と、リンクで来た人の仕上がりが一致する', same, same ? '1バイト違わない' : 'ちがう');
+    await page.close();
+
+    // --- 期限切れ・知らないリンク ---
+    page = await browser.newPage({ viewport: PHONE });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(LINK_BASE + '#/f/nosuchframe', { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.waitForTimeout(1500);
+    check(
+      '消えたリンクでも、行き止まりにしない',
+      (await page.getByText(/期限が切れているか、取り消されています/).count()) === 1,
+    );
+    check(
+      'そのまま、ふつうに作り始められる',
+      (await page.getByText('写真をえらぶ').count()) >= 1,
+    );
+    await page.close();
+
+    linkServer.kill();
+    store.close();
+  }
+
   console.log('\n■ もらったフレームを、覚えておく');
   {
     const ctx = await browser.newContext({ viewport: PHONE });

@@ -155,7 +155,7 @@ export function TipPage() {
 
       <div className="footer">
         <p>
-          <IconLock size={14} /> 画像はこの端末の中だけで処理されます。どこにも送信されません。
+          <IconLock size={14} /> あなたの写真はこの端末の中だけで処理されます。どこにも送信されません。
         </p>
       </div>
     </div>

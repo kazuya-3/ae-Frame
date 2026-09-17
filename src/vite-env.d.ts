@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_DEMO?: string;
   /** お礼の送り先。空なら、お礼の入口はビルドごと入らない（vite.config.ts） */
   readonly VITE_TIP_URL?: string;
+  readonly VITE_FRAME_API?: string;
 }
 
 interface ImportMeta {

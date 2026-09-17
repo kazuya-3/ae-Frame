@@ -24,7 +24,8 @@ import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
 import { Sprite } from './components/Sprite';
-import { navigate } from './lib/route';
+import { navigate, readFrameId } from './lib/route';
+import { SHARE_ON, getFrame } from './lib/frameApi';
 import { TipLink } from 'virtual:tip';
 import {
   IconArrowRight,
@@ -98,6 +99,8 @@ export default function App({ active = true }: { active?: boolean }) {
   */
   const [hasKept, setHasKept] = useState(hasKeptFrame);
   const [frameKept, setFrameKept] = useState(false);
+  /** リンクで配られたフレームを、いま取りにいっている最中か */
+  const [fetching, setFetching] = useState(() => SHARE_ON && !!readFrameId());
 
   const photoUrlRef = useRef<string | null>(null);
 
@@ -126,6 +129,8 @@ export default function App({ active = true }: { active?: boolean }) {
       if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
     };
   }, []);
+
+
 
   /* ---------------- ファイルの読み込み ---------------- */
 
@@ -158,6 +163,77 @@ export default function App({ active = true }: { active?: boolean }) {
     }
   }, []);
 
+  /**
+   * 人からもらったフレーム（ファイルでも、リンクでも）を画面に入れる。
+   *
+   * 置きかたが焼きこんであるなら、そのフレームは**もう背景がけしてある**。
+   * けし直すと配った人の絵が変わるし、通す意味も無い。だから背景けしは飛ばす。
+   *
+   * `to` は行き先。ファイルで渡された人は写真をもう選んでいるので位置あわせへ、
+   * リンクで来た人はまだ選んでいないので写真をえらぶところへ。
+   */
+  const applyGivenFrame = useCallback(async (blob: Blob, to: Step) => {
+    const bmp = await fileToBitmap(blob);
+    const recipe = readRecipe(new Uint8Array(await blob.arrayBuffer()));
+    setFrameResult(bmp);
+    setFrameBytes(recipe ? blob : null);
+    setHole(recipe?.hole ?? findHole(bitmapToImageData(bmp)));
+    setLock(recipe?.lock ?? null);
+    setFrameName(recipe?.name ?? '');
+    setFrameKept(false);
+    setFrameSource(null);
+    setFrameFull(null);
+    setAutoCropped(false);
+    play('done');
+    setStep(to);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  /*
+    リンクで配られたフレームを、開いた瞬間に取りにいく。
+
+    ── なぜ画面を増やさないのか ──
+
+    受け取る人にとっては「リンクを押したら、もう用意できていた」だけでいい。
+    専用の画面を作ると、そこから「つくる画面」へ移る一手が増える。
+    増やしたいのは手数ではないので、**つくる画面のまま**フレームだけ先に入れる。
+
+    ── 取れなかったとき ──
+
+    期限が切れている、消された、通信が届かない。どれも起こる。
+    そのときは**行き止まりにしない**。理由を日本語で出して、
+    ふつうのつくる画面として使えるようにする。フレームは自分で選べばいい。
+  */
+  useEffect(() => {
+    const id = readFrameId();
+    if (!SHARE_ON || !id) return;
+    let alive = true;
+    (async () => {
+      try {
+        const blob = await getFrame(id);
+        if (!alive) return;
+        if (!blob) {
+          setError(
+            'このフレームのリンクは、期限が切れているか、取り消されています。配った人にもう一度たずねてください。',
+          );
+          play('error');
+          return;
+        }
+        await applyGivenFrame(blob, 1);
+      } catch (e) {
+        if (!alive) return;
+        console.warn(e);
+        setError('フレームを読み込めませんでした。電波のいいところで開きなおしてください。');
+        play('error');
+      } finally {
+        if (alive) setFetching(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [applyGivenFrame]);
+
   const loadFrame = useCallback(async (file: File) => {
     setError(null);
     try {
@@ -170,21 +246,8 @@ export default function App({ active = true }: { active?: boolean }) {
         受け取った人にとっては、工程が3つから2つに減る。
       */
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const recipe = readRecipe(bytes);
-      if (recipe) {
-        const bmp = await fileToBitmap(file);
-        setFrameResult(bmp);
-        setFrameBytes(file);
-        setHole(recipe.hole ?? findHole(bitmapToImageData(bmp)));
-        setLock(recipe.lock ?? null);
-        setFrameName(recipe.name ?? '');
-        setFrameKept(false);
-        setFrameSource(null);
-        setFrameFull(null);
-        setAutoCropped(false);
-        play('done');
-        setStep(3);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (readRecipe(bytes)) {
+        await applyGivenFrame(file, 3);
         return;
       }
 
@@ -378,6 +441,28 @@ export default function App({ active = true }: { active?: boolean }) {
             いまのアイコンや、使いたい自撮り・イラストを選んでください。 うしろに敷く写真です。
           </p>
 
+          {/*
+            リンクで来た人へ。
+
+            **押すところは増やさない。** フレームはもう入っているので、
+            この人がやることは写真をえらぶことだけ。
+            そう言い切ってしまうほうが、選択肢を出すより迷わない。
+          */}
+          {fetching && (
+            <Note>
+              <span>フレームを読み込んでいます…</span>
+            </Note>
+          )}
+          {!fetching && frameResult && !photo && (
+            <Note tone="ok">
+              <span>
+                <b>{frameName ? `「${frameName}」が用意できました。` : 'フレームが用意できました。'}</b>
+                <br />
+                あとは<b>写真をえらぶだけ</b>です。背景をけす手間はありません。
+              </span>
+            </Note>
+          )}
+
           {photo && photoUrl ? (
             <div className="stack">
               <div className="preview">
@@ -528,7 +613,7 @@ export default function App({ active = true }: { active?: boolean }) {
 
       <div className="footer">
         <p>
-          <IconLock size={14} /> 画像はこの端末の中だけで処理されます。どこにも送信されません。
+          <IconLock size={14} /> あなたの写真はこの端末の中だけで処理されます。どこにも送信されません。
         </p>
         {/*
           ここには応援ページへの静かな入口があった。
@@ -599,7 +684,7 @@ export default function App({ active = true }: { active?: boolean }) {
           <div className="stack">
             <Note>
               <IconLock size={15} />{' '}
-              画像はインターネットに送られません。すべてこの端末の中で処理します。
+              あなたの写真はインターネットに送られません。すべてこの端末の中で処理します。
             </Note>
 
             <div>

@@ -17,6 +17,7 @@ import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
 import { embedRecipe, type Recipe, type RecipeLock } from '../lib/recipe';
+import { SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import {
@@ -297,6 +298,10 @@ export function ComposeStudio({
     覚えてもらう決まりを増やしたくないので、**空のままでも通す**。
   */
   const [frameName, setFrameName] = useState('');
+  /** 作ったリンク。作るまでは空 */
+  const [link, setLink] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   /*
     配った人が決めた見た目を、いまの画面にあてる。
@@ -1115,6 +1120,39 @@ export function ComposeStudio({
     await saveFrameOnly();
   };
 
+  /**
+   * 配るリンクを作る。
+   *
+   * **ここが、この道具で唯一「絵がインターネットに出る」ところ。**
+   * 押されたときだけ出る。黙って送るものは1つも無い。
+   * 出るのはフレームだけで、利用者の写真は1バイトも出ない。
+   */
+  const makeLink = async () => {
+    setLinking(true);
+    setCopied(false);
+    try {
+      const id = await putFrame(await buildFrameBlob());
+      setLink(frameLink(id));
+      play('done');
+    } catch (e) {
+      console.warn(e);
+      setLink('');
+      play('error');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      play('done');
+    } catch {
+      play('error');
+    }
+  };
+
   const saveFrameOnly = async () => {
     setBusy(true);
     try {
@@ -1665,6 +1703,56 @@ export function ComposeStudio({
                 受け取った人の画面に出ます。Discordで降ってきたファイルが
                 <b>どの枠のものか</b>、開いた時点で分かります。
               </p>
+            </div>
+          )}
+
+          {/*
+            リンクで配る。
+
+            ファイルで配るより、もらう人の手数がずっと少ない。
+              ファイル : 長押しで保存 → アプリを開く → 写真 → 「フレームをえらぶ」
+                         → さっき保存したものを探す → 調整 → 保存
+              リンク   : リンクを押す → 写真をえらぶ → 保存
+
+            配る相手の年齢も慣れもばらばらなら、この差は大きい。
+
+            ただし**フレームがインターネットに出る**。だから押すまで何もしないし、
+            何が出て何が出ないかを、押す前に書いておく。
+          */}
+          {lockOnShare && SHARE_ON && (
+            <div className="field">
+              <div className="field__row">
+                <span className="field__label">リンクで配る</span>
+              </div>
+              {link ? (
+                <div className="stack">
+                  <input
+                    className="field__text"
+                    type="text"
+                    readOnly
+                    value={link}
+                    aria-label="配るリンク"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <Button variant="ghost" onClick={copyLink} sound={null}>
+                    {copied ? 'コピーしました' : 'リンクをコピーする'}
+                  </Button>
+                  <p className="field__note">
+                    このリンクを押した人は、<b>フレームが入った状態</b>で開きます。
+                    あとは写真をえらぶだけです。90日で消えます。
+                  </p>
+                </div>
+              ) : (
+                <div className="stack">
+                  <Button variant="ghost" onClick={makeLink} disabled={linking || busy}>
+                    {linking ? '作っています…' : 'リンクを作る'}
+                  </Button>
+                  <p className="field__note">
+                    <b>このフレームだけがインターネットに送られます。</b>
+                    あなたの写真は送られません。90日で自動的に消えます。
+                  </p>
+                </div>
+              )}
             </div>
           )}
           {canShare ? (
