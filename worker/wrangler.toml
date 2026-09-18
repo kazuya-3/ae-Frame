@@ -1,0 +1,18 @@
+# Cloudflare へ出すための設定。
+#
+# 直すのは id の1行だけ。`wrangler kv namespace create FRAMES` が
+# 出してきた id を、ここに貼る。
+
+name = "ae-frame-store"
+main = "frame-store.js"
+compatibility_date = "2026-01-01"
+
+[[kv_namespaces]]
+binding = "FRAMES"
+# ↓ ここに、作った入れ物の id を貼る（PASTE_KV_ID を置きかえる）
+id = "PASTE_KV_ID"
+
+[vars]
+# ブラウザからの呼び出しを、この住所からだけに絞る。
+# ただし**これは鍵ではない**（curl から直に叩けば素通りする）。
+ALLOW_ORIGIN = "https://kazuya-3.github.io"

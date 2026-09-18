@@ -3147,6 +3147,64 @@ try {
     store.close();
   }
 
+  /*
+    リンクの止めかた。
+
+    リンクで配るのは、他人の絵を預かるということ。荒らされたときに
+    「直す人を待つ」状態を作らない。送り先（FRAME_API）に URL でないものを
+    入れれば、その場で機能ごと消える。
+
+    ここで見たいのは **`usable` の守り**。URL でないものを通してしまうと、
+    止めたつもりで止まっていない、といういちばん困る形になる。
+  */
+  console.log('\n■ リンクを止める');
+  {
+    console.log('  （送り先を止めたビルドを作っています…）');
+    check(
+      '止めたビルドが作れる',
+      spawnSync('npm', ['run', 'build:frameoff'], {
+        cwd: root,
+        stdio: 'ignore',
+        env: { ...process.env },
+      }).status === 0,
+    );
+    const offServer = serve('dist-frameoff', PORT + 6);
+    const OFF_BASE = `http://127.0.0.1:${PORT + 6}/`;
+    await new Promise((r) => setTimeout(r, 900));
+
+    const page = await browser.newPage({ viewport: PHONE });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(OFF_BASE, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: /つぎへ：フレームをえらぶ/ }).click();
+    await page.waitForTimeout(400);
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+    await page.waitForTimeout(4000);
+    await page.getByRole('button', { name: /これでOK/ }).click();
+    await page.waitForTimeout(1300);
+    await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
+    await page.waitForTimeout(250);
+
+    check(
+      'URLでない送り先は、通さない（リンクの口が出ない）',
+      (await page.getByRole('button', { name: /^リンクを作る$/ }).count()) === 0,
+    );
+    check(
+      '止めても、ファイルで配る道は残っている',
+      (await page
+        .getByRole('button', { name: /とうめいにしたフレームだけを保存する|^保存する$/ })
+        .count()) === 1,
+    );
+    check(
+      '止めても、ふつうに保存できる（行き止まりにしない）',
+      await page.getByRole('button', { name: /画像をほぞんする/ }).isEnabled(),
+    );
+    await page.close();
+    offServer.kill();
+  }
+
   console.log('\n■ もらったフレームを、覚えておく');
   {
     const ctx = await browser.newContext({ viewport: PHONE });

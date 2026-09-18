@@ -83,7 +83,7 @@ export const BANNED_WORDS = [
  * **ビルドの出口を1か所で持つ。** 増やしたときに直す場所が2つあると、
  * 片方だけ直る（実際そうなった）。
  */
-const BUILD_DIRS = ['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'dist-notip', 'dist-link'];
+const BUILD_DIRS = ['node_modules', '.git', 'dist', 'dist-demo', 'dist-tip', 'dist-notip', 'dist-link', 'dist-frameoff'];
 
 export const TIP_MARKERS = [
   '作った人にお礼を送る',

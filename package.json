@@ -17,7 +17,9 @@
     "shots": "node tools/shots.mjs",
     "build:tip": "tsc -b && VITE_TIP_URL=https://example.com/tip-dummy vite build --outDir dist-tip --emptyOutDir",
     "build:notip": "tsc -b && VITE_TIP_URL= vite build --outDir dist-notip --emptyOutDir",
-    "build:link": "tsc -b && VITE_FRAME_API=http://localhost:4199 vite build --outDir dist-link --emptyOutDir"
+    "build:link": "tsc -b && VITE_FRAME_API=http://localhost:4199 vite build --outDir dist-link --emptyOutDir",
+    "store:deploy": "cd worker && npx wrangler deploy",
+    "build:frameoff": "tsc -b && VITE_FRAME_API=off vite build --outDir dist-frameoff --emptyOutDir"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.3.3",

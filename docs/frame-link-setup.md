@@ -53,66 +53,54 @@ GitHub の設定を1か所いじるだけで出る。ここは、その手順。
 > 無料枠の条件は向こうの都合で変わる。**始める前に、いまの条件を見ておく。**
 > [Workers の料金](https://developers.cloudflare.com/workers/platform/pricing/)
 
-### 手順
+### 手順（あなたがやること）
+
+**この3つだけ。** あとは実装した側でやる。
 
 1. Cloudflare のアカウントを作る（無料）
-2. 手もとに `wrangler` を入れる
+
+   ここは代われない。**あなたの名前で規約に同意する**手続きなので。
+
+2. 手もとで、いちどログインする
 
    ```
-   npm install -g wrangler
-   wrangler login
+   npx wrangler login
    ```
 
-3. 入れ物（KV）を1つ作る
+   ブラウザが開く。ここも代われない（あなたの資格情報なので）。
+
+3. 入れ物を作って、出す
 
    ```
-   wrangler kv namespace create FRAMES
+   npx wrangler kv namespace create FRAMES
    ```
 
-   出てきた `id` を控える。
-
-4. `worker/wrangler.toml` を作る（この内容で）
-
-   ```toml
-   name = "ae-frame-store"
-   main = "frame-store.js"
-   compatibility_date = "2026-01-01"
-
-   [[kv_namespaces]]
-   binding = "FRAMES"
-   id = "ここに 3 で控えた id"
-
-   [vars]
-   ALLOW_ORIGIN = "https://kazuya-3.github.io"
-   ```
-
-   > `ALLOW_ORIGIN` は**鍵ではない**。ブラウザが「よその画面から呼ぶな」と
-   > 守ってくれるだけで、curl から直に叩かれれば素通りする。
-   > 効いているのは、大きさの上限（2MB）・PNGかどうか・期限のほう。
-
-5. 出す
+   出てきた `id = "..."` を、`worker/wrangler.toml` の `PASTE_KV_ID` と
+   置きかえる（直すのはその1行だけ。ファイルはもう置いてある）。
 
    ```
-   cd worker
-   wrangler deploy
+   npm run store:deploy
    ```
 
-   `https://ae-frame-store.<あなた>.workers.dev` のような住所が出る。これを控える。
+   `https://ae-frame-store.<あなた>.workers.dev` のような住所が出る。
+
+**4. その住所を伝える。** 残りはこちらでやる（`src/lib/frameApi.ts` の
+`BUILT_IN` に入れて、公開まで）。
 
 ---
 
-## 3. サイトに載せる
+## 3. サイトに載せる（こちらの作業）
 
-1. GitHub の **Settings → Secrets and variables → Actions → Variables** タブ
-2. `New repository variable`
-   - Name: `FRAME_API`
-   - Value: 2 で控えた住所（`https://...workers.dev`）
-3. 保存したあと、**公開を1回走らせる**（Actions → 公開のワークフロー → Run workflow）。
-   変数を足しただけでは公開は始まらない
+`src/lib/frameApi.ts` の `BUILT_IN` に住所を入れて、押し出すだけ。
+**GitHub の画面を触る必要は無い。**
 
-**secret ではなく variable に入れる。** 中身は誰でも見る公開URLで、
-secret にするとログで伏せ字になり、取り違えたときに気づけない。
-（`TIP_URL` と同じ理由）
+```ts
+const BUILT_IN = 'https://ae-frame-store.xxxx.workers.dev';
+```
+
+はじめは GitHub のリポジトリ変数にする案だったが、やめた。
+それだと出すたびに GitHub の画面を触ってもらうことになる。
+ここはただの公開URLで、隠す理由が無い（決済リンクとは事情が違う）。
 
 ### 出したあと、目で確かめること
 
@@ -124,13 +112,26 @@ secret にするとログで伏せ字になり、取り違えたときに気づ�
 
 ---
 
-## 4. 止めるとき
+## 4. 止めるとき（あなただけでできる）
 
-`FRAME_API` を空にする（または変数ごと消す）。次の公開で、リンクまわりは
-配るものから消える。すでに配ったリンクは開けなくなるので、
-**止める前に、配った相手に知らせる。**
+**荒らされたときに、直す人を待たなくていいようにしてある。**
 
-置いてあるフレームも消すなら、Cloudflare 側で入れ物ごと消す。
+GitHub の **Settings → Secrets and variables → Actions → Variables** で、
+
+```
+Name : FRAME_API
+Value: off
+```
+
+を入れて、公開を1回走らせる。`off` は URL ではないので、
+実装側が弾いて**リンクまわりが機能ごと消える**。コードは直さなくてよい。
+
+- ファイルで配る道は残る（そちらは置き場所を使わない）
+- すでに配ったリンクは開けなくなるので、**止める前に配った相手に知らせる**
+- 置いてあるフレームも消すなら、Cloudflare 側で入れ物ごと消す
+
+`usable` が URL でないものを弾くことは、検証が見ている
+（「URLでない送り先は、通さない」）。守りを外すと落ちる。
 
 ---
 
