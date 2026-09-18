@@ -125,14 +125,17 @@ npm run store:deploy
 
 ---
 
-## 3. サイトに載せる（こちらの作業）
+## 3. サイトに載せる（こちらの作業・**済み**）
 
 `src/lib/frameApi.ts` の `BUILT_IN` に住所を入れて、押し出すだけ。
 **GitHub の画面を触る必要は無い。**
 
 ```ts
-const BUILT_IN = 'https://ae-frame-store.xxxx.workers.dev';
+const BUILT_IN = 'https://ae-frame-store.aura-aevisual.workers.dev';
 ```
+
+置き場所は 2026-09 に用意ずみ（KV の入れ物 `FRAMES`、Worker は
+`ae-frame-store`）。ターミナルから `wrangler deploy` で出した。
 
 はじめは GitHub のリポジトリ変数にする案だったが、やめた。
 それだと出すたびに GitHub の画面を触ってもらうことになる。

@@ -47,7 +47,7 @@
  * 下の `usable` が弾いて機能ごと消える。**コードを直さずに、すぐ止められる。**
  * 荒らされたときに「直す人を待つ」状態を作らない。
  */
-const BUILT_IN = '';
+const BUILT_IN = 'https://ae-frame-store.aura-aevisual.workers.dev';
 
 /*
   変数が入っていればそちらが勝つ。空（設定していない）なら上の既定を使う。
