@@ -16,10 +16,11 @@ import {
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
-import { embedRecipe, type Recipe, type RecipeLock } from '../lib/recipe';
-import { CONTACT_URL, SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
+import type { RecipeLock } from '../lib/recipe';
+import { CONTACT_URL, SHARE_ON } from '../lib/frameApi';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
+import { FrameHandoff } from './FrameHandoff';
 import {
   IconArrowLeft,
   IconDownload,
@@ -282,26 +283,6 @@ export function ComposeStudio({
   /* 「他の人と並べてみる」を開いているか。既定は畳む（FEED のところに理由） */
   const [feedOpen, setFeedOpen] = useState(false);
 
-  /*
-    渡すフレームに、いまの置きかたを焼きこむか。
-
-    既定は切っておく。自分用に保存し直すだけの人まで固定すると、
-    次に自分で開いたときに自分の設定が動かせなくなる。
-    **そろえたい人が、そろえたいときに押す**もの。
-  */
-  const [lockOnShare, setLockOnShare] = useState(false);
-  /*
-    フレームの名前。なくてよい。
-
-    もらった人は、Discord で降ってきたファイルを開くまで
-    「これで合っているのか」が分からない。名前が出れば、そこで分かる。
-    覚えてもらう決まりを増やしたくないので、**空のままでも通す**。
-  */
-  const [frameName, setFrameName] = useState('');
-  /** 作ったリンク。作るまでは空 */
-  const [link, setLink] = useState('');
-  const [linking, setLinking] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   /*
     配った人が決めた見た目を、いまの画面にあてる。
@@ -1081,89 +1062,9 @@ export function ComposeStudio({
 
   const frameFileName = () => timestampName('frame_toka', 'png');
 
-  /*
-    渡すフレームを作る。
+  /** 渡すフレームの素。焼きこみは FrameHandoff がやる。 */
+  const buildFrameBlob = async () => frameReadyRef.current ?? (await bitmapToPngBlob(frame));
 
-    「そろえる」が入っているときだけ、いまの見た目を PNG の中に書き添える。
-    書き添えるのは**フレームの見え方**（すきまの色・まるく切りぬく・かたむき・
-    フレームの置き場所）だけで、写真の位置と大きさは相手に残す。
-    そろえたいのはフレームであって、中の人ではない。
-  */
-  const buildFrameBlob = async () => {
-    const blob = frameReadyRef.current ?? (await bitmapToPngBlob(frame));
-    if (!lockOnShare) return blob;
-    const lock: RecipeLock = { move: 'free', rotate: false, gap, round };
-    // 名前は長さで切る。長いものを渡されても、もらった人の画面が崩れないように。
-    const name = frameName.trim().slice(0, 40);
-    const recipe: Recipe = { v: 1, ...(name ? { name } : {}), ...(hole ? { hole } : {}), lock };
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const out = embedRecipe(bytes, recipe);
-    return new Blob([out.buffer as ArrayBuffer], { type: 'image/png' });
-  };
-
-  /** フレームを人に渡す。共有シートが使えないときは、落として渡してもらう */
-  const shareFrameOnly = async () => {
-    const warm = frameReadyRef.current;
-    if (warm && canShare) {
-      const file = new File([warm], frameFileName(), { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
-        navigator
-          .share({ files: [file] })
-          .then(() => play('done'))
-          .catch((e: unknown) => {
-            // 閉じただけなら何も言わない。それ以外は行き止まりなので落とす道を出す
-            if ((e as { name?: string })?.name !== 'AbortError') void saveFrameOnly();
-          });
-        return;
-      }
-    }
-    await saveFrameOnly();
-  };
-
-  /**
-   * 配るリンクを作る。
-   *
-   * **ここが、この道具で唯一「絵がインターネットに出る」ところ。**
-   * 押されたときだけ出る。黙って送るものは1つも無い。
-   * 出るのはフレームだけで、利用者の写真は1バイトも出ない。
-   */
-  const makeLink = async () => {
-    setLinking(true);
-    setCopied(false);
-    try {
-      const id = await putFrame(await buildFrameBlob());
-      setLink(frameLink(id));
-      play('done');
-    } catch (e) {
-      console.warn(e);
-      setLink('');
-      play('error');
-    } finally {
-      setLinking(false);
-    }
-  };
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      play('done');
-    } catch {
-      play('error');
-    }
-  };
-
-  const saveFrameOnly = async () => {
-    setBusy(true);
-    try {
-      downloadBlob(await buildFrameBlob(), frameFileName());
-      play('done');
-    } catch {
-      play('error');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="card">
@@ -1664,165 +1565,16 @@ export function ComposeStudio({
           注意書きを読ませるためではなく、「写真として送らない」という
           具体的な逃げ道を1つ持って帰ってもらうために置いている。
         */}
-        <div className="group">
-          <p className="group__title">
-            <IconShare size={15} />
-            フレームを人にわたす
-          </p>
-          <p className="group__note">
-            背景をけしたフレームそのものを渡せます。受け取った人は、自分の写真で同じものを作れます。
-          </p>
+        <FrameHandoff
+          build={async () => ({ blob: await buildFrameBlob(), hole })}
+          lockDefaults={{ gap, round }}
+          saveLabel="とうめいにしたフレームだけを保存する"
+          canShare={canShare}
+          disabled={busy}
+          fileName={frameFileName}
+        />
 
-          {/*
-            そろえるスイッチ。
-
-            渡すだけなら、いままでどおり渡せる。受け取った人は自由に置ける。
-            けれど「みんなでつけよう」というときは、それだと**人によって
-            大きさも位置も変わる**。そこをそろえるためのもの。
-
-            固定するのはフレームの見え方だけで、**写真の位置と大きさは相手に残す**。
-            顔の入れかたまで奪うと、顔が切れた人が直せなくなる。
-          */}
-          <Toggle
-            on={lockOnShare}
-            onChange={setLockOnShare}
-            label="みんなの見た目をそろえる"
-          />
-          <p className="field__note">
-            {lockOnShare ? (
-              <>
-                <b>いまの見え方を、フレームに焼きこんで渡します。</b>
-                受け取った人の画面では、すきまの色・まるく切りぬく・かたむき・
-                フレームの置き場所が<b>このまま</b>になります。
-                写真の位置と大きさだけ、その人が決められます。
-              </>
-            ) : (
-              <>受け取った人が、位置も大きさも自由に決められます。</>
-            )}
-          </p>
-
-          {lockOnShare && (
-            <div className="field">
-              <div className="field__row">
-                <span className="field__label">フレームの名前（なくてもOK）</span>
-              </div>
-              <input
-                className="field__text"
-                type="text"
-                maxLength={40}
-                value={frameName}
-                onChange={(e) => setFrameName(e.target.value)}
-                placeholder="れい：○○の枠"
-                aria-label="フレームの名前"
-              />
-              <p className="field__note">
-                受け取った人の画面に出ます。Discordで降ってきたファイルが
-                <b>どの枠のものか</b>、開いた時点で分かります。
-              </p>
-            </div>
-          )}
-
-          {/*
-            リンクで配る。
-
-            ファイルで配るより、もらう人の手数がずっと少ない。
-              ファイル : 長押しで保存 → アプリを開く → 写真 → 「フレームをえらぶ」
-                         → さっき保存したものを探す → 調整 → 保存
-              リンク   : リンクを押す → 写真をえらぶ → 保存
-
-            配る相手の年齢も慣れもばらばらなら、この差は大きい。
-
-            ただし**フレームがインターネットに出る**。だから押すまで何もしないし、
-            何が出て何が出ないかを、押す前に書いておく。
-          */}
-          {lockOnShare && SHARE_ON && (
-            <div className="field">
-              <div className="field__row">
-                <span className="field__label">リンクで配る</span>
-              </div>
-              {link ? (
-                <div className="stack">
-                  <input
-                    className="field__text"
-                    type="text"
-                    readOnly
-                    value={link}
-                    aria-label="配るリンク"
-                    onFocus={(e) => e.currentTarget.select()}
-                  />
-                  <Button variant="ghost" onClick={copyLink} sound={null}>
-                    {copied ? 'コピーしました' : 'リンクをコピーする'}
-                  </Button>
-                  <p className="field__note">
-                    このリンクを押した人は、<b>フレームが入った状態</b>で開きます。
-                    あとは写真をえらぶだけです。90日で消えます。
-                  </p>
-                </div>
-              ) : (
-                <div className="stack">
-                  <Button variant="ghost" onClick={makeLink} disabled={linking || busy}>
-                    {linking ? '作っています…' : 'リンクを作る'}
-                  </Button>
-                  <p className="field__note">
-                    <b>このフレームだけがインターネットに送られます。</b>
-                    あなたの写真は送られません。90日で自動的に消えます。
-                  </p>
-                  {/*
-                    上げてよいものの決まり。
-
-                    どこかに畳んだ規約ではなく、**押す直前**に置く。
-                    読まれる場所に置いていないものは、書いていないのと同じ。
-                    長く書かない。2行で言えることを2行で言う。
-                  */}
-                  <p className="field__note">
-                    自分で作ったフレームか、配ってよいと分かっているものだけにしてください。
-                    <b>他の人の絵やキャラクターを、許可なく配らないでください。</b>
-                    <br />
-                    連絡をもらえば消します（
-                    <a href={CONTACT_URL} target="_blank" rel="noopener noreferrer">
-                      相談・連絡はこちら
-                    </a>
-                    ）。
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          {canShare ? (
-            <div className="btn-row">
-              <Button variant="ghost" onClick={shareFrameOnly} sound="tap" disabled={busy}>
-                <IconShare size={17} />
-                とうめいなフレームを送る
-              </Button>
-              <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
-                <IconDownload size={17} />
-                保存する
-              </Button>
-            </div>
-          ) : (
-            <Button variant="ghost" onClick={saveFrameOnly} sound="tap" disabled={busy}>
-              <IconDownload size={17} />
-              とうめいにしたフレームだけを保存する
-            </Button>
-          )}
-
-          {/*
-          色は落とす。この画面でいちばん目を引くのは「画像をほぞんする」で、
-          そこは1か所だけにする、というのがこの道具の決まり（styles.css の冒頭）。
-          注意書きを強調色にすると、押すところが2つあるように見える。
-          伝えたいことは太字の1行目が持っているので、地の色まで赤くしなくていい。
-        */}
-          <Note>
-            <span>
-              <b>とうめいは、送りかたで消えます。</b>
-              <br />
-              LINE や SNS に<b>「写真」として送ると</b>、とうめいのところが白や黒で埋まります。
-              そのまま渡したいときは、<b>「ファイル」として送る</b>
-              か、いちど保存してから渡してください。
-            </span>
-          </Note>
-
-          {/*
+        {/*
           次にやりたいことの、いちばん多い順に置く。
 
           「写真だけ変える」がここに無かった。できることではあって、
@@ -1835,7 +1587,6 @@ export function ComposeStudio({
           やり直しになる。できることに押すところが無く、見えているボタンが
           いちばん高くつく道だった。
         */}
-        </div>
 
         <div className="group">
           <p className="group__title">

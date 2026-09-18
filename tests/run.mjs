@@ -2973,6 +2973,9 @@ try {
     そこへ置かせる。見たいのは「置いて、取って、フレームが入った状態で開くか」で、
     向こう側が Cloudflare かどうかは関係が無い。
   */
+  let LINK_BASE_SHARED = '';
+  let linkServerShared = null;
+  let storeShared = null;
   console.log('\n■ リンクで配る');
   {
     const STORE_PORT = 4199;
@@ -3015,6 +3018,8 @@ try {
     );
     const linkServer = serve('dist-link', PORT + 5);
     const LINK_BASE = `http://localhost:${PORT + 5}/`;
+    LINK_BASE_SHARED = LINK_BASE;
+    linkServerShared = linkServer;
     await new Promise((r) => setTimeout(r, 900));
 
     // --- 配る人：リンクを作る ---
@@ -3143,8 +3148,7 @@ try {
     );
     await page.close();
 
-    linkServer.kill();
-    store.close();
+    storeShared = store;
   }
 
   /*
@@ -3157,6 +3161,71 @@ try {
     ここで見たいのは **`usable` の守り**。URL でないものを通してしまうと、
     止めたつもりで止まっていない、といういちばん困る形になる。
   */
+  /*
+    配りたいだけの人。
+
+    この人はアイコンを作らない。枠のフレームを1枚こしらえて、みんなに配る。
+    それなのに、写真をえらばないと背景けしの画面へ進めず、位置あわせまで
+    歩かないとリンクが作れなかった。**使わない写真を1枚えらばされていた。**
+
+    フレームは背景をけした時点で出来あがる。**出来た場所で渡せること**を見る。
+  */
+  console.log('\n■ 写真をえらばずに、フレームだけ配る');
+  {
+    const page = await browser.newPage({ viewport: PHONE });
+    await page.route('**huggingface.co/**', (r) => r.abort());
+    await page.goto(LINK_BASE_SHARED, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await page.waitForTimeout(400);
+
+    const skip = page.getByRole('button', { name: /写真はあとで。フレームだけ作って配る/ });
+    check('写真をえらばずに進む入口がある', (await skip.count()) === 1);
+    await skip.click();
+    await page.waitForTimeout(500);
+
+    check(
+      '写真なしでも、フレームをえらぶ画面に入れる',
+      (await page.getByRole('heading', { name: /フレームの画像をえらぶ/ }).count()) === 1,
+    );
+
+    await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+    await page.waitForTimeout(4000);
+
+    check(
+      '写真が無くても、背景けしはできる',
+      (await page.getByRole('heading', { name: /フレームの背景をけす/ }).count()) === 1,
+    );
+    check(
+      'その場で渡せる（そろえるスイッチがある）',
+      (await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).count()) === 1,
+    );
+
+    await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
+    await page.waitForTimeout(250);
+    await page.getByLabel('フレームの名前').fill('写真なしの枠');
+    await page.waitForTimeout(200);
+
+    const make = page.getByRole('button', { name: /^リンクを作る$/ });
+    check('その場でリンクも作れる', (await make.count()) === 1);
+    await make.click();
+    await waitFor(async () => (await page.getByLabel('配るリンク').count()) > 0, 20000);
+    const link = await page.getByLabel('配るリンク').inputValue();
+    check('リンクができる', /#\/f\/[A-Za-z0-9_-]{4,40}$/.test(link), link);
+    await page.close();
+
+    /* --- もらう人 --- */
+    const taker = await browser.newPage({ viewport: PHONE });
+    await taker.route('**huggingface.co/**', (r) => r.abort());
+    await taker.goto(LINK_BASE_SHARED + link.slice(link.indexOf('#')), { waitUntil: 'networkidle' });
+    await taker.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+    await taker.waitForTimeout(2000);
+    check(
+      '写真をえらばずに作ったフレームも、リンクで届く',
+      (await taker.getByText(/「写真なしの枠」が用意できました/).count()) === 1,
+    );
+    await taker.close();
+  }
+
   console.log('\n■ リンクを止める');
   {
     console.log('  （送り先を止めたビルドを作っています…）');
@@ -3203,6 +3272,8 @@ try {
     );
     await page.close();
     offServer.kill();
+    linkServerShared?.kill();
+    storeShared?.close();
   }
 
   console.log('\n■ もらったフレームを、覚えておく');

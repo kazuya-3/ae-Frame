@@ -25,7 +25,6 @@ import {
 import type { AiModel, AiQuality } from '../lib/ai';
 import {
   canvasToBlob,
-  downloadBlob,
   imageDataToCanvas,
   timestampName,
   trimTransparent,
@@ -33,10 +32,11 @@ import {
 import { play } from '../lib/sound';
 import { Button, Disclosure, Note, Progress, Segmented, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
+import { FrameHandoff } from './FrameHandoff';
+import { findHole } from '../lib/hole';
 import {
   IconBrush,
   IconCheck,
-  IconDownload,
   IconEraser,
   IconRefresh,
   IconUndo,
@@ -600,24 +600,6 @@ export function CutoutStudio({
     onDone(out);
   };
 
-  /*
-    「フレームだけほしい」人のための出口。
-
-    自分のアイコンに重ねたいわけではなく、透過PNGだけ取れれば十分、という人は
-    そこそこいる。ここに置いておかないと、その人たちは重ねる相手の写真を
-    選ばされてから、最後の画面までたどり着かないと保存できない。
-  */
-  const saveFrameOnly = async () => {
-    const out = buildResult();
-    if (!out) return;
-    try {
-      const blob = await canvasToBlob(imageDataToCanvas(out), 'image/png');
-      downloadBlob(blob, timestampName('frame_toka', 'png'));
-      play('done');
-    } catch {
-      play('error');
-    }
-  };
 
   const working = status.kind === 'working';
   const keyHex = rgbToHex(settings.keyColor);
@@ -763,10 +745,32 @@ export function CutoutStudio({
           {working ? 'しばらくお待ちください…' : 'これでOK！アイコンに重ねる'}
         </Button>
 
-        <Button variant="ghost" onClick={saveFrameOnly} disabled={working} sound="tap">
-          <IconDownload size={18} />
-          とうめいなフレームだけ保存する
-        </Button>
+        {/*
+          配りたいだけの人のための出口。
+
+          この人はアイコンを作らない。枠のフレームを1枚こしらえて、みんなに配る。
+          **フレームはここで出来あがっている**ので、ここで渡せるべき。
+          位置あわせの画面まで歩かせると、要らない写真を1枚選ばせることになる。
+        */}
+        <FrameHandoff
+          build={async () => {
+            const out = buildResult();
+            if (!out) return null;
+            return {
+              blob: await canvasToBlob(imageDataToCanvas(out), 'image/png'),
+              hole: findHole(out),
+            };
+          }}
+          /*
+            見え方はこの画面では選べない。**道具の既定**をそのまま焼きこむ。
+            既定はいちばん多くの人に合う値なので、選ばなかった人が損をしない。
+            細かく決めたい人は、位置あわせの画面から配れる。
+          */
+          lockDefaults={{ gap: 'white', round: true }}
+          saveLabel="とうめいなフレームだけ保存する"
+          disabled={working}
+          fileName={() => timestampName('frame_toka', 'png')}
+        />
 
         <Disclosure title="うまく消えないときは" icon={<IconWand size={19} />}>
           <p className="card__hint" style={{ marginTop: 10 }}>

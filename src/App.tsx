@@ -247,7 +247,8 @@ export default function App({ active = true }: { active?: boolean }) {
       */
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (readRecipe(bytes)) {
-        await applyGivenFrame(file, 3);
+        // 写真をまだ選んでいない人（配りたいだけで来た人）は、位置あわせに行っても何もできない
+        await applyGivenFrame(file, photo ? 3 : 1);
         return;
       }
 
@@ -270,7 +271,7 @@ export default function App({ active = true }: { active?: boolean }) {
       );
       play('error');
     }
-  }, []);
+  }, [applyGivenFrame, photo]);
 
   const handleCutoutDone = useCallback(async (result: ImageData) => {
     const bmp = await createImageBitmap(imageDataToCanvas(result));
@@ -374,7 +375,24 @@ export default function App({ active = true }: { active?: boolean }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const canGo = (s: Step) => (s === 1 ? true : s === 2 ? !!photo : !!photo && !!frameResult);
+  /*
+    どの工程へ行けるか。
+
+    ── 2つめに写真が要らなくなった経緯 ──
+
+    前は「写真をえらばないと背景けしに行けない」作りだった。重ねる相手が
+    要るのだから当然、と思っていた。
+
+    けれど**配りたいだけの人**はアイコンを作らない。枠のフレームを1枚
+    こしらえて、みんなに配る。その人にとって写真をえらぶのは要らない作業で、
+    しかも選ばないと先へ進めないので、**使わない写真を1枚えらばされていた。**
+
+    フレームは背景をけした時点で出来あがる。出来た場所で渡せるように、
+    2つめは写真なしでも入れるようにした。3つめ（重ねる）は、
+    重ねる相手が要るので写真が要る。
+  */
+  const canGo = (s: Step) =>
+    s === 1 ? true : s === 2 ? true : !!photo && !!frameResult;
 
   return (
     <div className="app">
@@ -461,6 +479,30 @@ export default function App({ active = true }: { active?: boolean }) {
                 あとは<b>写真をえらぶだけ</b>です。背景をけす手間はありません。
               </span>
             </Note>
+          )}
+
+          {/*
+            配りたいだけの人のための入口。
+
+            この人はアイコンを作らない。枠のフレームを1枚こしらえて、みんなに配る。
+            それなのに、写真をえらばないと背景けしの画面へ進めなかったので、
+            **使わない写真を1枚えらばされていた。**
+
+            押しどころにはしない。ほとんどの人は写真をえらびに来ているので、
+            強調色は上の「写真をえらぶ」に残す。
+          */}
+          {!photo && !frameResult && (
+            <>
+              <div className="spacer" />
+              <Button variant="ghost" onClick={() => goto(2)} sound="tap">
+                <IconFrame size={17} />
+                写真はあとで。フレームだけ作って配る
+              </Button>
+              <p className="field__note">
+                自分のアイコンは作らず、<b>フレームを配りたいだけ</b>のときはこちら。
+                背景をけしたら、その場で渡せます。
+              </p>
+            </>
           )}
 
           {photo && photoUrl ? (
