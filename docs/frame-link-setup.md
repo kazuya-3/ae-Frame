@@ -53,39 +53,75 @@ GitHub の設定を1か所いじるだけで出る。ここは、その手順。
 > 無料枠の条件は向こうの都合で変わる。**始める前に、いまの条件を見ておく。**
 > [Workers の料金](https://developers.cloudflare.com/workers/platform/pricing/)
 
-### 手順（あなたがやること）
+### 道は2つ。**どちらか片方**でいい
 
-**この3つだけ。** あとは実装した側でやる。
+| 道                       | 要るもの                         | 向いている人           |
+| ------------------------ | -------------------------------- | ---------------------- |
+| **A. ブラウザだけ**      | Cloudflare のアカウントだけ      | **こちらが本命**       |
+| B. ターミナル            | 手もとにこのプロジェクト＋Node   | 開発環境が揃っている人 |
 
-1. Cloudflare のアカウントを作る（無料）
+ターミナルの `npx wrangler` は、**手もとにこのプロジェクトを落としてあって、
+Node が入っている**ことが前提。そうでなければ A のほうが早い。
 
-   ここは代われない。**あなたの名前で規約に同意する**手続きなので。
+---
 
-2. 手もとで、いちどログインする
+### A. ブラウザだけでやる
 
-   ```
-   npx wrangler login
-   ```
+配るコードは `worker/frame-store.js`。GitHub で開いて、中身をコピーしておく。
 
-   ブラウザが開く。ここも代われない（あなたの資格情報なので）。
+#### A-1. 入れ物（KV）を作る
 
-3. 入れ物を作って、出す
+1. Cloudflare のダッシュボード左の **Storage & Databases → KV**
+2. **Create a namespace**（新規作成）
+3. 名前は `aeframe-frames`（何でもよい）→ 作る
 
-   ```
-   npx wrangler kv namespace create FRAMES
-   ```
+#### A-2. Worker を作る
 
-   出てきた `id = "..."` を、`worker/wrangler.toml` の `PASTE_KV_ID` と
-   置きかえる（直すのはその1行だけ。ファイルはもう置いてある）。
+1. 左の **Workers & Pages**（新しい画面では **Compute**）→ **Create**
+2. **Worker**（Hello World から始めるほう）を選ぶ
+3. 名前を `ae-frame-store` にして **Deploy**
+4. 出来たら **Edit code**（コードを編集）を開く
+5. **中身を全部消して**、`worker/frame-store.js` の中身を貼る → **Deploy**
 
-   ```
-   npm run store:deploy
-   ```
+#### A-3. 入れ物を、Worker につなぐ
 
-   `https://ae-frame-store.<あなた>.workers.dev` のような住所が出る。
+1. その Worker の **Settings → Bindings**（設定 → バインディング）
+2. **Add → KV namespace**
+   - Variable name: **`FRAMES`**（**この綴りでないと動かない**）
+   - KV namespace: A-1 で作ったもの
+3. 同じ Settings の **Variables**（変数）に1つ足す
+   - Name: `ALLOW_ORIGIN`
+   - Value: `https://kazuya-3.github.io`
+4. **Deploy**（保存して出す）
 
-**4. その住所を伝える。** 残りはこちらでやる（`src/lib/frameApi.ts` の
-`BUILT_IN` に入れて、公開まで）。
+#### A-4. 住所を控える
+
+Worker の画面に `https://ae-frame-store.〇〇.workers.dev` のような住所が出る。
+**それを伝える。** 残りはこちらでやる。
+
+> 画面の言葉づかいは Cloudflare の都合で変わる。
+> 見当たらないものがあったら、**その画面のスクリーンショットを送ってほしい。**
+> こちらからは Cloudflare に接続できないので、画面を見て案内する。
+
+---
+
+### B. ターミナルでやる
+
+手もとにこのプロジェクトがあって、Node が入っているなら。
+
+```
+npx wrangler login                      # ブラウザが開く
+npx wrangler kv namespace create FRAMES # 出てきた id を控える
+```
+
+`worker/wrangler.toml` の `PASTE_KV_ID` を、控えた id と置きかえる。
+（直すのはその1行だけ。ファイルはもう置いてある）
+
+```
+npm run store:deploy
+```
+
+出てきた住所を伝える。
 
 ---
 
