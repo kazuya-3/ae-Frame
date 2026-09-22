@@ -19,7 +19,7 @@ import {
 } from './lib/sound';
 import { autoCropToSubject } from './lib/cutout';
 import { findHole, type Hole } from './lib/hole';
-import { readRecipe, type RecipeLock } from './lib/recipe';
+import { readRecipe, type Placement, type RecipeLock } from './lib/recipe';
 import { CutoutStudio } from './components/CutoutStudio';
 import { ComposeStudio } from './components/ComposeStudio';
 import { Button, DropZone, Note, Sheet, Toggle } from './components/ui';
@@ -73,6 +73,8 @@ export default function App({ active = true }: { active?: boolean }) {
   const [lock, setLock] = useState<RecipeLock | null>(null);
   /** 配った人がつけた名前。無いことのほうが多い */
   const [frameName, setFrameName] = useState('');
+  /** 配った人が決めたフレームの置き場所。無ければ contain のまま */
+  const [framePlacement, setFramePlacement] = useState<Placement | null>(null);
   /*
     もらったフレームの**元のバイト列**。
 
@@ -101,6 +103,8 @@ export default function App({ active = true }: { active?: boolean }) {
   const [frameKept, setFrameKept] = useState(false);
   /** リンクで配られたフレームを、いま取りにいっている最中か */
   const [fetching, setFetching] = useState(() => SHARE_ON && !!readFrameId());
+  /** リンクを押して来たか。もらった人の画面を、どこまで削ぐかの目印 */
+  const [fromLink, setFromLink] = useState(false);
 
   const photoUrlRef = useRef<string | null>(null);
 
@@ -179,6 +183,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameBytes(recipe ? blob : null);
     setHole(recipe?.hole ?? findHole(bitmapToImageData(bmp)));
     setLock(recipe?.lock ?? null);
+    setFramePlacement(recipe?.frame ?? null);
     setFrameName(recipe?.name ?? '');
     setFrameKept(false);
     setFrameSource(null);
@@ -219,6 +224,7 @@ export default function App({ active = true }: { active?: boolean }) {
           play('error');
           return;
         }
+        setFromLink(true);
         await applyGivenFrame(blob, 1);
       } catch (e) {
         if (!alive) return;
@@ -279,6 +285,7 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameBytes(null);
     setHole(findHole(result));
     setLock(null);
+    setFramePlacement(null);
     setFrameName('');
     // 切りぬいたばかりのものは、まだ覚えていない
     setFrameKept(false);
@@ -304,6 +311,7 @@ export default function App({ active = true }: { active?: boolean }) {
       setHole(keptRecipe?.hole ?? findHole(bitmapToImageData(bmp)));
       // 置きかたごと覚えてあったなら、それも一緒に戻す
       setLock(keptRecipe?.lock ?? null);
+      setFramePlacement(keptRecipe?.frame ?? null);
       setFrameName(keptRecipe?.name ?? '');
       setFrameKept(true);
       /*
@@ -364,6 +372,8 @@ export default function App({ active = true }: { active?: boolean }) {
     setFrameBytes(null);
     setHole(null);
     setLock(null);
+    setFromLink(false);
+    setFramePlacement(null);
     setFrameName('');
     setFrameKept(false);
     setError(null);
@@ -642,6 +652,8 @@ export default function App({ active = true }: { active?: boolean }) {
             frame={frameResult}
             hole={hole}
             lock={lock}
+            framePlacement={framePlacement}
+            fromLink={fromLink}
             frameName={frameName}
             active={step === 3}
             onBack={() => goto(2)}

@@ -16,8 +16,8 @@ import {
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
-import type { RecipeLock } from '../lib/recipe';
-import { CONTACT_URL, SHARE_ON } from '../lib/frameApi';
+import type { Placement, RecipeLock } from '../lib/recipe';
+import { CONTACT_URL, SHARE_ON, TOOL_URL } from '../lib/frameApi';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
 import { FrameHandoff } from './FrameHandoff';
@@ -30,6 +30,7 @@ import {
   IconPhoto,
   IconPlus,
   IconRefresh,
+  IconWand,
   IconRotate,
   IconChevron,
   IconShare,
@@ -207,6 +208,8 @@ export function ComposeStudio({
   frame,
   hole,
   lock,
+  framePlacement = null,
+  fromLink = false,
   frameName: givenName = '',
   active,
   onBack,
@@ -224,6 +227,27 @@ export function ComposeStudio({
    * 入っているあいだ、そこは**画面から消す**（押せないものを見せない）。
    */
   lock: RecipeLock | null;
+  /**
+   * 配った人が決めたフレームの置き場所。
+   *
+   * ここを受け取っていなかったせいで、**配った人が決めた大きさと位置を
+   * 毎回 contain に戻していた**。横長のフレームだと、受け取った人の画面では
+   * 細い帯になって出る。そろえると言いながら、いちばん目立つところを捨てていた。
+   */
+  framePlacement?: Placement | null;
+  /**
+   * リンクを押して来たか。
+   *
+   * ── なぜ lock と分けるのか ──
+   *
+   * 「覚えておく」を消すかどうかは、`lock` では決められない。
+   * ファイルでもらった人にとって、覚えておくのは意味がある（次に使いたい
+   * ときに、Discord からファイルを探し直さずに済む）。
+   *
+   * リンクで来た人には要らない。**リンク自体が覚えている**から、
+   * もう一度押せば同じフレームが出る。覚える場所を2つ持つ意味が無い。
+   */
+  fromLink?: boolean;
   /** 配った人がつけた名前。無ければ空 */
   frameName?: string;
   /** この画面が表示されているか。隠れている間は幅が0なので描き直さない。 */
@@ -294,13 +318,20 @@ export function ComposeStudio({
     if (!lock) return;
     if (lock.gap !== null) setGap(lock.gap);
     if (lock.round !== null) setRound(lock.round);
-    if (!lock.rotate) {
-      setPhotoT((t0) => ({ ...t0, rotation: 0 }));
-      setFrameT(IDENTITY);
-    }
+    if (!lock.rotate) setPhotoT((t0) => ({ ...t0, rotation: 0 }));
+    /*
+      フレームの置き場所は、**配った人が決めたものをそのまま使う**。
+
+      前はここで IDENTITY に戻していた。つまり配った人が決めた大きさと位置を
+      毎回捨てていた。横長のフレームだと、受け取った人の画面では細い帯になる。
+
+      置き場所が入っていない古いフレーム（この仕組みより前に配ったもの）は
+      いままでどおり contain のまま。行き止まりにしない。
+    */
+    setFrameT(framePlacement ? { ...framePlacement } : IDENTITY);
     setTarget('photo');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame, lock]);
+  }, [frame, lock, framePlacement]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** シーンごとの小さなキャンバス。本体と同じ rAF の中でまとめて描く */
@@ -1366,6 +1397,19 @@ export function ComposeStudio({
           />
         )}
 
+        {/*
+          写真のかたちと、どこを切りぬくか。
+
+          ── もらった人には出さない ──
+
+          この2つは**フレームの見え方**の一部で、配った人が決めるべきもの。
+          しかも「かたち」と「どこを切りぬくか」と「指でうごかす」は、
+          どれも似たことをするので、並んでいると何を触ればいいか分からない。
+
+          もらった人がやりたいのは「自分の顔をちょうどよく入れる」ことだけ。
+          それは**指でうごかす＋大きさ**の2つで足りる。
+        */}
+        {!lock && (
         <div className="field">
           <div className="field__row">
             <span className="field__label">写真のかたち</span>
@@ -1436,6 +1480,7 @@ export function ComposeStudio({
             />
           )}
         </div>
+        )}
 
         {(!lock || lock.gap === null) && (
         <div className="field">
@@ -1565,14 +1610,24 @@ export function ComposeStudio({
           注意書きを読ませるためではなく、「写真として送らない」という
           具体的な逃げ道を1つ持って帰ってもらうために置いている。
         */}
+        {/*
+          渡す道具。**もらった人には出さない。**
+
+          リンクを押して来た人は、配る側ではない。その人がやりたいのは
+          自分のアイコンを作ることだけで、ここにあるのは全部よそごと。
+          「そろえる」も「リンクを作る」も、押しても意味が分からない。
+        */}
+        {!lock && (
         <FrameHandoff
           build={async () => ({ blob: await buildFrameBlob(), hole })}
           lockDefaults={{ gap, round }}
+          framePlacement={{ ...frameT }}
           saveLabel="とうめいにしたフレームだけを保存する"
           canShare={canShare}
           disabled={busy}
           fileName={frameFileName}
         />
+        )}
 
         {/*
           次にやりたいことの、いちばん多い順に置く。
@@ -1588,6 +1643,41 @@ export function ComposeStudio({
           いちばん高くつく道だった。
         */}
 
+        {/*
+          つぎにどうする。
+
+          ── もらった人には、道を2つに絞る ──
+
+          「覚えておく」「背景けしにもどる」「さいしょから（フレームも選び直す）」は、
+          どれも**自分でフレームを作る人の道**。リンクで来た人にとっては、
+          押すと戻れなくなるだけの道になる（フレームはリンクの向こうにあって、
+          選び直しようがない）。
+
+          残すのは「写真だけ変える」と、自分でも作ってみたい人のための入口。
+        */}
+        {fromLink ? (
+          <div className="group">
+            <p className="group__title">
+              <IconRefresh size={15} />
+              つぎにどうする
+            </p>
+            <Button variant="ghost" onClick={onChangePhoto} sound="tap">
+              <IconPhoto size={17} />
+              写真だけ変える
+            </Button>
+            <p className="group__note">
+              同じフレームのまま、べつの写真で作りなおせます。
+            </p>
+            <div className="spacer" />
+            <a className="btn btn--ghost" href={TOOL_URL} target="_blank" rel="noopener noreferrer">
+              <IconWand size={17} />
+              自分でもフレームを作ってみる
+            </a>
+            <p className="group__note">
+              手もちの画像から、配れるフレームを作れます（このツールの入口が開きます）。
+            </p>
+          </div>
+        ) : (
         <div className="group">
           <p className="group__title">
             <IconRefresh size={15} />
@@ -1629,6 +1719,7 @@ export function ComposeStudio({
             さいしょから（フレームも選び直す）
           </Button>
         </div>
+        )}
       </div>
 
       {/*

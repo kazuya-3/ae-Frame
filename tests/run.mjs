@@ -3039,6 +3039,24 @@ try {
     const makeBtn = () => page.getByRole('button', { name: /^リンクを作る$/ });
     check('そろえる前は、リンクを作る口を出さない', (await makeBtn().count()) === 0);
 
+    /*
+      フレームの大きさを、配る前に変えておく。
+
+      ここが捨てられていた。受け取る側で毎回 contain に戻していたので、
+      **配った人が決めた大きさと位置が消えていた**。横長のフレームだと、
+      受け取った人の画面では細い帯になって出る。
+    */
+    await page.getByRole('button', { name: /フレームをうごかす/ }).click();
+    await page.waitForTimeout(200);
+    await page.getByRole('button', { name: /^大きくする$/ }).click();
+    await page.getByRole('button', { name: /^大きくする$/ }).click();
+    await page.waitForTimeout(400);
+    const frameSize = await page.evaluate(() => {
+      const el = document.querySelector('input[type=range]');
+      return el ? el.value : null;
+    });
+    check('配る前に、フレームの大きさを変えられる', frameSize !== '100', `${frameSize}%`);
+
     await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
     await page.waitForTimeout(250);
     await page.getByLabel('フレームの名前').fill('よるの枠');
@@ -3104,6 +3122,41 @@ try {
     check(
       '配った人が決めた見た目が効いている',
       (await page.getByText(/見え方は配った人が決めています/).count()) === 1,
+    );
+
+    /*
+      リンクで来た人の画面から、よそごとを消す。
+
+      この人は配る側ではない。やりたいのは自分のアイコンを作ることだけで、
+      渡す道具も、フレームを選び直す道も、押すと迷うだけのものになる
+      （フレームはリンクの向こうにあって、選び直しようがない）。
+    */
+    check(
+      '渡す道具は出さない',
+      (await page.getByText('フレームを人にわたす').count()) === 0 &&
+        (await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).count()) === 0,
+    );
+    check(
+      'フレームを選び直す道は出さない（リンクの向こうにあるので選べない）',
+      (await page.getByRole('button', { name: /さいしょから/ }).count()) === 0 &&
+        (await page.getByRole('button', { name: /背景けしにもどる/ }).count()) === 0,
+    );
+    check(
+      '覚えておくも出さない（リンク自体が覚えている）',
+      (await page.getByRole('button', { name: /この端末に覚えておく/ }).count()) === 0,
+    );
+    check(
+      '写真のかたち・どこを切りぬくかは出さない（フレームの見え方の一部）',
+      (await page.getByText('写真のかたち').count()) === 0 &&
+        (await page.getByText('どこを切りぬくか').count()) === 0,
+    );
+    check(
+      '写真だけ変える道は残す',
+      (await page.getByRole('button', { name: /写真だけ変える/ }).count()) === 1,
+    );
+    check(
+      '自分でも作ってみたい人のための入口がある',
+      (await page.getByRole('link', { name: /自分でもフレームを作ってみる/ }).count()) === 1,
     );
     check(
       'もらった人の画面に、知らせる口がある',

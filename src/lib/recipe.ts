@@ -45,6 +45,31 @@ export type RecipeLock = {
   round: boolean | null;
 };
 
+/**
+ * フレームの置き場所。
+ *
+ * ── なぜ要るのか ──
+ *
+ * はじめ、これを配っていなかった。受け取る側で毎回 contain（全体が入る）に
+ * 戻していたので、**配った人が決めた大きさと位置が捨てられていた。**
+ * 横長のフレームだと、受け取った人の画面では細い帯になって出る。
+ *
+ * 配る人は「この大きさで使ってほしい」と思って作る。そこを捨てるなら、
+ * そもそも「そろえる」と言えない。
+ *
+ * ── なぜ比で持つのか ──
+ *
+ * x と y は**書き出しの一辺に対する比**。画素で持つと、書き出しの大きさを
+ * 変えた日に、配ってあるフレームが全部ずれる。
+ */
+export type Placement = {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  flipped: boolean;
+};
+
 export type Recipe = {
   /** 形の版。読めない版は無視する（行き止まりにしない） */
   v: 1;
@@ -52,6 +77,8 @@ export type Recipe = {
   name?: string;
   /** 穴の位置。無ければ受け取った側で探す */
   hole?: Hole;
+  /** フレームの置き場所。無ければ contain（全体が入る）のまま */
+  frame?: Placement;
   lock?: RecipeLock;
 };
 

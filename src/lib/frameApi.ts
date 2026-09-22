@@ -100,6 +100,15 @@ function usable(url: string): boolean {
  */
 export const CONTACT_URL = 'https://kazuworks.net/contact';
 
+/**
+ * この道具そのものの入口。
+ *
+ * リンクで来た人は、フレームを1枚もらっただけで、この道具を知らない。
+ * 「自分でも作ってみたい」と思った人のために、行き先を1つ置いておく。
+ * ハッシュを付けない`#/`なしの住所にして、もらったフレームの画面から離れる。
+ */
+export const TOOL_URL = 'https://kazuya-3.github.io/ae-Frame/';
+
 /** 送り先。末尾のスラッシュは落としておく（つなぐときに二重にならないように） */
 export const FRAME_API = usable(RAW) ? RAW.replace(/\/+$/, '') : '';
 export const SHARE_ON = FRAME_API !== '';

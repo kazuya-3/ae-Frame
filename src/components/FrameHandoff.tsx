@@ -26,7 +26,7 @@ import { play } from '../lib/sound';
 import { Button, Note, Toggle } from './ui';
 import { IconDownload, IconShare } from './Icons';
 import type { Hole } from '../lib/hole';
-import { embedRecipe, type Recipe, type RecipeLock } from '../lib/recipe';
+import { embedRecipe, type Placement, type Recipe, type RecipeLock } from '../lib/recipe';
 import { CONTACT_URL, SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
 
 export type Handoff = { blob: Blob; hole: Hole | null };
@@ -34,6 +34,7 @@ export type Handoff = { blob: Blob; hole: Hole | null };
 export function FrameHandoff({
   build,
   lockDefaults,
+  framePlacement,
   saveLabel,
   canShare = false,
   disabled = false,
@@ -43,6 +44,11 @@ export function FrameHandoff({
   build: () => Promise<Handoff | null>;
   /** 焼きこむ見え方。この画面で選べないものは、道具の既定を渡す */
   lockDefaults: { gap: RecipeLock['gap']; round: RecipeLock['round'] };
+  /**
+   * フレームの置き場所。渡さなければ contain のまま。
+   * 背景けしの画面にはフレームを動かす手段が無いので、そこからは渡らない。
+   */
+  framePlacement?: Placement;
   /** 保存ボタンの文言。画面ごとに言いかたが違うので、呼ぶ側が決める */
   saveLabel: string;
   canShare?: boolean;
@@ -74,6 +80,7 @@ export function FrameHandoff({
       v: 1,
       ...(name ? { name } : {}),
       ...(got.hole ? { hole: got.hole } : {}),
+      ...(framePlacement ? { frame: framePlacement } : {}),
       lock,
     };
     const out = embedRecipe(new Uint8Array(await got.blob.arrayBuffer()), recipe);
