@@ -16,7 +16,7 @@ import {
 import { play } from '../lib/sound';
 import { PEER_LOOKS, drawPeerIcon } from '../lib/peerIcon';
 import type { Hole } from '../lib/hole';
-import type { Placement, RecipeLock } from '../lib/recipe';
+import { EXPORT_SIZE, type Placement, type RecipeLock } from '../lib/recipe';
 import { CONTACT_URL, SHARE_ON, TOOL_URL } from '../lib/frameApi';
 import { Button, Note, Segmented, Sheet, Slider, Toggle } from './ui';
 import { Sprite } from './Sprite';
@@ -38,9 +38,6 @@ import {
   IconWarn,
   IconX,
 } from './Icons';
-
-/** 書き出しサイズ。SNSのアイコンとしては十分で、スマホでも重くならない。 */
-const EXPORT_SIZE = 1080;
 
 /*
   アイコンが実際に出るところの大きさ。

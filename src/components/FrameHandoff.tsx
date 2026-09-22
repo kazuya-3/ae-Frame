@@ -21,12 +21,18 @@
  * 既定はいちばん多くの人に合う値なので、選ばなかった人が損をしない。
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { play } from '../lib/sound';
-import { Button, Note, Toggle } from './ui';
+import { Button, Note, Slider, Toggle } from './ui';
 import { IconDownload, IconShare } from './Icons';
 import type { Hole } from '../lib/hole';
-import { embedRecipe, type Placement, type Recipe, type RecipeLock } from '../lib/recipe';
+import { get2d } from '../lib/image';
+import {
+  embedRecipe,
+  type Placement,
+  type Recipe,
+  type RecipeLock,
+} from '../lib/recipe';
 import { CONTACT_URL, SHARE_ON, frameLink, putFrame } from '../lib/frameApi';
 
 export type Handoff = { blob: Blob; hole: Hole | null };
@@ -35,6 +41,7 @@ export function FrameHandoff({
   build,
   lockDefaults,
   framePlacement,
+  adjustable,
   saveLabel,
   canShare = false,
   disabled = false,
@@ -45,10 +52,22 @@ export function FrameHandoff({
   /** 焼きこむ見え方。この画面で選べないものは、道具の既定を渡す */
   lockDefaults: { gap: RecipeLock['gap']; round: RecipeLock['round'] };
   /**
-   * フレームの置き場所。渡さなければ contain のまま。
-   * 背景けしの画面にはフレームを動かす手段が無いので、そこからは渡らない。
+   * フレームの置き場所。位置あわせの画面は、そこで決めた形をそのまま渡す。
    */
   framePlacement?: Placement;
+  /**
+   * 置き場所をここで決めさせるか（位置あわせの画面を持たない画面向け）。
+   *
+   * ── なぜ要るのか ──
+   *
+   * 背景けしの画面から配る人には、**フレームの大きさを決める手段が無かった。**
+   * 配るだけの人ほどこの画面から配るのに、いちばん決めたい「どのくらいの
+   * 大きさで出るか」だけ決められない、という穴になっていた。
+   *
+   * 重ねる写真はまだ無いので、**四角の中でフレームがどう座るか**だけを見せる。
+   * それで「大きすぎる／小さすぎる」は判断できる。
+   */
+  adjustable?: { source: () => ImageData | null };
   /** 保存ボタンの文言。画面ごとに言いかたが違うので、呼ぶ側が決める */
   saveLabel: string;
   canShare?: boolean;
@@ -61,6 +80,93 @@ export function FrameHandoff({
   const [linking, setLinking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** この画面で決めた置き場所。位置あわせの画面から来たときは使わない */
+  const [scale, setScale] = useState(1);
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const sourceRef = useRef<ImageBitmap | null>(null);
+
+  /*
+    プレビューの元になる絵を取りこむ。
+
+    「そろえる」を入れたときに1回だけ取る。つまみを動かすたびに
+    切り抜きをやり直すと、動かすたびに固まる。
+
+    そのあと背景けしの数字を触ると、このプレビューだけ古くなる。
+    **配るときは build() で取り直す**ので、出ていくものは必ず最新。
+  */
+  useEffect(() => {
+    if (!lockOnShare || !adjustable) return;
+    let alive = true;
+    const data = adjustable.source();
+    if (!data) return;
+    void createImageBitmap(data).then((bmp) => {
+      if (alive) {
+        sourceRef.current = bmp;
+        draw();
+      } else bmp.close?.();
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockOnShare, adjustable]);
+
+  /** 四角の中で、フレームがどう座るかを描く */
+  const draw = () => {
+    const canvas = previewRef.current;
+    const bmp = sourceRef.current;
+    if (!canvas || !bmp) return;
+    const size = canvas.width;
+    const ctx = get2d(canvas);
+    ctx.clearRect(0, 0, size, size);
+
+    // 下じき。とうめいのところが分かるように市松を敷く
+    const cell = size / 12;
+    for (let y = 0; y < 12; y++) {
+      for (let x = 0; x < 12; x++) {
+        ctx.fillStyle = (x + y) % 2 ? '#ffffff' : '#ececec';
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+    // すきまの色（受け取った人の画面と同じ条件で見せる）
+    const fill = lockDefaults.gap === 'white' ? '#ffffff' : lockDefaults.gap === 'black' ? '#111114' : null;
+    if (fill) {
+      ctx.save();
+      ctx.fillStyle = fill;
+      if (lockDefaults.round) {
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else ctx.fillRect(0, 0, size, size);
+      ctx.restore();
+    }
+
+    const base = Math.min(size / bmp.width, size / bmp.height);
+    const w = bmp.width * base * scale;
+    const h = bmp.height * base * scale;
+    ctx.drawImage(bmp, (size - w) / 2, (size - h) / 2, w, h);
+
+    if (lockDefaults.round) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.rect(0, 0, size, size);
+      ctx.moveTo(size, size / 2);
+      ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+      ctx.fill('evenodd');
+      ctx.restore();
+    }
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(draw, [scale, lockOnShare, lockDefaults.gap, lockDefaults.round]);
+
+  /** 焼きこむ置き場所。位置あわせの画面から来たものが優先 */
+  const placement: Placement | undefined = framePlacement
+    ? framePlacement
+    : adjustable
+      ? { x: 0, y: 0, scale, rotation: 0, flipped: false }
+      : undefined;
 
   /*
     渡すフレームを作る。
@@ -80,7 +186,7 @@ export function FrameHandoff({
       v: 1,
       ...(name ? { name } : {}),
       ...(got.hole ? { hole: got.hole } : {}),
-      ...(framePlacement ? { frame: framePlacement } : {}),
+      ...(placement ? { frame: placement } : {}),
       lock,
     };
     const out = embedRecipe(new Uint8Array(await got.blob.arrayBuffer()), recipe);
@@ -194,6 +300,40 @@ export function FrameHandoff({
           <>受け取った人が、位置も大きさも自由に決められます。</>
         )}
       </p>
+
+      {/*
+        フレームの大きさ。
+
+        ここを付けるまで、背景けしの画面から配る人は「どのくらいの大きさで
+        出るか」を決められなかった。配るだけの人ほどこの画面から配るのに、
+        いちばん決めたいところだけ決められない、という穴だった。
+
+        重ねる写真はまだ無いので、**四角の中でフレームがどう座るか**を見せる。
+        それで「大きすぎる／小さすぎる」は判断できる。
+      */}
+      {lockOnShare && adjustable && (
+        <div className="field">
+          <div className="field__row">
+            <span className="field__label">フレームの大きさ</span>
+          </div>
+          <div className="handoff-preview">
+            <canvas ref={previewRef} width={360} height={360} />
+          </div>
+          <Slider
+            label="大きさ"
+            value={Math.round(scale * 100)}
+            defaultValue={100}
+            min={40}
+            max={200}
+            onChange={(v) => setScale(v / 100)}
+            format={(v) => `${v}%`}
+          />
+          <p className="field__note">
+            受け取った人の画面で、フレームがこの大きさで出ます。
+            暗いところは、まるく切りぬかれて消える部分です。
+          </p>
+        </div>
+      )}
 
       {lockOnShare && (
         <div className="field">

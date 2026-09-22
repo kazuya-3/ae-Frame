@@ -2141,3 +2141,24 @@ input[type='range']:active::-webkit-slider-thumb {
   white-space: nowrap;
   border: 0;
 }
+
+/*
+  渡す前に、フレームの大きさを見るための小さな台。
+
+  本物のプレビュー（.stage）ほど大きくしない。ここで決めるのは
+  「大きすぎる／小さすぎる」だけで、細かい位置合わせは相手の仕事なので。
+*/
+.handoff-preview {
+  display: flex;
+  justify-content: center;
+  margin: 6px 0 10px;
+}
+
+.handoff-preview canvas {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 1;
+  height: auto;
+  border-radius: 14px;
+  border: var(--lw) solid var(--ink-faint);
+}

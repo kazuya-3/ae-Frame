@@ -767,6 +767,7 @@ export function CutoutStudio({
             細かく決めたい人は、位置あわせの画面から配れる。
           */
           lockDefaults={{ gap: 'white', round: true }}
+          adjustable={{ source: () => buildResult() }}
           saveLabel="とうめいなフレームだけ保存する"
           disabled={working}
           fileName={() => timestampName('frame_toka', 'png')}

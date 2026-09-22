@@ -3225,58 +3225,138 @@ try {
   */
   console.log('\n■ 写真をえらばずに、フレームだけ配る');
   {
-    const page = await browser.newPage({ viewport: PHONE });
-    await page.route('**huggingface.co/**', (r) => r.abort());
-    await page.goto(LINK_BASE_SHARED, { waitUntil: 'networkidle' });
-    await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
-    await page.waitForTimeout(400);
+    /*
+      配る人の道のりを、大きさだけ変えて2回とおす。
+      1回目だけ中身を確かめ、2回目は黙って通す。最後に
+      「もらった人の絵が、ほんとうに違って見えるか」を見る。
+    */
+    const distribute = async (size, first) => {
+      const page = await browser.newPage({ viewport: PHONE });
+      await page.route('**huggingface.co/**', (r) => r.abort());
+      await page.goto(LINK_BASE_SHARED, { waitUntil: 'networkidle' });
+      await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+      await page.waitForTimeout(400);
 
-    const skip = page.getByRole('button', { name: /写真はあとで。フレームだけ作って配る/ });
-    check('写真をえらばずに進む入口がある', (await skip.count()) === 1);
-    await skip.click();
-    await page.waitForTimeout(500);
+      const skip = page.getByRole('button', { name: /写真はあとで。フレームだけ作って配る/ });
+      if (first) check('写真をえらばずに進む入口がある', (await skip.count()) === 1);
+      await skip.click();
+      await page.waitForTimeout(500);
 
+      if (first)
+        check(
+          '写真なしでも、フレームをえらぶ画面に入れる',
+          (await page.getByRole('heading', { name: /フレームの画像をえらぶ/ }).count()) === 1,
+        );
+
+      await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
+      await page.waitForTimeout(4000);
+
+      if (first) {
+        check(
+          '写真が無くても、背景けしはできる',
+          (await page.getByRole('heading', { name: /フレームの背景をけす/ }).count()) === 1,
+        );
+        check(
+          'その場で渡せる（そろえるスイッチがある）',
+          (await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).count()) === 1,
+        );
+      }
+
+      await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
+      await page.waitForTimeout(600);
+
+      /*
+        配る前に、フレームの大きさを決める。
+
+        ここが無いと、背景けしの画面から配る人は「どのくらいの大きさで出るか」を
+        決められない。配るだけの人ほどこの画面から配るのに、いちばん決めたい
+        ところだけ決められない、という穴だった。
+      */
+      if (first)
+        check(
+          '配る前に、フレームの大きさを決められる',
+          (await page.getByText('フレームの大きさ').count()) === 1,
+        );
+
+      const shot0 = first ? await page.locator('.handoff-preview canvas').screenshot() : null;
+      await page.getByRole('slider').last().fill(String(size));
+      await page.waitForTimeout(400);
+      if (first) {
+        const shot1 = await page.locator('.handoff-preview canvas').screenshot();
+        check('大きさを変えると、手元の見本も変わる', Buffer.compare(shot0, shot1) !== 0);
+      }
+
+      await page.getByLabel('フレームの名前').fill('写真なしの枠');
+      await page.waitForTimeout(200);
+
+      const make = page.getByRole('button', { name: /^リンクを作る$/ });
+      if (first) check('その場でリンクも作れる', (await make.count()) === 1);
+      await make.click();
+      await waitFor(async () => (await page.getByLabel('配るリンク').count()) > 0, 20000);
+      const link = await page.getByLabel('配るリンク').inputValue();
+      if (first) check('リンクができる', /#\/f\/[A-Za-z0-9_-]{4,40}$/.test(link), link);
+      await page.close();
+      return link;
+    };
+
+    /*
+      もらった人の絵を、位置も大きさも込みで取り出す。
+      canvas の画素そのものを 8×8 で拾うので、画面の高さが変わっても
+      比べられる（写真で撮ると、行数の違いだけで差が出てしまう）。
+    */
+    const received = async (link, first) => {
+      const taker = await browser.newPage({ viewport: PHONE });
+      await taker.route('**huggingface.co/**', (r) => r.abort());
+      await taker.goto(LINK_BASE_SHARED + link.slice(link.indexOf('#')), {
+        waitUntil: 'networkidle',
+      });
+      await taker.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
+      await taker.waitForTimeout(2000);
+      if (first)
+        check(
+          '写真をえらばずに作ったフレームも、リンクで届く',
+          (await taker.getByText(/「写真なしの枠」が用意できました/).count()) === 1,
+        );
+
+      await taker.setInputFiles('input[type=file]', join(FIXTURES, 'photo-mark.png'));
+      await taker.waitForTimeout(900);
+      await taker.getByRole('button', { name: /つぎへ：位置をあわせる/ }).click();
+      await taker.waitForTimeout(1500);
+      const sig = await taker.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const d = c.getContext('2d');
+        const out = [];
+        for (let gy = 0; gy < 8; gy++)
+          for (let gx = 0; gx < 8; gx++) {
+            const p = d.getImageData(
+              Math.round((c.width * (gx + 0.5)) / 8),
+              Math.round((c.height * (gy + 0.5)) / 8),
+              1,
+              1,
+            ).data;
+            out.push(p[0], p[1], p[2], p[3]);
+          }
+        return out.join(',');
+      });
+      await taker.close();
+      return sig;
+    };
+
+    const bigLink = await distribute(150, true);
+    const smallLink = await distribute(100, false);
+    const big = await received(bigLink, true);
+    const small = await received(smallLink, false);
+
+    /*
+      ここが本題。配る人が決めた大きさが、もらった人の絵まで届いているか。
+      届いていなければ、150% で配ろうが 100% で配ろうが、もらった人の
+      画面はまったく同じものになる。同じになったら落とす。
+    */
     check(
-      '写真なしでも、フレームをえらぶ画面に入れる',
-      (await page.getByRole('heading', { name: /フレームの画像をえらぶ/ }).count()) === 1,
+      '配る前に決めた大きさが、もらった人の絵に出ている',
+      big !== small,
+      big === small ? '150% と 100% で同じ絵になっている' : '150% と 100% で絵が変わる',
     );
-
-    await page.setInputFiles('input[type=file]', join(FIXTURES, 'neon.png'));
-    await page.waitForTimeout(4000);
-
-    check(
-      '写真が無くても、背景けしはできる',
-      (await page.getByRole('heading', { name: /フレームの背景をけす/ }).count()) === 1,
-    );
-    check(
-      'その場で渡せる（そろえるスイッチがある）',
-      (await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).count()) === 1,
-    );
-
-    await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
-    await page.waitForTimeout(250);
-    await page.getByLabel('フレームの名前').fill('写真なしの枠');
-    await page.waitForTimeout(200);
-
-    const make = page.getByRole('button', { name: /^リンクを作る$/ });
-    check('その場でリンクも作れる', (await make.count()) === 1);
-    await make.click();
-    await waitFor(async () => (await page.getByLabel('配るリンク').count()) > 0, 20000);
-    const link = await page.getByLabel('配るリンク').inputValue();
-    check('リンクができる', /#\/f\/[A-Za-z0-9_-]{4,40}$/.test(link), link);
-    await page.close();
-
-    /* --- もらう人 --- */
-    const taker = await browser.newPage({ viewport: PHONE });
-    await taker.route('**huggingface.co/**', (r) => r.abort());
-    await taker.goto(LINK_BASE_SHARED + link.slice(link.indexOf('#')), { waitUntil: 'networkidle' });
-    await taker.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
-    await taker.waitForTimeout(2000);
-    check(
-      '写真をえらばずに作ったフレームも、リンクで届く',
-      (await taker.getByText(/「写真なしの枠」が用意できました/).count()) === 1,
-    );
-    await taker.close();
   }
 
   console.log('\n■ リンクを止める');
