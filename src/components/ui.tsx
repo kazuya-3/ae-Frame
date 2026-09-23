@@ -123,6 +123,7 @@ export function Slider({
   format,
   note,
   defaultValue,
+  curve = 'linear',
 }: {
   label: string;
   value: number;
@@ -134,8 +135,41 @@ export function Slider({
   note?: string;
   /** 開いたときの値。これと違うときだけ「もどす」を出す */
   defaultValue?: number;
+  /**
+   * 目盛りの刻みかた。
+   *
+   * ── なぜ等間隔でないものが要るのか ──
+   *
+   * 「大きさ」のつまみは 15%〜400%。等間隔だと、**100% がレールの 22% の
+   * ところに来る**。つまり「小さくする」は左端の 1/5 に押しこめられ、
+   * 残りの 4/5 はほとんど使わない拡大側になる。
+   * 写真を枠の内側に収めたい人は、その狭いところで 40%台を狙うことになる。
+   *
+   * 'geometric' は、**同じ距離を動かすと同じ倍率だけ変わる**目盛り。
+   * 100% がまん中あたりに来て、縮める側と伸ばす側が同じ広さになる。
+   * 大きさのように「倍率」で感じるものは、こちらが実際の感覚に合う。
+   *
+   * 外から見える値（value・onChange・数字の欄）は、どちらでも実寸のまま。
+   * 変わるのはレール上の位置だけ。min が 0 以下のときは意味が無いので
+   * 等間隔に落とす。
+   */
+  curve?: 'linear' | 'geometric';
 }) {
   const id = useId();
+  /*
+    レールの目盛り。等比のときは 0〜1000 の「位置」で持ち、
+    表に出すときだけ実寸へ戻す。刻み(step)は実寸のほうに掛ける。
+  */
+  const geo = curve === 'geometric' && min > 0 && max > min;
+  const POS = 1000;
+  const toPos = (v: number) =>
+    geo ? Math.round((Math.log(v / min) / Math.log(max / min)) * POS) : v;
+  const fromPos = (p: number) => {
+    if (!geo) return p;
+    const raw = min * Math.pow(max / min, p / POS);
+    const snapped = Math.round(raw / step) * step;
+    return Number(Math.min(max, Math.max(min, snapped)).toFixed(6));
+  };
   /** 打っている途中の文字。null のあいだは value をそのまま見せる */
   const [typing, setTyping] = useState<string | null>(null);
 
@@ -206,15 +240,18 @@ export function Slider({
       <input
         id={id}
         type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
+        min={geo ? 0 : min}
+        max={geo ? POS : max}
+        step={geo ? 1 : step}
+        value={toPos(value)}
+        aria-valuetext={geo ? String(format ? format(value) : value) : undefined}
         onPointerDown={unlockAudio}
         onChange={(e) => {
-          play('tick');
+          const next = fromPos(Number(e.target.value));
           setTyping(null);
-          onChange(Number(e.target.value));
+          if (next === value) return; // 位置は動いたが実寸は同じ。音まで鳴らさない
+          play('tick');
+          onChange(next);
         }}
       />
       {note && <p className="field__note">{note}</p>}

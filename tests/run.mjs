@@ -102,6 +102,38 @@ async function waitFor(fn, timeout = 10000, interval = 150) {
 }
 
 /*
+  つまみを、**見えている数字のほう**から決める。
+
+  レールに直接 fill すると、レールの目盛りの取りかたに検証が縛られる。
+  「大きさ」は等比の目盛りにしたので、レール上の 60 は 60% ではない。
+  数字の欄はどちらでも実寸なので、こちらから入れれば目盛りを変えても
+  検証は動かない。人が打つときに使うのも、こちらの欄。
+*/
+async function setSlider(page, name, value) {
+  const box = page.getByLabel(new RegExp(`${name}（数字で入力）`));
+  /*
+    焦点を当てるのと打ちこむのを、分けておく。
+
+    この欄は焦点が当たった瞬間に中身が「100%」から「100」に入れ替わる
+    （単位を消して、そのまま打てるようにするため）。同じ動作の中で
+    打ちこむと、入れ替わりと打ちこみが混ざって **100180** のような
+    値になり、上限の 400% に丸められる。
+    実際それで「大きさを変えたつもりで変わっていない」検証が3件通っていた。
+    人が指で触るときは、押してから打つまでに間があるので起きない。
+  */
+  await box.click();
+  await page.waitForTimeout(150);
+  await box.fill(String(value));
+  await box.press('Enter');
+  await page.waitForTimeout(150);
+}
+
+/** つまみの、いま見えている数字（単位つきの文字列） */
+async function sliderText(page, name) {
+  return page.getByLabel(new RegExp(`${name}（数字で入力）`)).inputValue();
+}
+
+/*
   文字と地の明るさの比（WCAG のコントラスト比）。
 
   色の名前で見張ると、色を変えるたびに検証も直すことになり、
@@ -897,6 +929,19 @@ try {
       await page.getByRole('button', { name: /まるく切りぬく/ }).click();
       await page.waitForTimeout(300);
 
+      /*
+        写真のかたちも「まる」にそろえておく。
+
+        ここは**配った人が決める項目ではない**。切りぬかれるのは
+        もらった人自身の写真なので、焼きこまずに相手に残してある。
+        ただ、もらった人の画面は「まる」から始まる（輪のフレームで
+        写真の角がはみ出したまま詰まるのを防ぐため）ので、
+        1バイト比べるなら**こちらも同じ形にしてから**比べる。
+        形を合わせずに比べると、形の既定が違うことだけで落ちる検証になる。
+      */
+      await page.getByRole('button', { name: 'まる', exact: true }).click();
+      await page.waitForTimeout(300);
+
       if (lockIt) {
         const sw = page.getByRole('button', { name: /みんなの見た目をそろえる/ });
         await sw.click();
@@ -977,6 +1022,48 @@ try {
         (await page.getByRole('button', { name: /フレームをうごかす/ }).count()) === 0,
       );
       check('写真の大きさは、もらった人が決められる', (await page.getByText('写真の大きさ').count()) === 1);
+
+      /*
+        もらった人の写真は、**まるく切りぬかれた状態から始まる**。
+
+        アイコンフレームはたいてい輪。四角い写真をそのまま敷くと、
+        写真の角が輪の外に出て、直線のフチが見える。配った人は
+        その状態を見ていない（配るときに写真は無い）ので、
+        気づけるのはもらった人だけ。そこを初期値で塞ぐ。
+
+        このフレームは「まるく切りぬく」を切って配ってあるので、
+        書き出しの角は丸で抜かれない。角に何があるかで形が分かる。
+        写真は photo-mark（青地に赤い丸）。角が青ければ切れていない。
+      */
+      const corners = await page.evaluate(() => {
+        const c = document.querySelector('.stage canvas');
+        const d = c.getContext('2d');
+        const m = Math.round(c.width * 0.04);
+        const at = (x, y) => [...d.getImageData(x, y, 1, 1).data];
+        return [
+          at(m, m),
+          at(c.width - m, m),
+          at(m, c.height - m),
+          at(c.width - m, c.height - m),
+        ];
+      });
+      // 青が赤より目立って強い＝写真がそのまま角まで来ている
+      const photoAtCorner = corners.filter((p) => p[2] > p[0] + 40).length;
+      check(
+        'もらった写真は、はじめからまるく切りぬかれている',
+        photoAtCorner === 0,
+        `角に写真が出ているのは 4 か所中 ${photoAtCorner} か所`,
+      );
+
+      /*
+        とはいえ、輪でないフレームもある。**戻す道**が要る。
+        ここは配った人のものではなく、もらった人自身の写真の話なので、
+        決めるのはもらった人。
+      */
+      check(
+        'もらった人も、写真のかたちを選びなおせる',
+        (await page.getByText('写真のかたち').count()) === 1,
+      );
 
       /* 往復して同じ見た目になっているか */
       /*
@@ -1158,15 +1245,44 @@ try {
     );
 
     // 大きさスライダー
-    const sizeSlider = page.getByRole('slider', { name: /の大きさ/ });
-    await sizeSlider.fill('180');
+    await setSlider(page, 'の大きさ', 180);
     await page.waitForTimeout(350);
     const scaled = await snap();
     check(
       '大きさスライダーが効く',
       diff(scaled, dragged) > CHANGED,
-      `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sizeSlider.inputValue()}`,
+      `ずれ ${diff(scaled, dragged).toFixed(2)} 値=${await sliderText(page, 'の大きさ')}`,
     );
+
+    /*
+      大きさのレールは、縮める側にも広さがあること。
+
+      ── 何が起きていたか ──
+
+      範囲は 15%〜400%。等間隔に並べると 100% はレールの 22% のところに来る。
+      写真をフレームの内側に収めたい人が使うのは 15〜100% なので、
+      **いちばん使うところがレールの左 1/5 に押しこめられていた。**
+      スマホの幅だと、そこは指1本ぶんも無い。だから人は「−」を
+      何度も押すことになる（実際そうしている、という声があった）。
+
+      等比にすると 100% はまん中あたりに来て、縮める側と伸ばす側が
+      同じ広さになる。「レールのどこに 100% があるか」で見張る。
+    */
+    await setSlider(page, 'の大きさ', 100);
+    await page.waitForTimeout(250);
+    const rail = await page
+      .getByRole('slider', { name: /の大きさ/ })
+      .evaluate((el) => ({ min: Number(el.min), max: Number(el.max), value: Number(el.value) }));
+    const railAt100 = (rail.value - rail.min) / (rail.max - rail.min);
+    check(
+      '大きさのレールは、縮める側にも広さがある',
+      railAt100 > 0.35 && railAt100 < 0.75,
+      `100% はレールの ${(railAt100 * 100).toFixed(0)}% のところ`,
+    );
+    // 測るために大きさを動かしたので、戻しておく。
+    // ここを戻さないと、次の「左右反転が効く」が大きさの変化で通ってしまう。
+    await setSlider(page, 'の大きさ', 180);
+    await page.waitForTimeout(250);
 
     // 左右反転
     await page.getByRole('button', { name: '左右を反転する' }).click();
@@ -1205,7 +1321,7 @@ try {
       1点だけ見るとフレームの絵に当たってしまうので、
       丸の内側で「完全にとうめいな画素」が何個あるかを数える。
     */
-    await sizeSlider.fill('40');
+    await setSlider(page, 'の大きさ', 40);
     await page.waitForTimeout(350);
     const clearInsideCircle = () =>
       page.evaluate(() => {
@@ -1266,7 +1382,7 @@ try {
     await page.waitForTimeout(1300);
 
     // フレームの内側におさまる大きさにして、角が見える状態を作る
-    await page.getByRole('slider', { name: /の大きさ/ }).fill('60');
+    await setSlider(page, 'の大きさ', 60);
     await page.waitForTimeout(350);
 
     /*
@@ -1531,11 +1647,7 @@ try {
     await page.getByRole('button', { name: /これでOK/ }).click();
     await page.waitForTimeout(1400);
 
-    const sizeNow = () =>
-      page.evaluate(() => {
-        const el = document.querySelector('input[type=range]');
-        return el ? el.value : null;
-      });
+    const sizeNow = () => sliderText(page, '写真の大きさ');
 
     /*
       初期の大きさは、決め打ちの100%ではない。
@@ -2626,7 +2738,7 @@ try {
       絵の指紋（位置で重みを変えた合計）に替えて、中身の変化そのものを見る。
     */
     const sigBefore = (await shot())[2].sig;
-    await page.getByRole('slider', { name: /の大きさ/ }).fill('220');
+    await setSlider(page, 'の大きさ', 220);
     await page.waitForTimeout(700);
     const sigAfter = (await shot())[2].sig;
     check(
@@ -2897,11 +3009,8 @@ try {
     */
     await page.getByRole('button', { name: '写真', exact: true }).click();
     await page.waitForTimeout(300);
-    const photoPos = await page.evaluate(() => {
-      const el = [...document.querySelectorAll('input[type=range]')];
-      return el.length ? el[0].value : null;
-    });
-    check('切りぬきを動かしても、写真の大きさは変わらない', photoPos === '100', String(photoPos));
+    const photoPos = await sliderText(page, '写真の大きさ');
+    check('切りぬきを動かしても、写真の大きさは変わらない', photoPos === '100%', String(photoPos));
 
     /* かたちを戻したら、指の相手も写真に戻る */
     await page.getByRole('button', { name: 'そのまま', exact: true }).click();
@@ -3051,11 +3160,8 @@ try {
     await page.getByRole('button', { name: /^大きくする$/ }).click();
     await page.getByRole('button', { name: /^大きくする$/ }).click();
     await page.waitForTimeout(400);
-    const frameSize = await page.evaluate(() => {
-      const el = document.querySelector('input[type=range]');
-      return el ? el.value : null;
-    });
-    check('配る前に、フレームの大きさを変えられる', frameSize !== '100', `${frameSize}%`);
+    const frameSize = await sliderText(page, 'フレームの大きさ');
+    check('配る前に、フレームの大きさを変えられる', frameSize !== '100%', String(frameSize));
 
     await page.getByRole('button', { name: /みんなの見た目をそろえる/ }).click();
     await page.waitForTimeout(250);
@@ -3145,10 +3251,20 @@ try {
       '覚えておくも出さない（リンク自体が覚えている）',
       (await page.getByRole('button', { name: /この端末に覚えておく/ }).count()) === 0,
     );
+    /*
+      写真のかたちは、**出す**。
+
+      ここには「フレームの見え方の一部だから出さない」と書いてあった。
+      **間違い。** 切りぬかれるのは配った人のフレームではなく、
+      もらった人自身の写真。他人が決めていいものではないし、
+      消してしまうと、輪のフレームで写真の角がはみ出したまま直せない。
+
+      消したままでよかったのは「フレームをうごかす」のほうだけ。
+      あれは本当に配った人のもので、動かしても焼きこみで戻される。
+    */
     check(
-      '写真のかたち・どこを切りぬくかは出さない（フレームの見え方の一部）',
-      (await page.getByText('写真のかたち').count()) === 0 &&
-        (await page.getByText('どこを切りぬくか').count()) === 0,
+      '自分の写真のかたちは、もらった人が決められる',
+      (await page.getByText('写真のかたち').count()) === 1,
     );
     check(
       '写真だけ変える道は残す',
