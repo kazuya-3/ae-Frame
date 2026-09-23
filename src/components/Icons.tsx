@@ -247,3 +247,48 @@ export const IconTouch = (p: Props) => (
     <path d="M17.6 11.9a1.6 1.6 0 013.1.5v2.4c0 3.2-2.2 5.7-5.4 5.7h-1.4c-2 0-3.2-.8-4.3-2.4l-2.4-3.5a1.7 1.7 0 012.6-2.1l1.3 1.4" />
   </Svg>
 );
+
+/**
+ * 「フレームを配る」の絵。
+ *
+ * ── なぜ絵が要るのか ──
+ *
+ * ここは文言だけで置いていた（「写真はあとで。フレームだけ作って配る」）。
+ * 初めて来た人には、**何のことか分からない**という声があった。
+ * 「配る」が何をどこへ渡すことなのか、言葉だけでは像が結ばない。
+ *
+ * 1つのフレームから、**同じ見た目のアイコンがいくつも出る**。
+ * それがこの入口の中身そのものなので、そのまま絵にする。
+ * 読まなくても役割が分かるように、文字より先にこれを置く。
+ *
+ * アイコンと違って向きも大きさも決め打ち。並べる場所が1か所しかない。
+ */
+export const MarkShareFrame = ({ size = 72 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={(size * 32) / 74}
+    viewBox="0 0 74 32"
+    fill="none"
+    stroke="currentColor"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {/* 配るフレーム。輪のまん中が空いている＝写真が入るところ */}
+    <circle cx="14" cy="16" r="11" strokeWidth="2.6" />
+    <circle cx="14" cy="16" r="5.4" strokeWidth="1.4" strokeDasharray="2.4 2.4" />
+    {/* 渡す */}
+    <path
+      d="M30.5 16h8.5m0 0-3.2-3.2M39 16l-3.2 3.2"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* もらった人たち。3つとも同じ形＝みんな同じ見た目になる、ということ */}
+    <circle cx="47" cy="16" r="4.4" strokeWidth="1.9" />
+    <circle cx="47" cy="16" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="58" cy="16" r="4.4" strokeWidth="1.9" />
+    <circle cx="58" cy="16" r="1.6" fill="currentColor" stroke="none" />
+    <circle cx="69" cy="16" r="4.4" strokeWidth="1.9" />
+    <circle cx="69" cy="16" r="1.6" fill="currentColor" stroke="none" />
+  </svg>
+);

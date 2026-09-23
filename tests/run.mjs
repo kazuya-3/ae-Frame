@@ -3353,8 +3353,40 @@ try {
       await page.getByRole('button', { name: 'はじめる' }).click().catch(() => {});
       await page.waitForTimeout(400);
 
-      const skip = page.getByRole('button', { name: /写真はあとで。フレームだけ作って配る/ });
+      const skip = page.getByRole('button', { name: /フレームを作って、みんなに配る/ });
       if (first) check('写真をえらばずに進む入口がある', (await skip.count()) === 1);
+
+      if (first) {
+        /*
+          入口の置きかた。
+
+          ── 前はこうだった ──
+
+          「写真はあとで。フレームだけ作って配る」という**文字だけのボタン**を、
+          写真をえらぶところの**上**に置いていた。初めて来た人には
+          何のことか分からない、という声があった。本筋（写真をえらぶ）より
+          先に出るので、読まされたうえで意味が取れない、という順番だった。
+
+          見るのは2つ。**本筋のあとに来ること**と、**絵がついていること**。
+          文言は言いかたが変わるたびに直すことになるので、見張らない。
+        */
+        const order = await page.evaluate(() => {
+          const drop = document.querySelector('.drop');
+          const role = document.querySelector('.role');
+          if (!drop || !role) return null;
+          return { dropBottom: drop.getBoundingClientRect().bottom, roleTop: role.getBoundingClientRect().top };
+        });
+        check(
+          '配る入口は、写真をえらぶところより下にある',
+          !!order && order.roleTop > order.dropBottom,
+          order ? `写真 ${Math.round(order.dropBottom)}px → 配る ${Math.round(order.roleTop)}px` : '見つからない',
+        );
+        check(
+          '配る入口には、何が起きるかの絵がついている',
+          (await page.locator('.role .role__mark svg').count()) === 1,
+        );
+      }
+
       await skip.click();
       await page.waitForTimeout(500);
 

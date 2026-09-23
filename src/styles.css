@@ -1643,6 +1643,121 @@ input[type='range']:active::-webkit-slider-thumb {
   line-height: 1.55;
 }
 
+/* ---------- ふたつめの入り口（フレームを配る人） ---------- */
+
+/*
+  道が2つに分かれるところ。
+
+  ボタンを2つ並べただけだと、どちらが本筋か分からない。
+  線で切って「または」と書くと、上が本筋・下がもう一方、と読める。
+*/
+.or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--ink-faint);
+  opacity: 0.55;
+}
+
+/*
+  役割でえらぶ入口。
+
+  .btn を下敷きにしているのは、押したときの沈みこみと音を同じにするため。
+  ただし形は丸ボタンではなく**札**にする。ここは1行で言い切れる用事ではなく、
+  絵と、何が起きるかの説明が要るので、中身が2行3行になる。
+
+  白い抜き文字にはしない。**押しどころは上の「写真をえらぶ」1か所**。
+*/
+.btn.role {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  min-height: 0;
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  border-color: var(--ink-faint);
+  background: var(--paper-3);
+  box-shadow: none;
+  font-weight: 400;
+  font-size: 0.85rem;
+  /* 中身が折り返す札なので、ボタンの「折らない」を解く */
+  white-space: normal;
+  text-align: left;
+}
+
+.btn.role:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: none;
+  background: var(--paper-2);
+}
+
+.role__mark {
+  flex: 0 0 auto;
+  display: flex;
+  color: var(--ink);
+}
+
+/*
+  絵の大きさは、ここで決める。
+
+  68px で置いてみたら、輪も小さい輪も潰れて**ただの染み**にしか見えなかった。
+  読ませる絵ではなく、見た瞬間に分かる絵にしたいので、大きくとる。
+*/
+.role__mark svg {
+  width: 104px;
+  height: auto;
+}
+
+.role__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.role__title {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.role__sub {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+/*
+  細い画面では、絵を上に積む。
+  横に並べたままだと説明が2文字ずつになって、かえって読めない。
+*/
+@media (max-width: 400px) {
+  .btn.role {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
+  }
+  /* 縦に積むと絵の横に何も無いので、そのぶん大きく見せられる */
+  .role__mark svg {
+    width: 124px;
+  }
+}
+
 .sprite-line--center {
   justify-content: center;
   text-align: left;

@@ -30,6 +30,7 @@ import { TipLink } from 'virtual:tip';
 import {
   IconArrowRight,
   IconFrame,
+  MarkShareFrame,
   IconHelp,
   IconLock,
   IconPhoto,
@@ -491,30 +492,6 @@ export default function App({ active = true }: { active?: boolean }) {
             </Note>
           )}
 
-          {/*
-            配りたいだけの人のための入口。
-
-            この人はアイコンを作らない。枠のフレームを1枚こしらえて、みんなに配る。
-            それなのに、写真をえらばないと背景けしの画面へ進めなかったので、
-            **使わない写真を1枚えらばされていた。**
-
-            押しどころにはしない。ほとんどの人は写真をえらびに来ているので、
-            強調色は上の「写真をえらぶ」に残す。
-          */}
-          {!photo && !frameResult && (
-            <>
-              <div className="spacer" />
-              <Button variant="ghost" onClick={() => goto(2)} sound="tap">
-                <IconFrame size={17} />
-                写真はあとで。フレームだけ作って配る
-              </Button>
-              <p className="field__note">
-                自分のアイコンは作らず、<b>フレームを配りたいだけ</b>のときはこちら。
-                背景をけしたら、その場で渡せます。
-              </p>
-            </>
-          )}
-
           {photo && photoUrl ? (
             <div className="stack">
               <div className="preview">
@@ -559,6 +536,48 @@ export default function App({ active = true }: { active?: boolean }) {
                 <Sprite name="empty" size={72} />
                 <span>写真をえらぶと、ここから始まります</span>
               </p>
+
+              {/*
+                配りたいだけの人のための入口。
+
+                この人はアイコンを作らない。枠のフレームを1枚こしらえて、みんなに配る。
+
+                ── 前の置きかたを変えた ──
+
+                はじめ「写真はあとで。フレームだけ作って配る」という**文字だけの
+                ボタン**を、写真をえらぶところの**上**に置いていた。
+                初めて来た人には、これが何のことか分からなかった。
+                「配る」が何をどこへ渡すことなのか、言葉だけでは像が結ばない。
+                しかも本筋（写真をえらぶ）より先に出るので、
+                読まされたうえで意味が取れない、といういちばん悪い順番だった。
+
+                3つ直した。
+                ・**下に移した。** ほとんどの人は写真をえらびに来ている。
+                  本筋を先に読ませて、もう一方はそのあとに置く。
+                ・**「または」で切った。** 道が2つに分かれることが、線で分かる。
+                ・**絵を先に置いた。** 1つのフレームから同じ見た目のアイコンが
+                  いくつも出る、という絵。読まなくても役割が分かる。
+
+                押しどころにはしない。強調色は上の「写真をえらぶ」に残す。
+              */}
+              {!frameResult && (
+                <>
+                  <div className="or">または</div>
+                  <Button className="role" onClick={() => goto(2)} sound="tap">
+                    <span className="role__mark">
+                      <MarkShareFrame />
+                    </span>
+                    <span className="role__body">
+                      <b className="role__title">フレームを作って、みんなに配る</b>
+                      <span className="role__sub">
+                        手もちの画像から<b>とうめいなフレーム</b>を作って、
+                        <b>リンクで渡せます</b>。もらった人は写真をえらぶだけ。
+                        みんな同じ見た目にそろいます。
+                      </span>
+                    </span>
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
